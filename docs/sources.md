@@ -1,5 +1,7 @@
 # 信源
 
+本文说明当前 AIHOT 框架的信源操作。旧 ai-radar 的来源覆盖与入口差异见[两项目对比](references/ai-radar-comparison.md)，后续接入边界见[融合开发指南](development.md)。
+
 信源在后台“信源”页管理：新建、试抓一次看看抓到什么、改频率、启停、看失败原因和最近的条目。首次启动时，`industry/sources.json` 里的示范信源会被导入。
 
 ## 六种信源

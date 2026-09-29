@@ -1,3 +1,11 @@
+# AI Radar 开发基线
+
+本仓库以 AIHOT 开源框架为基础，后续将结合既有 Python 版 AI Radar 的能力，迭代 AI Radar 网站。**目前保留 AIHOT 上游实现，双方能力的融合尚未实现**；`~/research/ai-radar` 是对比和迁移参照，不是本仓的运行依赖。
+
+从[文档总入口](docs/README.md)了解当前状态；两套系统在数据源、架构和算法上的差异见[AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md)，后续开发入口见[融合开发指南](docs/development.md)。
+
+以下项目介绍、第一人称开源说明、截图及性能数字保留自 AIHOT 上游；其中“我”指上游作者数字生命卡兹克，不代表本仓维护者的经历，也不表示本仓已部署或完成 Radar 融合。
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png">
@@ -19,6 +27,8 @@
 </p>
 
 <p align="center">
+  <a href="docs/README.md">文档总入口</a> ·
+  <a href="docs/development.md">开发 AI Radar</a> ·
   <a href="#跑起来">跑起来</a> ·
   <a href="docs/customize.md">改成你的行业</a> ·
   <a href="#它是怎么工作的">它是怎么工作的</a> ·
@@ -110,6 +120,8 @@
 
 需要 [Docker](https://docs.docker.com/get-docker/)，和一个 OpenAI 兼容的模型 API Key（DeepSeek、千问、智谱都可以）。
 
+下面保留上游的从零安装步骤。已经克隆本仓时，在本仓根目录从 `node scripts/init-env.ts` 开始执行，无需再次克隆上游。
+
 ```bash
 git clone https://github.com/KKKKhazix/AIHOT.git myhot
 cd myhot
@@ -148,6 +160,9 @@ docker compose up -d --build
 
 | 文档 | 内容 |
 |---|---|
+| [文档总入口](docs/README.md) | 当前状态、上游使用说明与 AI Radar 开发文档导航 |
+| [AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md) | 数据源、工程架构、处理阶段与核心算法的差异 |
+| [融合开发指南](docs/development.md) | 在本仓基础上迭代 AI Radar 的开发入口与待落实方向 |
 | [把它改成你的行业](docs/customize.md) | 站名、分类、信源、提示词、门槛、品牌，一步一步来 |
 | [信源](docs/sources.md) | 六种信源怎么配，分级和全文，外部推送接口 |
 | [精选与校准](docs/selection.md) | 一条资料怎么变成精选，怎么用自己的样本校准 |
