@@ -4,7 +4,8 @@
 import type { z } from "zod";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
-import { completeReceipt, paidRequest, ProviderRejectedError, rejectReceivedResponse } from "./receipts.ts";
+import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
+import { prepareGatewayRequest } from "./gateway.ts";
 import { sql } from "../db.ts";
 
 export interface ModelSpec {
@@ -155,9 +156,10 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   const spec = MODELS[opts.model];
   if (!spec) throw new Error(`Unknown model ${opts.model}`);
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const baseUrl = credential("models", spec.baseUrlEnv);
-  const apiKey = credential("models", spec.apiKeyEnv);
-  if (!baseUrl || !apiKey || !spec.model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
+  const gateway = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000);
+  const baseUrl = gateway ? null : credential("models", spec.baseUrlEnv);
+  const apiKey = gateway ? null : credential("models", spec.apiKeyEnv);
+  if ((!gateway && (!baseUrl || !apiKey)) || !spec.model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);
 
   const temperature = opts.temperature ?? 0.2;
   const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") ? 4000 : 0);
@@ -182,15 +184,20 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
       model: spec.model,
       purpose: opts.purpose,
       subject: opts.subject,
-      identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null },
-      requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
+      identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null, ...(gateway ? { gateway: gateway.identity } : {}) },
+      requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens, ...(gateway ? { gateway: gateway.summary } : {}) },
       attemptTag: opts.attemptTag,
+      gatewayRequestId: gateway?.requestId,
     },
     async () => {
       const started = Date.now();
+      if (gateway) {
+        const json = await gateway.send("chat/completions", body);
+        return { response: { ...json, _latencyMs: Date.now() - started }, requestId: gateway.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
+      }
       let res: Response;
       try {
-        res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        res = await fetch(`${baseUrl!.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify(body),
@@ -227,8 +234,9 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   try {
     parsed = opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
   } catch (error) {
-    // Unusable output: record it and let a later attempt pay for a fresh answer.
-    await rejectReceivedResponse(receipt.receiptId, `unusable output: ${String(error).slice(0, 500)}`);
+    // Gateway outputs require ledger reconciliation before another paid attempt.
+    await rejectReceivedResponse(receipt.receiptId, `unusable output: ${String(error).slice(0, 500)}`, !!gateway);
+    if (gateway) throw new ReceiptUnknownError(receipt.receiptId, `Gateway output requires reconciliation for receipt ${receipt.receiptId}`);
     throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${String(error).slice(0, 300)}`);
   }
   return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };

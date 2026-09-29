@@ -5,13 +5,14 @@
 import { config, credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
-import { paidRequest, ProviderRejectedError } from "./receipts.ts";
+import { paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
+import { gatewayConfigured, prepareGatewayRequest } from "./gateway.ts";
 
-const own = !!credential("models", "EMBEDDING_API_KEY");
-export const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || (own ? "text-embedding-3-small" : "text-embedding-v4");
+const own = !gatewayConfigured() && !!credential("models", "EMBEDDING_API_KEY");
+export const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || (own || gatewayConfigured() ? "text-embedding-3-small" : "text-embedding-v4");
 /** Requested dimensions, when the provider takes the parameter (0 leaves it to the model). */
-export const EMBEDDING_DIMS = Number(process.env.EMBEDDING_DIMS ?? (own ? 0 : 1024));
-const SERVICE = own ? "embedding" : "dashscope";
+export const EMBEDDING_DIMS = Number(process.env.EMBEDDING_DIMS ?? (own || gatewayConfigured() ? 0 : 1024));
+const SERVICE = own || gatewayConfigured() ? "embedding" : "dashscope";
 
 // Recall reads fresh fact/story titles on every call, so the full text hash also invalidates this
 // cache when either title changes. Keep enough entries for the 4,000-fact recall window, not the
@@ -28,21 +29,28 @@ function cacheFact(id: string, textHash: string, vector: number[]) {
 
 /** Embeddings are paid model calls: MODEL_CALLS_ENABLED=false switches them off like every other call. */
 export function embeddingsAvailable(): boolean {
-  return config.modelCallsEnabled && !!(credential("models", "EMBEDDING_API_KEY") ?? credential("models", "DASHSCOPE_API_KEY")) && process.env.EMBEDDINGS_ENABLED !== "false";
+  const available = gatewayConfigured() ? !!process.env.LLM_GATEWAY_PROJECT && !!process.env.EMBEDDING_MODEL : !!(credential("models", "EMBEDDING_API_KEY") ?? credential("models", "DASHSCOPE_API_KEY"));
+  return config.modelCallsEnabled && available && process.env.EMBEDDINGS_ENABLED !== "false";
 }
 
 async function embedBatch(texts: string[], subject: string): Promise<number[][]> {
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const base = own ? credential("models", "EMBEDDING_BASE_URL") ?? "https://api.openai.com/v1" : credential("models", "DASHSCOPE_BASE_URL") ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
-  const key = own ? credential("models", "EMBEDDING_API_KEY") : credential("models", "DASHSCOPE_API_KEY");
-  if (!key) throw new Error("EMBEDDING_API_KEY (or DASHSCOPE_API_KEY) missing");
+  const gateway = prepareGatewayRequest(EMBEDDING_MODEL, 60_000);
+  const base = gateway ? null : own ? credential("models", "EMBEDDING_BASE_URL") ?? "https://api.openai.com/v1" : credential("models", "DASHSCOPE_BASE_URL") ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  const key = gateway ? null : own ? credential("models", "EMBEDDING_API_KEY") : credential("models", "DASHSCOPE_API_KEY");
+  if (!gateway && !key) throw new Error("EMBEDDING_API_KEY (or DASHSCOPE_API_KEY) missing");
   const receipt = await paidRequest(
-    { service: SERVICE, model: EMBEDDING_MODEL, purpose: "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)) }, requestSummary: { count: texts.length } },
+    { service: SERVICE, model: EMBEDDING_MODEL, purpose: "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)), ...(gateway ? { gateway: gateway.identity } : {}) }, requestSummary: { count: texts.length, ...(gateway ? { gateway: gateway.summary } : {}) }, gatewayRequestId: gateway?.requestId },
     async () => {
-      const res = await fetch(`${base.replace(/\/$/, "")}/embeddings`, {
+      const body = { model: EMBEDDING_MODEL, input: texts, ...(EMBEDDING_DIMS > 0 ? { dimensions: EMBEDDING_DIMS } : {}), encoding_format: "float" };
+      if (gateway) {
+        const json = await gateway.send("embeddings", body);
+        return { response: json, requestId: gateway.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
+      }
+      const res = await fetch(`${base!.replace(/\/$/, "")}/embeddings`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts, ...(EMBEDDING_DIMS > 0 ? { dimensions: EMBEDDING_DIMS } : {}), encoding_format: "float" }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(60_000),
       });
       const text = await res.text();
@@ -52,6 +60,10 @@ async function embedBatch(texts: string[], subject: string): Promise<number[][]>
     },
   );
   const data = (receipt.response as { data: Array<{ embedding: number[]; index: number }> }).data;
+  if (gateway && (!Array.isArray(data) || data.length !== texts.length || data.some((d) => !d || !Number.isInteger(d.index) || d.index < 0 || d.index >= texts.length || !Array.isArray(d.embedding) || !d.embedding.length || d.embedding.some((n) => !Number.isFinite(n)) || (EMBEDDING_DIMS > 0 && d.embedding.length !== EMBEDDING_DIMS)) || new Set(data.map((d) => d.index)).size !== texts.length)) {
+    await rejectReceivedResponse(receipt.receiptId, "Unusable Gateway embedding response", true);
+    throw new ReceiptUnknownError(receipt.receiptId, `Gateway embedding output requires reconciliation for receipt ${receipt.receiptId}`);
+  }
   return [...data].sort((a, b) => a.index - b.index).map((d) => d.embedding);
 }
 

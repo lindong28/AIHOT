@@ -72,6 +72,24 @@ docker compose logs -f --tail 100 api worker web
 
 ## 花多少钱
 
+### 使用个人 llm-gateway
+
+在 Gateway 中登记本站的稳定项目身份及个人资源范围，确认精确模型可用后，配置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT`、`LLM_MODEL`。`LLM_GATEWAY_MODE` 可用 `stream`（默认）或 `batch`；它表示 Gateway 路由偏好，本站仍接收完整 JSON 响应，不表示一定使用某个服务层级。`LLM_EXTRA_JSON` 等参数仍需与选定模型匹配。上游密钥只保存在 Gateway，本站不需要 `LLM_API_KEY`。
+
+设置 Gateway 后，文本与向量都经它转发，不会退回直接调用供应商。向量可用 `EMBEDDINGS_ENABLED=false` 关闭；启用时必须显式指定 `EMBEDDING_MODEL`，维数可用 `EMBEDDING_DIMS` 指定。容器内的 `127.0.0.1` 指向容器自身，应填写 worker 实际能访问的 Gateway 地址。当前本机部署进度与尚待裁决的资源见 [切换清单](migration.md)。
+
+本站在发出请求前将 UUID 写入 `receipts.request_id` 与 `receipt_attempts.request_id`，作为 `X-LLM-Request-ID` 发送，并校验响应的 `llm_gateway` 身份；压缩 JSON 则校验 Gateway identity headers，并一同保存到回执响应中。Gateway 负责网络重试与供应商切换；本站不自动重发 Gateway 的未知结果。请求超时、连接中断、HTTP 错误、响应身份不匹配或业务结果不可用时，回执保持 `unknown`，处理暂停。按回执 ID 查询请求身份，再到 Gateway 的 ledger 核对该请求及其 attempts，确认结果后通过既有后台恢复入口处理；不得只因等待时间已过就放行重试。
+
+```sql
+SELECT id, status, request_id, usage, error
+FROM receipts WHERE id = '<后台显示的回执 ID>';
+SELECT attempt, status, request_id, usage, error
+FROM receipt_attempts WHERE receipt_id = '<后台显示的回执 ID>'
+ORDER BY attempt;
+```
+
+未取得金额时费用保持未知，不把 token 数当作实际账单。当前上游单次超时最大 180 秒；本站等待窗口为两倍上游超时加 200 秒，用于预留恢复时间，并非 Gateway 完成保证。窗口到期仍须查账。未配置 Gateway 时，原有供应商直连及其恢复规则保持原样。
+
 - **模型**：每条新资料至少预筛一次；可能入选的再评分两次，入选的还要写标题摘要、打标签、归组，另外还有日报和事件综述。我们用示范信源在本地试跑，第一次导入的 152 条资料一共用了大约 930 次模型调用。之后每天用多少，取决于你的信源每天更新多少条。后台“模型与评测”页能看到每一步的调用次数和输入输出 token 数。
 - **付费采集**（X、公众号、Jina）：按请求计费，默认不启用，填了 key 才会用。
 - 所有付费服务都有每分钟、每小时、每天的调用上限（后台“设置 → 预算”），超过就暂停，不会一夜之间刷爆账单。填 0 表示立即停用这个服务。
