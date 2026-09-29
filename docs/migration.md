@@ -6,7 +6,7 @@
 
 本机 MVP 的完成条件是：本机网页能打开并展示真实处理后的内容；后端通过 AIHOT 自身采集链路读取 [industry/sources.json](../industry/sources.json) 当前定义的 18 个示范 RSS；实际采用的模型经个人 llm-gateway 完成真实业务调用，应用回执可关联 Gateway 请求。启动空站、单独 HTTP 探测成功或 Gateway 健康检查正常，分别只是这些条件的局部证据。
 
-MVP 不要求预先接齐全部参考模型、迁入 RADAR 全部来源、导入历史内容或启用模型榜与 Codex 重置监控。当前代码的 11 个能力均可选择 `default` 模型，Embedding 可不配；实际采用的模型与参数须显式记录并验证，不能把同品牌或近似名称当成等价。缺失资源导致需换模型、换来源或缩小覆盖时，由执行者提交方案与影响，用户裁决后再实施相关分支。
+用户在本机实施中选择“先补齐参考多模型”，因此本轮按参考分工准备资源与验证，不采用此前提出的 Ark 单模型替代。MVP 仍不要求迁入 RADAR 全部来源、导入历史内容或启用模型榜与 Codex 重置监控。当前代码的 11 个能力均可选择 `default` 模型，Embedding 可不配，这是框架能力，不是本轮已选部署方案；实际采用的模型与参数须显式记录并验证，不能把同品牌或近似名称当成等价。缺失资源导致需换模型、换来源或缩小覆盖时，由执行者提交方案与影响，用户裁决后再实施相关分支。
 
 线上域名、反向代理、现役 RADAR 采集和数据同步保持现状；本清单不构成提前切站的授权。离线测试继续关闭采集、模型调用及外发开关；真实采集与模型验收在明确隔离的本机部署环境执行，并保留业务回执和预算熔断。
 
@@ -17,8 +17,8 @@ MVP 不要求预先接齐全部参考模型、迁入 RADAR 全部来源、导入
 | 编号 | 状态 | 缺口与下一动作 | 依赖 | 验收证据 |
 | --- | --- | --- | --- | --- |
 | M01 | 部分完成 | 本机数据库、迁移、seed、API 与 Web 已运行；worker 待模型配置后启动 | [部署说明](deploy.md)；M02/M03 | 见下方本机实施记录 |
-| M02 | 待用户裁决 | 对齐个人 Gateway 政策仓、安装副本和实际服务加载源；登记 AIHOT 稳定项目身份与个人计费范围 | 共享配置更新或隔离实例的选择 | 从实际 worker 环境执行项目级 discovery/readiness；项目被识别，采用路由属于个人资源，配置确已加载 |
-| M03 | 待用户裁决 | 确认 MVP 实际使用的精确模型、能力映射与参数；先核查已有个人资源，不以全部参考型号齐备作为前提 | M02；型号、凭据、配额与参数接受情况 | 列出每个启用能力的 logical/native model、参数和来源；真实业务请求成功，结构化结果可被 AIHOT 消费；资源不足则提交替代方案供用户决策 |
+| M02 | 源配置完成，部署待裁决 | 已选同步共享 Gateway；政策源登记 `aihot/personal`。完整 installer 还会升级程序及账本 v6→v7，超出此前披露范围，部署方式待用户裁决 | 见下方升级缺口；执行归属为本机 MVP 主线程 | 从实际 worker 环境执行项目级 discovery/readiness；项目被识别，采用路由属于个人资源，配置确已加载 |
+| M03 | 目录完成，资源待补 | 已选参考多模型；精确型号已进入个人政策源。智谱缺账户 endpoint，百炼缺地域与个人凭据登记 | 用户补账户事实；M02 部署后由执行者验证认证、配额和参数 | 列出每个启用能力的 logical/native model、参数和来源；真实业务请求成功，结构化结果可被 AIHOT 消费；资源不足则提交替代方案供用户决策 |
 | M04 | 离线完成，待联调 | Gateway 客户端、持久请求身份、压缩响应身份关联、未知结果暂停及超时策略已实现并过独立审查 | 真实调用依赖 M02/M03 | 12 项本地模拟测试通过；真实调用的应用回执与 Gateway 请求/attempt 对齐尚未执行 |
 | M05 | 采集验证完成 | 18 个默认 RSS 已通过真实采集器解析、入库、重复采集；本机设为 2 并发 | 后续定时运行由 M01/M06 承接；长期稳定性未量测 | 18 个不同 RSS URL × 2 轮 × 1 个本机代理出口均成功；末轮新增/修订为 0，累计 508 条、无重复 URL；见下方证据路径 |
 | M06 | 待执行 | 运行有界的真实内容处理链路，核对采集内容经过模型处理后进入统一公开读取层，并在本机页面显示 | M01、M03、M04、M05 | 可定位的来源条目、处理结果与回执、公开 API 和对应页面；分别记录实际触发过的筛选、摘要/理解、结构抽取、归组等阶段，未触发阶段不宣称已验收 |
@@ -27,14 +27,30 @@ MVP 不要求预先接齐全部参考模型、迁入 RADAR 全部来源、导入
 ### 本机实施记录（2026-09-29）
 
 - M01：Node 26.8.1、PostgreSQL 17.11、依赖安装、35 次迁移与 seed 已完成。独立数据库位于 `/Users/lindong/research/AIHOT/.data/local-mvp/postgres`，监听 `127.0.0.1:18432`，应用库 `aihot_local`，测试库 `aihot_local_test`。API `18401` 与 Web `18400` 已启动，worker 尚未启动。
-- M02/M03：待用户裁决。已提出先核验 Ark `deepseek-v4-flash` 供全部文本环节使用、Embedding 暂关闭的 MVP 方案；共享 Gateway 同步现行个人政策或为本站启用隔离实例是另一项待选方案。尚未登记项目、修改共享 Gateway 或进行真实模型调用。
+- M02/M03：用户已通过 AskUserQuestion 选择“先补齐参考多模型”和“同步共享 Gateway”。个人政策源已新增 `aihot/personal`、DeepSeek/MiMo/GLM 精确型号及百炼目录；旧运行配置、进程和账本未改变，尚无真实模型调用。安装阶段新发现的程序升级范围另行提交用户，不能把源文件登记称为已部署。
 - M04：Gateway 客户端已实现，12 项本地模拟测试覆盖文本/向量、普通/gzip JSON、身份正确/缺失/错误、连接/HTTP/业务校验失败和安全阀；真实 Gateway 与业务链路尚未验收。请求 UUID 在发送前进入回执，Gateway 的未知结果不自动放行重试。独立审查发现的压缩响应身份兼容问题已修复并复核放行，无遗留 findings。
 - M05：真实采集器首轮 18/18 个不同 RSS URL 均入库，每源 8 条，共 144 条，标题与链接均非空。接着两轮强制复采分别成功 6/18、8/18，失败显示 `fetch failed`；定向诊断曾取得 `UND_ERR_CONNECT_TIMEOUT`，随后同一 OpenAI 地址连续 3 次成功。累计入库 348 条、18 个来源，无重复 URL，付费 attempts 为 0。当前只证明每源至少成功一次，不能宣称持续稳定；网络间歇超时仍需复验。原始逐源证据为 `.data/local-mvp/rss-collection.json`、`rss-repeat.json`（位于原 checkout，未入 Git）。
 - M05 后续：再次 8 并发复采为 8/18 成功，累计 414 条。改用 2 并发后，6 个此前超时的源定向读取均成功，再用完整采集器连续两轮读取全部 18 源，均为 18/18；累计 508 条，末轮新增与修订均为 0，无重复 URL、无付费 attempts。基于该本机共享代理上的失败/成功读数，配置 `FETCH_CONCURRENCY=2`；这只是当前缓解，不宣称已证实代理容量或长期可用率。证据为 `.data/local-mvp/rss-latest.json`、`rss-concurrency2.json`、`rss-concurrency2-repeat.json`。
-- M06：等待 M02/M03 的裁决后执行。未运行真实模型处理，公开内容仍为空，不将原始入库当作公开发布成功。
+- M06：等待 M02 的实际部署与 M03 的账户资源补齐后执行。未运行真实模型处理，公开内容仍为空，不将原始入库当作公开发布成功。
 - M07：类型检查通过；数据库测试 137 项通过（本地模拟 provider，非真实模型），压缩兼容修复后受影响的 Gateway 测试扩为 12 项并通过；Web 构建及 11 项 Web 测试通过。smoke 检查通过，模型榜 3 个入口因尚无发布轮次跳过；独立无界面浏览器实际打开首页、全部动态，成功登录后台并读到 18 个信源及采集状态，公开列表为空。MVP 整体验收尚未完成。
 
 本机启动目录暂为隔离工作树 `/Users/lindong/research/AIHOT-local-mvp`，环境配置在其未入 Git 的 `.env` 中。API 与 Web 的 tmux 会话分别为 `aihot-local-api`、`aihot-local-web`；日志分别为 `~/.local/state/agent-web/aihot-local-api.log`、`aihot-local-web.log`。停止应用用 `tmux kill-session -t aihot-local-api` 和 `tmux kill-session -t aihot-local-web`；停止数据库用 `/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /Users/lindong/research/AIHOT/.data/local-mvp/postgres -m fast -w stop`。这些动作只作用于本机 MVP；不要删除数据库目录。项目的模型、飞书及 IndexNow 开关均保持关闭；采集验证为本机显式调用，未启动定时采集。
+
+### 参考模型与部署新增缺口（2026-09-29）
+
+以下为新政策源的 CLI 静态检查，不是运行服务或厂商接受结果。`config lint` 通过，credential inventory 中已登记的 assignment names 均存在；8 个精确型号的 logical-model discovery 中 3 个 ready、5 个 unavailable。源配置位于个人政策仓 `llm-gateway/config/registry.json`，决策见该仓 `docs/adr/20260929-e7c0-aihot-reference-model-catalog.md`。
+
+| 型号 | 源配置检查 | 仍欠的动作与归属 |
+| --- | --- | --- |
+| `deepseek-flash` | `personal_deepseek` eligible | 主线程在实际部署后做认证、参数和 AIHOT 业务调用验证 |
+| `mimo-v2.6-flash` | `personal_xiaomi` eligible；已配官方通用 API endpoint | 主线程验证既有 key 适用性和真实调用；不由静态 ready 推定账户套餐 |
+| `text-embedding-3-small` | `personal_openai` eligible | 框架可选 Embedding 路径；待部署后验证，不自行替代参考 `text-embedding-v4` |
+| `glm-5.3-flash` | 三份 profile 均为 `provider_endpoint_missing` | 用户确认 `personal_zai`、`personal_zhipuai`、`personal_zhipu` 实际账户入口；执行者再配置与验证。国内和 Z.AI 国际入口不同 |
+| `qwen3.7-flash`、`qwen3.8-flash`、`qwen3-vl-flash`、`text-embedding-v4` | 已有 `dashscope` 型号目录，无匹配个人 profile | 用户提供或授权登记百炼个人账户、地域及凭据的受保护存放位置；不得在对话中贴 key。执行者完成配置及调用验证 |
+
+共享安装缺口：完整个人 installer 会更新已安装 Python package、启用此前未安装的管理 Web 配置，并可能迁移账本。当前 `~/.local/state/llm-gateway/audit.sqlite3` 实测 schema 6；共享源码为 schema 7。52 个源码 Python 文件中，45 个与安装 package 不同或缺失，比较不含静态资源及依赖。完整同步也会应用政策仓先前已有的 self-hosted 配置以及 OpenAI、DeepSeek、Ark 目录变更；此前“同步共享 Gateway”的问题只披露了旧公司项目注册移除与重启，未披露程序和账本升级，因此这一扩张由主线程携具体范围交用户决策。
+
+源配置检查原始结果保存在原 checkout `.data/local-mvp/models-source-readiness.json` 及逐型号 `*-source-readiness.json`。执行这些只读检查使用已安装 Gateway venv 的 Python 加载当前源码 CLI；不安装依赖、不 import 或运行另一个 daemon。它们明确返回 `endpoint_kind=contract_only`、`listener_status=not_asserted`，不能拿来替代当前服务加载版本核对。
 
 ## 后续改造与正式切站
 
@@ -42,7 +58,7 @@ MVP 不要求预先接齐全部参考模型、迁入 RADAR 全部来源、导入
 
 | 编号 | 阶段 / 状态 | 缺口与下一动作 | 依赖与决策归属 | 验收条件 |
 | --- | --- | --- | --- | --- |
-| S01 | 改造 / 待决策 | 若要复现参考多模型分工，补齐所选精确型号/provider；若启用 Embedding，接入向量调用并确认维数、缓存与归组召回 | 用户确认模型分工与资源；M02–M04 | 所选型号逐一真实调用，参数与返回可用；Embedding 有真实向量及下游使用证据；未选的型号不列为已接通 |
+| S01 | 已纳入本轮 / 部分完成 | 用户选择先补齐参考多模型，已完成目录登记；真实调用与向量归组仍待资源和部署 | M02–M04；由本机 MVP 主线程承接，不作为以后才做的事项 | 所选型号逐一真实调用，参数与返回可用；Embedding 有真实向量及下游使用证据；未选的型号不列为已接通 |
 | S02 | 信源迁移 / 待决策 | 选择并迁入 RADAR 额外的 Feed 与 Web/API 来源，保留重合源入口差异；对故障来源提出修复或替代方案 | 用户确认要保留的覆盖；M05；下文 RADAR 快照 | 所选来源逐一采集入库，来源身份与去重正确；不以 HTTP 200 或零新增直接证明完整性 |
 | S03 | 信源迁移 / 待决策 | 迁移所选 X 账号与增量状态；比较复用 RADAR 官方 X API、适配 AIHOT SocialData、或经 external 推送的具体工作量与资源 | RADAR 使用官方 X API，AIHOT `x_search` 使用 SocialData；供应商、账号范围由用户裁决 | 所选账号有真实增量入库；游标、引用/回复过滤及重复处理符合确认后的范围；不得因迁移恢复已停用账号 |
 | S04 | 信源迁移 / 待决策 | 迁移微信覆盖；验证复用 Wechat2RSS 的 RSS 路径，必要时比较 Dajiala 或 external 推送 | 用户确认公众号范围与接入方式；现有 Wechat2RSS 服务 | 公众号作者与原文链接保留、跨源去重正确；验证聚合窗口与拉取频率的影响；已暂停 Mp2RSS、已停用 WeWe 不自动恢复 |
