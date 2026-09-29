@@ -6,7 +6,9 @@
 
 本机 MVP 的完成条件是：本机网页能打开并展示真实处理后的内容；后端通过 AIHOT 自身采集链路读取 [industry/sources.json](../industry/sources.json) 当前定义的 18 个示范 RSS；实际采用的模型经个人 llm-gateway 完成真实业务调用，应用回执可关联 Gateway 请求。启动空站、单独 HTTP 探测成功或 Gateway 健康检查正常，分别只是这些条件的局部证据。
 
-用户在本机实施中选择“先补齐参考多模型”，因此本轮按参考分工准备资源与验证，不采用此前提出的 Ark 单模型替代。MVP 仍不要求迁入 RADAR 全部来源、导入历史内容或启用模型榜与 Codex 重置监控。当前代码的 11 个能力均可选择 `default` 模型，Embedding 可不配，这是框架能力，不是本轮已选部署方案；实际采用的模型与参数须显式记录并验证，不能把同品牌或近似名称当成等价。缺失资源导致需换模型、换来源或缩小覆盖时，由执行者提交方案与影响，用户裁决后再实施相关分支。
+用户在本机实施中选择“先补齐参考多模型”，因此本轮按参考分工准备资源与验证，不采用此前提出的 Ark 单模型替代。MVP 仍不要求迁入 RADAR 全部来源、导入历史内容或启用模型榜与 Codex 重置监控。当前代码的 11 个能力均可选择 `default` 模型，Embedding 可不配，这是框架能力，不是本轮已选部署方案；实际采用的模型与参数须显式记录并验证，不能把同品牌或近似名称当成等价。
+
+模型选择规则：用户最新明确允许使用百炼订阅的 `qwen3.8-flash`，并确认订阅为 Token Plan 个人版；当原型号没有、但有同系列更高版本时，可直接选择该更高版本，无需重复批准，Flash 与 Pro 算不同系列。据此已选预筛 `qwen3.7-flash` → `qwen3.8-flash`，结构抽取也用 `qwen3.8-flash`；这两项尚未配置或调用，不代表质量等价。跨系列替换、来源或覆盖范围调整仍由执行者带方案交用户裁决；Token Plan 官方使用范围与 AIHOT 后台调用的冲突是另一个未决项，不能被版本选择授权隐含消解。
 
 线上域名、反向代理、现役 RADAR 采集和数据同步保持现状；本清单不构成提前切站的授权。离线测试继续关闭采集、模型调用及外发开关；真实采集与模型验收在明确隔离的本机部署环境执行，并保留业务回执和预算熔断。
 
@@ -18,7 +20,7 @@
 | --- | --- | --- | --- | --- |
 | M01 | 部分完成 | 本机数据库、迁移、seed、API 与 Web 已运行；worker 待模型配置后启动 | [部署说明](deploy.md)；M02/M03 | 见下方本机实施记录 |
 | M02 | 完成 | 用户已授权“完整同步并升级”；共享 Gateway 已安装、加载 `aihot/personal` 与参考型号目录，账本已迁至 v7 | 已完成的本机 Gateway 接入；未来生产网络归 S06 | 实际 health 的文件/加载 revision 一致，已安装 Python package 与本次源码一致；AIHOT 真实请求按个人项目记入账本，详见下方记录 |
-| M03 | 部分完成，百炼资源待决策 | DeepSeek 摘要、GLM 高推理评分与低推理归组复核均有成功调用；用户已选择 GLM 替代 MiMo。百炼新 Key 是编程订阅，不能用于 AIHOT 后端 | 百炼通用 API Key 与地域，或模型替代方案，由用户确认；主线程接续配置与调用验证 | 已测范围与请求标识见下表；没有验证全部能力、视觉或向量路径，不能由 discovery ready 推定业务可用 |
+| M03 | 部分完成，订阅使用范围与向量资源待决策 | DeepSeek 摘要、GLM 高推理评分与低推理归组复核均有成功调用；用户已选择 GLM 替代 MiMo，并选择 Token Plan 个人版 `qwen3.8-flash` 用于预筛和结构抽取，后两项尚未配置或调用 | Token Plan 个人版的工具交互使用范围与 AIHOT 非交互后台不符，Gateway 订阅 profile 当前不可调用；向量资源另缺。主线程带事实和方案交用户知情裁决，不预先使用或排除订阅 | 已测范围与请求标识见下表；4 次已验调用保留，尚未验证全部能力、视觉、向量或 Token Plan 调用，不能由目录支持推定业务可用 |
 | M04 | 离线完成，真实联调部分完成 | Gateway 客户端、持久请求身份、响应关联、未知结果暂停及超时策略已实现；4 次真实请求均可关联两侧记录 | 后续覆盖随 M03 选定资源推进；M06 承接完整业务链路 | 12 项本地模拟测试；真实联调为 3 个模型、4 次调用：DeepSeek 1 次、GLM 两种预设各 1 次成功，MiMo 1 次 HTTP 402；失败保留 unknown 且未重试，不宣称质量或全覆盖 |
 | M05 | 采集验证完成 | 18 个默认 RSS 已通过真实采集器解析、入库、重复采集；本机设为 2 并发 | 后续定时运行由 M01/M06 承接；长期稳定性未量测 | 18 个不同 RSS URL × 2 轮 × 1 个本机代理出口均成功；末轮新增/修订为 0，累计 508 条、无重复 URL；见下方证据路径 |
 | M06 | 待执行 | 运行有界的真实内容处理链路，核对采集内容经过模型处理后进入统一公开读取层，并在本机页面显示 | M01、M03、M04、M05 | 可定位的来源条目、处理结果与回执、公开 API 和对应页面；分别记录实际触发过的筛选、摘要/理解、结构抽取、归组等阶段，未触发阶段不宣称已验收 |
@@ -40,9 +42,11 @@
 
 最新用户裁决：归组复核改用 `glm-5.3-flash`，初判保留 DeepSeek，既有提示词、门槛及公共代码默认不变；该本机配置决定经独立 decision-review 七项成立放行。低推理归组调用随后成功 1 次，输入是 2 篇不同来源文章组成的 1 对材料，返回 `UNRELATED`、confidence 0.99；不视为与 MiMo 质量等价。MiMo 的历史 402 与费用未知记录保留，资源修复不再是本机 MVP 前置条件。`.env` 已写入 Gateway URL/project/mode 及 group/groupReview 选择；API 重启后从实际 `/api/admin/models` 读到初判 DeepSeek、复核 GLM，来源均为 env。全局模型开关仍关闭。
 
-用户另授权登记 `~/.claude/.env` 中的 `BAILIAN_API_KEY`；本地仅输出格式布尔检查确认它属于 Coding Plan 专属类型。[官方说明](https://help.aliyun.com/zh/model-studio/coding-plan)明确该订阅不与通用 API 互通且不适用于应用后端。已新增个人 Gateway profile `personal_bailian_coding_plan`，资金归属为 `personal_subscription`，仅授权复制该变量至 git-crypt 保护的凭据源及 `0600` 安装副本；未把它改为按量付费，未向百炼发送请求。源配置 lint 与变量名 inventory 完成，安装并重启后实际文件/加载 revision 均为 `ad114b6ebcd6615226520d822232e8c9d482bcfc0758290fe1bf177f3683a0cf`。该 profile 的 `runtime_eligible=false`、`policy_allowed=false`，四个参考型号仍缺可调用的通用 API 资源；安装快照见 `.data/local-mvp/bailian-subscription-installed-readiness.json`。主线程此前提议“开通百炼”未明确区分订阅与通用 API，此处更正，不将订阅登记宣称为模型接通。
+用户另授权登记 `~/.claude/.env` 中的 `BAILIAN_API_KEY`，随后通过 AskUserQuestion 确认所持套餐为 Token Plan 个人版。此前仅凭 `sk-sp-` 前缀将其判为 Coding Plan 是错误的：两种订阅共用该前缀，格式检查不能区分套餐。Gateway 中的 `personal_bailian_coding_plan` 是这次误认留下的旧 profile 名，不是实际账户类型的证据，配置尚未更正；资金归属仍为 `personal_subscription`。此前已按授权将该变量复制至 git-crypt 保护的凭据源和 `0600` 安装副本，未改为按量付费，未向百炼发送请求。那次安装的文件/加载 revision 均为 `ad114b6ebcd6615226520d822232e8c9d482bcfc0758290fe1bf177f3683a0cf`，该 profile 的 `runtime_eligible=false`、`policy_allowed=false`；安装快照见 `.data/local-mvp/bailian-subscription-installed-readiness.json`。这些记录说明当前 Gateway 订阅尚不可调用，不表示用户持有 Coding Plan 或已经排除 Token Plan 方案。
 
-首次升级后的 discovery 中，DeepSeek、MiMo、GLM 与可选 OpenAI Embedding 路由 ready。新增百炼订阅 profile 后，4 个百炼型号仍无匹配的个人按量付费 profile。ready 只表示目录和路由资格，MiMo 的后续 HTTP 402 已表明它不能代替真实调用。源配置位于个人政策仓 `llm-gateway/config/registry.json`，决策见该仓 `docs/adr/20260929-e7c0-aihot-reference-model-catalog.md`。
+官方 [Token Plan 个人版说明](https://help.aliyun.com/zh/model-studio/token-plan-personal-overview)列出 `qwen3.8-flash`，仅支持北京地域，支持列表未列出 Embedding 型号。其“订阅前须知”将使用范围限于编程/智能体工具内交互，排除自定义应用后端和非交互批调用，并说明范围外使用可能导致订阅暂停或 Key 被封禁；这与 AIHOT 后台处理场景存在冲突。官方 [Token Plan 快速开始](https://help.aliyun.com/zh/model-studio/token-plan-quickstart)当前正文为团队版，列出独立 OpenAI 兼容地址 `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，并明确 Token Plan、Coding Plan、按量付费的 Key 与 Base URL 相互隔离；该页不构成本人个人版账户调用成功的证据。主线程正准备把使用范围、账户入口和 Gateway 配置差异及可行方案提交用户知情裁决；本轮只记录已选模型，不提前决定使用或排除订阅，也不把订阅登记写成接通。
+
+首次升级后的 discovery 中，DeepSeek、MiMo、GLM 与可选 OpenAI Embedding 路由 ready。新增百炼订阅 profile 后，原 4 个百炼参考型号仍无匹配的个人按量付费 profile；订阅 profile 也尚不可调用。用户现已选定 Qwen Flash 升版，但该选择尚未落入配置。ready 只表示目录和路由资格，MiMo 的后续 HTTP 402 已表明它不能代替真实调用。源配置位于个人政策仓 `llm-gateway/config/registry.json`，决策见该仓 `docs/adr/20260929-e7c0-aihot-reference-model-catalog.md`。
 
 | 型号 | 当前检查与调用 | 仍欠的动作与归属 |
 | --- | --- | --- |
@@ -50,7 +54,9 @@
 | `mimo-v2.6-flash` | 真实归组复核调用返回 HTTP 402；用户已改选 GLM | 保留历史失败与原 provider 配置，MVP 不再依赖它；未核账户原因，不自行充值或重试 |
 | `text-embedding-3-small` | `personal_openai` ready；未调用 | 框架可选路径；是否替代参考 `text-embedding-v4` 仍由用户决定，不能写成向量已接通 |
 | `glm-5.3-flash` | 高推理评分与低推理归组复核各成功 1 次，分别返回评分 40 与关系判断 | 主线程按最终配置验证内容理解等其它能力；不外推到视觉、全部账户或模型质量 |
-| `qwen3.7-flash`、`qwen3.8-flash`、`qwen3-vl-flash`、`text-embedding-v4` | 已有 `dashscope` 目录；新个人 Coding Plan profile 不属于项目调用授权集合 | 用户提供通用 API Key 及所属地域，或明确选择替代模型；当前编程订阅不能补齐此缺口，主线程不预先替换 |
+| `qwen3.8-flash` | 用户已选用于预筛（替代 `qwen3.7-flash`）和结构抽取；Token Plan 个人版目录支持，但 Gateway 尚未配置为可调用路由，未真实调用 | 版本选择无需再批准；主线程提交订阅使用范围冲突与接入方案，待用户知情裁决后实施相关配置与验证 |
+| `qwen3-vl-flash` | 原参考目录保留；Token Plan 个人版列表未列出该精确型号，视觉路径未验 | 不把 `qwen3.8-flash` 的视觉能力说明当成该精确型号已接通；按实际启用需求确认型号和输入路径 |
+| `text-embedding-v4` | 原参考目录保留；Token Plan 个人版支持列表无 Embedding 型号，当前尚无此型号的可调用资源；本机 `EMBEDDINGS_ENABLED=false` 保持不变 | 向量资源方案由主线程提交用户；不得因 Qwen 文本型号已选就宣称向量缺口解决 |
 
 首批真实调用为 3 个模型各 1 次，随后增加 1 次 GLM 归组复核；每次 1 个业务输入，同一本机环境，共 4 次。GLM 高推理评分使用 `temperature=1`、`maxTokens=65536`、`timeout=180s`；低推理归组使用 `temperature=0`、业务 `maxTokens=400` 经现有客户端提升至实际 512，并读取现有 PairSchema。Schema 的默认回落意味着解析通过不能证明判断质量；不能外推到全部能力、全部参数或模型质量。每个应用回执的 attempts 均为 1。
 
@@ -75,7 +81,7 @@ S01 已由用户纳入本轮实施，其余项目先登记，尚未开始验收�
 
 | 编号 | 阶段 / 状态 | 缺口与下一动作 | 依赖与决策归属 | 验收条件 |
 | --- | --- | --- | --- | --- |
-| S01 | 已纳入本轮 / 部分完成 | 参考目录与 Gateway 升级已完成；用户已将 MiMo 复核改为 GLM 并取得成功调用，百炼通用资源与向量路径仍待处理 | M03/M04；由本机 MVP 主线程承接，剩余资源替换由用户裁决 | 所选型号逐一真实调用，参数与返回可用；Embedding 有真实向量及下游使用证据；未选或未调用的型号不列为已接通 |
+| S01 | 已纳入本轮 / 部分完成 | 参考目录与 Gateway 升级已完成；MiMo 复核已改为 GLM 并取得成功调用；预筛和结构抽取已选 Token Plan 个人版 `qwen3.8-flash`，尚未配置/调用，订阅使用范围与向量资源仍待处理 | M03/M04；由本机 MVP 主线程承接。同系列更高版本按用户常设授权选择，Flash/Pro 不同系列；订阅范围冲突与其余资源取舍交用户知情裁决 | 所选型号逐一真实调用，参数与返回可用；Embedding 有真实向量及下游使用证据；未选或未调用的型号不列为已接通 |
 | S02 | 信源迁移 / 待决策 | 选择并迁入 RADAR 额外的 Feed 与 Web/API 来源，保留重合源入口差异；对故障来源提出修复或替代方案 | 用户确认要保留的覆盖；M05；下文 RADAR 快照 | 所选来源逐一采集入库，来源身份与去重正确；不以 HTTP 200 或零新增直接证明完整性 |
 | S03 | 信源迁移 / 待决策 | 迁移所选 X 账号与增量状态；比较复用 RADAR 官方 X API、适配 AIHOT SocialData、或经 external 推送的具体工作量与资源 | RADAR 使用官方 X API，AIHOT `x_search` 使用 SocialData；供应商、账号范围由用户裁决 | 所选账号有真实增量入库；游标、引用/回复过滤及重复处理符合确认后的范围；不得因迁移恢复已停用账号 |
 | S04 | 信源迁移 / 待决策 | 迁移微信覆盖；验证复用 Wechat2RSS 的 RSS 路径，必要时比较 Dajiala 或 external 推送 | 用户确认公众号范围与接入方式；现有 Wechat2RSS 服务 | 公众号作者与原文链接保留、跨源去重正确；验证聚合窗口与拉取频率的影响；已暂停 Mp2RSS、已停用 WeWe 不自动恢复 |
@@ -124,4 +130,4 @@ RADAR 当时为 Mac mini 采集/推理、SQLite 快照同步至腾讯云公开�
 
 原始审计记录位于本机原 checkout 的 `/Users/lindong/research/AIHOT/.data/deployment-audit/`：`gateway.md`、`radar-sources.md`、`aihot-rss-probe.json`。这些是未入 Git 的本机证据，不随 clone 分发；本页保留任务所需结论，执行时通过现役配置与数据刷新。RADAR 来源配置入口为其仓库 `data/sources.toml`，完整 X 名单与微信观察见原始 `radar-sources.md`，私有聚合 URL 和凭据不写入本文。
 
-后续每次完成一项，在对应行更新状态与证据位置；遇到缺口，记录具体失败、可用方案、各方案影响及待用户裁决的问题。模型替换、源覆盖调整、历史舍弃和切站不能由“先让它跑起来”隐含批准。
+后续每次完成一项，在对应行更新状态与证据位置；遇到缺口，记录具体失败、可用方案、各方案影响及待用户裁决的问题。同系列模型升版按上文已获授权的选择规则执行；跨系列替换、源覆盖调整、历史舍弃和切站不能由“先让它跑起来”隐含批准。
