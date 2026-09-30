@@ -1,0 +1,21 @@
+name: aihot-wechat2rss
+services:
+  wechat2rss:
+    image: docker.xlab.app/ttttmr/wechat2rss@sha256:000c3243ebdc5d7edc30cb00e52981b600f02d11f85fefcec27e2226c208082f
+    env_file:
+      - ${WECHAT2RSS_ENV_FILE:?Set the absolute path to the private Wechat2RSS env file}
+    environment:
+      RSS_HOST: 127.0.0.1:18480
+      RSS_KEEP_OLD_COUNT: "-1"
+      RSS_MAX_ITEM_COUNT: "50"
+      # Do not send from a copied bot identity before its delivery has been configured here.
+      BOT_WEBHOOK_URL: ${WECHAT2RSS_BOT_WEBHOOK_URL:-}
+    volumes:
+      - ${WECHAT2RSS_DATA_DIR:?Set the absolute path to the migrated data directory}:/wechat2rss
+    ports:
+      - "127.0.0.1:18480:8080"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"

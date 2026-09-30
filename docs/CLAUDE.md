@@ -9,6 +9,8 @@
 | [deploy.md](deploy.md) | 站点运营者：环境配置、本机和 Docker 部署 |
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
+| [operations/services.md](operations/services.md) | 维护者：本机服务与可选 Wechat2RSS 的运行状态 |
+| [operations/wechat2rss.md](operations/wechat2rss.md) | 维护者：Wechat2RSS 数据迁移、部署与原生 RSS 接入 |
 | [selection.md](selection.md) | 站点运营者：精选逻辑、样本准备与校准 |
 | [leaderboard.md](leaderboard.md) | 站点运营者：模型排行榜与 Codex 重置监控 |
 | [architecture.md](architecture.md) | 开发者：当前服务、数据流、算法阶段与代码入口 |

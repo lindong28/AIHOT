@@ -4,6 +4,10 @@
 
 信源在后台“信源”页管理：新建、试抓一次看看抓到什么、改频率、启停、看失败原因和最近的条目。首次启动时，`industry/sources.json` 里的示范信源会被导入。
 
+2026-09-30 迁移配置保留原 18 个 RSS，新增 36 个公开来源和 109 个 X 账号。Google Research、Mistral 已有 RSS，不重复加网页；Sierra 使用新发现的官方 RSS。`scripts/seed.ts` 可重跑，只添加尚不存在的来源，不覆盖后台编辑。当前 3 个故障 RSS 与已暂停的 xAI 尚待处置，Mp2RSS 已明确排除；真实验证范围见[迁移记录](migration.md)。
+
+X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL_DATA_API_KEY`，同时配置时前者优先。只把所需凭据放进本机 `.env` 或 `AIHOT_CREDENTIALS_DIR/collectors.env`，不要把整个个人凭据文件复制进仓库。账号首次回灌单独采集，取得水位后自动分组搜索。Wechat2RSS 部署与原生 RSS 登记见[运维说明](operations/wechat2rss.md)。
+
 ## 六种信源
 
 | 类型 | 适合 | 需要 |

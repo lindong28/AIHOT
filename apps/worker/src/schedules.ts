@@ -88,7 +88,7 @@ export const SCHEDULES: Scheduled[] = [
     : []),
   // Codex reset monitor: checked every minute, scanned every 5 (every 3 while hot). It reads X through
   // SocialData, so without that key there is nothing to run.
-  ...(collecting && FEATURES.codexResetMonitor && credential("collectors", "SOCIALDATA_API_KEY")
+  ...(collecting && FEATURES.codexResetMonitor && (credential("collectors", "SOCIALDATA_API_KEY") ?? credential("collectors", "SOCIAL_DATA_API_KEY"))
     ? [
         { name: "monitor.tick", cron: "* * * * *", run: () => monitorTick() },
         { name: "monitor.lookback", cron: "40 4 * * *", run: () => monitorTick({ lookbackHours: 48 }) },

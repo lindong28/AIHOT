@@ -187,7 +187,9 @@ function fromDocusaurusChangelog(html: string, base: string, source: SourceRow):
   $("article h2[id], article h3[id], .markdown h2[id], .markdown h3[id]").each((_i, h) => {
     const head = $(h);
     const id = head.attr("id")!;
-    const title = collapseWhitespace(head.text().replace(/​/g, "").replace(/#$/, ""));
+    const label = head.clone();
+    label.find('button, a.hash-link, a.header-anchor, [aria-hidden="true"]').remove();
+    const title = collapseWhitespace(label.text().replace(/​/g, "").replace(/#$/, ""));
     const date = headingDate(title, source.config.publishedAtUtcOffset);
     if (date !== undefined) {
       sectionDate = date;

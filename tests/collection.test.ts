@@ -43,7 +43,8 @@ const dajiala = await stub((_hit, req) => {
 });
 
 process.env.SOCIALDATA_BASE_URL = socialdata.url;
-process.env.SOCIALDATA_API_KEY = "test-key";
+delete process.env.SOCIALDATA_API_KEY;
+process.env.SOCIAL_DATA_API_KEY = "test-key";
 process.env.DAJIALA_BASE_URL = dajiala.url;
 process.env.DAJIALA_KEY = "test-key";
 config.allowPrivateNetworkFetch = true;

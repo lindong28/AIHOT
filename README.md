@@ -1,10 +1,14 @@
 # AI Radar 开发基线
 
-本仓库以 AIHOT 开源框架为基础，后续将结合既有 Python 版 AI Radar 的能力，迭代 AI Radar 网站。**目前保留 AIHOT 上游实现，双方能力的融合尚未实现**；`~/research/ai-radar` 是对比和迁移参照，不是本仓的运行依赖。
+本仓库以 AIHOT 开源框架为基础，结合既有 Python 版 AI Radar 的信源，迭代 AI Radar 网站。已加入公开来源与 X 账号配置，沿用 AIHOT 采集和内容处理链路；微信迁移与线上切换仍见[迁移状态](docs/migration.md)。`~/research/ai-radar` 是迁移参照，不是本仓的运行依赖。
 
 从[文档总入口](docs/README.md)了解当前状态；两套系统在数据源、架构和算法上的差异见[AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md)，后续开发入口见[融合开发指南](docs/development.md)。
 
 以下项目介绍、第一人称开源说明、截图及性能数字保留自 AIHOT 上游；其中“我”指上游作者数字生命卡兹克，不代表本仓维护者的经历，也不表示本仓已部署或完成 Radar 融合。
+
+## 服务
+
+API、Web、worker 与数据库的起停见[部署](docs/deploy.md)。可选 Wechat2RSS 的部署定义由本仓维护，使用 Docker Compose 原生入口；迁移状态、私有配置、起停及尚未完成的告警接管见[服务清单](docs/operations/services.md)。
 
 <p align="center">
   <picture>

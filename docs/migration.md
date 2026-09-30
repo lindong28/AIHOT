@@ -98,15 +98,31 @@ S01 已由用户纳入本轮实施，其余项目先登记，尚未开始验收�
 | 编号 | 阶段 / 状态 | 缺口与下一动作 | 依赖与决策归属 | 验收条件 |
 | --- | --- | --- | --- | --- |
 | S01 | 已纳入本轮 / 部分完成 | 参考目录与 Gateway 升级已完成；MiMo 复核已改为 GLM 并成功调用；Qwen 预筛/结构、GLM 评分/理解与原定百炼 v4 向量均有有限真实输入证据 | M03/M04；主线程承接未触发能力与语义归组整链验收，同系列升版依常设授权，Flash/Pro 不同系列；当前 Token Plan 授权不含生产 | 文本与向量生成已验，语义归组质量和下游整链未验；不把目录、配置或有限样本当成全部能力已验 |
-| S02 | 信源迁移 / 待决策 | 选择并迁入 RADAR 额外的 Feed 与 Web/API 来源，保留重合源入口差异；对故障来源提出修复或替代方案 | 用户确认要保留的覆盖；M05；下文 RADAR 快照 | 所选来源逐一采集入库，来源身份与去重正确；不以 HTTP 200 或零新增直接证明完整性 |
-| S03 | 信源迁移 / 待决策 | 迁移所选 X 账号与增量状态；比较复用 RADAR 官方 X API、适配 AIHOT SocialData、或经 external 推送的具体工作量与资源 | RADAR 使用官方 X API，AIHOT `x_search` 使用 SocialData；供应商、账号范围由用户裁决 | 所选账号有真实增量入库；游标、引用/回复过滤及重复处理符合确认后的范围；不得因迁移恢复已停用账号 |
-| S04 | 信源迁移 / 待决策 | 迁移所选微信覆盖；验证复用 Wechat2RSS 的 RSS 路径，必要时比较 Dajiala 或 external 推送；Mp2RSS 已明确排除 | 用户确认公众号范围与接入方式；现有 Wechat2RSS 服务；Mp2RSS 不再作为待决策项 | 公众号作者与原文链接保留、跨源去重正确；验证聚合窗口与拉取频率的影响；不接入或恢复 Mp2RSS，已停用 WeWe 不自动恢复 |
+| S02 | 信源迁移 / 公开来源已配置并有真实采集证据 | 保留原 18 源，新增 36 个公开来源；已有 RSS/Atom 的 Google Research、Mistral 不加网页副本，Sierra 使用 RSS；3 个故障 Feed 和暂停的 xAI 网页未擅自启用 | 当前实施主线程负责部署；故障来源与 xAI 的去留待用户裁决；逐源结果见下方记录 | 隔离验收库中 36 个不同来源各完成两轮真实采集；不外推长期更新、全文完整性或公开发布 |
+| S03 | 信源迁移 / SocialData 已接通，109 个 X 账号已配置 | 用户已选择 SocialData 并提供 SOCIAL_DATA_API_KEY；原生 x_search、付费回执与水位机制继续使用，不迁旧 RADAR 游标 | 本轮主线程承接；自动 worker 仍未启动；全部账号的长期增量未验 | OpenAI、Anthropic 两个不同账号各完成 1 次真实首采，共 16 条入库、2 个 received 回执；不是 109 个账号全部实测 |
+| S04 | 微信迁移 / 数据与部署代码已准备，服务未迁完 | 用户明确要求将 Wechat2RSS 所需文件和服务迁到当前机器，代码与配置模板由本仓维护；已复制 22 个订阅及登录/许可快照，Compose 和迁移脚本已验证 | 本机 OrbStack VM 启动超时待解决；目标引擎可用后，旧实例停用与现役 RADAR 消费端衔接待用户确认；本轮主线程负责其余实现 | 目标容器、登录有效性、认证 RSS 和 AIHOT 入库仍未验；操作入口见 [Wechat2RSS 运维](operations/wechat2rss.md)；Mp2RSS 永久排除 |
 | S05 | 可选模块 / 待决策 | 决定模型榜和 Codex 重置监控是否纳入交付；分别核实上游数据、凭据及模型调用 | [模块说明](leaderboard.md)；模型榜部分来源需要独立 key，监控依赖 SocialData | 启用者有真实更新与页面结果；未启用者的配置、导航与任务行为一致，不能将缺数据页面算作模块可用 |
 | S06 | 生产准备 / 待决策 | 确定采集、推理、数据库与公开站点的部署位置，以及生产 worker 到个人 Gateway 的真实路径；准备目标机运行环境 | 用户确认生产拓扑；MVP 验收完成 | 在目标机启动并从实际 worker 访问 Gateway、信源和 PostgreSQL；记录运行、更新与数据备份方式；不得直接套用 RADAR 的 SQLite 快照同步脚本 |
 | S07 | 历史迁移 / 待决策 | 明确 RADAR 历史文章、精选、微信原文与解读、作者、手动归档及 disabled/paused 来源历史的保留范围，实施迁移或兼容读取 | 用户确认保留范围；S06；SQLite 与 PostgreSQL 数据映射 | 已确认范围逐类核对数量、关联与公开可读结果；未迁内容有明确处置，不因只迁 active 来源而静默丢弃 |
 | S08 | 兼容 / 待执行 | 清点旧详情链接、`/wechat`、RSS、公开 API 与实际消费者；确定保留、重定向或版本迁移行为 | S07；用户确认有意改变的公开行为 | 在目标服务通过旧入口访问对应内容，RSS/API 消费者可继续使用或已有确认的迁移安排；搜索与分享链接一并核对 |
 | S09 | 产品配置 / 待决策 | 确认站名、品牌、首页与关于页文案、分类与精选标准、联系信息、条款隐私；替换示例内容 | 用户本人确认；[定制说明](customize.md) | 页面呈现确认后的内容；不使用原 AIHOT 名称与 Logo；若改评分标准或门槛，按 [精选与校准](selection.md) 验证 |
 | S10 | 切站 / 待执行 | 在本机改造与测试完成后，准备并验证域名、`SITE_URL`、代理、HTTPS、缓存与正式流量切换；明确旧服务与数据的保留安排 | 本机验收、用户确认的 S01–S09 范围已完成；用户确认切站动作 | 从 `https://news.aiplanet.live/` 真实入口验证页面、详情、RSS/API、更新链路及 Gateway 归属；记录实际切换时间与结果，确认后再处理旧服务 |
+
+### 信源迁移实施记录（2026-09-30）
+
+用户本轮要求补齐 RADAR 独有来源、已有 RSS/Atom 不加网页副本、优先 AIHOT 原生处理；SocialData 已由用户指定，Wechat2RSS 整体迁到当前机器。`industry/sources.json` 现有 163 个身份：原 18 个 RSS、新增 22 个 RSS（含 Sierra）、10 个 web_list、4 个 json_list、109 个 X。所有来源全文展示均关闭。这里只记录信源能力迁移，不将采集入库等同于模型处理和公开发布。
+
+公开源：新增 36 个不同入口在本机同一代理环境经原生 `collectSource` 完成两轮。首轮 268 篇；第二轮从首采上限 8 扩至普通采集窗口，新增 772 篇、修订 1 篇。合并两个 X 样本后，隔离库 `aihot_source_acceptance` 为 38 个有文章的来源、1,056 篇，均有发布时间，重复 identity_key 分组为 0。发布时间存在不代表全部来自首发日期：inclusionAI 延续 RADAR 的模型更新时间语义。Every 保留 RADAR 的四类路径筛选，本轮返回 3 篇，不自行扩张覆盖。修复 Flight 嵌套数组解析和 Claude Platform 标题装饰污染日期两处真实失败。
+
+X：新增 109 个原 RADAR active 账号使用原生 x_search，保留回复/转推过滤，首次每源最多入库 8 条。无水位时单源初始化，有水位后进入既有分片机制。OpenAI、Anthropic 各取得 20 条响应并入库 8 条，两个回执均 received、单 attempt；应用按返回对象记的估算费用合计 USD 0.008，未与供应商账单对账。凭据文件位于主 checkout 的 `.data/credentials/collectors.env`（0600），使用 canonical 名；代码亦接受用户的 `SOCIAL_DATA_API_KEY` 别名，调度判断已同步。没有启动自动付费采集。
+
+微信：初始快照为 22 个订阅、2,107 篇；随后用本仓 `snapshot.py` 实跑取得 22 个订阅、2,113 篇，SQLite 完整性正常，位于主 checkout `.data/wechat2rss/final-script-check-20260930/`。运行中的旧实例仍会产生更新，这不是最终切换快照。脚本使用只读 SQLite backup 合入 WAL；本机系统 SQLite 对无 sidecar 的 WAL 格式快照以普通只读打开失败，静态快照改用 immutable 校验后成功。Compose 配置离线校验成功；登记脚本在测试库验证了缺 token 拒绝、新建与重复登记保留停用状态/游标。目标容器尚未启动，旧服务未停，健康探针与告警迁移仍归本轮主线程承接，不因部署模板存在而记完成。
+
+待用户裁决的覆盖：AI News、MarkTechPost 当前访问返回 403，Claude YouTube feed 返回 404（另一路直连失败）；暂停 xAI 官方 News 网页在当前访问路径遇到 403/验证页。以上不是全网不可用结论，且用户尚未裁决排除或改入口，故暂不加入启用清单。Mp2RSS 按用户决定不接入。
+
+代码验证：类型检查通过；全量离线后端测试 144 项通过（本机 PostgreSQL、fixture/mock provider），Web 构建及 11 项 Web 测试通过。来源专项覆盖 163 个配置、X 无水位/有水位两种状态及 Flight/普通 JSON/空数组/缺 key/损坏数组/日期标题的本地响应；SocialData 调度另验证 canonical、alias、无 key 三种状态。独立审查没有 CRITICAL/HIGH，发现的别名调度遗漏已修复。既有 `18400` 站点 smoke 成功、模型榜 3 入口跳过，该读数属于既有部署，不是新增来源的公开页面验收。
+
+逐源证据保存在实施 worktree `.data/source-import/`：`public-first-import.json`、`public-acceptance.json`（第二轮）、`public-rows.json`、`x-acceptance.json`、`tests-final.log`、`web-build.log`、`web-tests.log`。私有资产与日志不提交 Git。正式域名与现役 RADAR 的采集/发布安排未修改。
 
 ## 2026-09-29 的起始证据
 
