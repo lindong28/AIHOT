@@ -16,6 +16,7 @@
 | [architecture.md](architecture.md) | 开发者：当前服务、数据流、算法阶段与代码入口 |
 | [development.md](development.md) | 开发者：基于 AIHOT 迭代 AI Radar 的能力迁移地图与待定边界 |
 | [references/ai-radar-comparison.md](references/ai-radar-comparison.md) | 开发者：标注版本的两仓数据源、架构、算法及评测资产对比 |
+| [references/20261001-history-backfill-audit.md](references/20261001-history-backfill-audit.md) | 开发者：原始历史候选、连续性、清洗边界和 AIHOT 回填 token/费用情景 |
 | [assets/](assets/) | 根 README 引用的上游产品截图与展示图片 |
 
 根目录 [README.md](../README.md) 负责项目定位和运行入口；[AGENTS.md](../AGENTS.md) 负责项目级开发约束。这里不另立或复制开发政策。
