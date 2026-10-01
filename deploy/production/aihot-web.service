@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Radar public web
+After=network.target aihot-api.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/aihot/current/apps/web
+ExecStart=/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/web.env server.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

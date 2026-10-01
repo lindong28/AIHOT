@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Radar collection and processing
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/aihot/current
+ExecStart=/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/app.env apps/worker/src/main.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

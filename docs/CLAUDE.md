@@ -7,9 +7,12 @@
 | [README.md](README.md) | 所有读者：按任务选择阅读入口 |
 | [CLAUDE.md](CLAUDE.md) | Agent：本文档索引 |
 | [deploy.md](deploy.md) | 站点运营者：环境配置、本机和 Docker 部署 |
+| [migration.md](migration.md) | 维护者：当前迁移状态、阶段记录与剩余缺口 |
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
-| [operations/services.md](operations/services.md) | 维护者：本机服务与可选 Wechat2RSS 的运行状态 |
+| [operations/services.md](operations/services.md) | 维护者：生产、本机、旧站与 Wechat2RSS 服务入口 |
+| [operations/production.md](operations/production.md) | 部署维护者：腾讯云发布、服务与隧道起停、公网切换及回滚 |
+| [references/20261001-production-cutover.md](references/20261001-production-cutover.md) | 开发者：生产拓扑决定、停止旧链路与准备阶段记录 |
 | [operations/wechat2rss.md](operations/wechat2rss.md) | 维护者：Wechat2RSS 数据迁移、部署与原生 RSS 接入 |
 | [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
 | [references/20261001-backfill-design.md](references/20261001-backfill-design.md) | 开发者：个人 Gateway 回填隔离与边界决定 |
