@@ -48,6 +48,8 @@ export interface MaterialInput {
   backfill?: string | null;
   /** Keep an existing id when importing history. */
   id?: string;
+  /** One-time imports may record another discovery but must not overwrite existing material. */
+  insertOnly?: boolean;
 }
 
 export interface MaterialResult {
@@ -155,11 +157,13 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
     return { articleId: newId, created: true, revised: false, backfill: t.backfill };
   }
 
-  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null }[]>`
-    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
+  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null; managed_backfill_id: string | null }[]>`
+    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt, managed_backfill_id FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
   await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
            VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
   const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill };
+  // A backfill's reviewed raw input is frozen, including after publication.
+  if (m.insertOnly || existing!.managed_backfill_id) return unchanged;
   // Another source listing the same material (an aggregator, a translated mirror, a hot signal) is a
   // discovery only: its title and summary are its own rendering, and taking them made the article flip
   // between the two sources' versions on every fetch. Only the article's own source revises it.

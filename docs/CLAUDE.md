@@ -11,6 +11,8 @@
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
 | [operations/services.md](operations/services.md) | 维护者：本机服务与可选 Wechat2RSS 的运行状态 |
 | [operations/wechat2rss.md](operations/wechat2rss.md) | 维护者：Wechat2RSS 数据迁移、部署与原生 RSS 接入 |
+| [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
+| [references/20261001-backfill-design.md](references/20261001-backfill-design.md) | 开发者：个人 Gateway 回填隔离与边界决定 |
 | [selection.md](selection.md) | 站点运营者：精选逻辑、样本准备与校准 |
 | [leaderboard.md](leaderboard.md) | 站点运营者：模型排行榜与 Codex 重置监控 |
 | [architecture.md](architecture.md) | 开发者：当前服务、数据流、算法阶段与代码入口 |

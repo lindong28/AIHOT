@@ -13,6 +13,7 @@ import { CATEGORY_KEYS } from "@aihot/contracts/taxonomy";
 import { CATEGORIES } from "@aihot/industry/taxonomy";
 import { SELECTION } from "@aihot/industry/selection";
 import { sql } from "../db.ts";
+import { backfillContext } from "../backfill/context.ts";
 import { chatJson, MODELS, type ContentPart } from "../providers/llm.ts";
 import { completeReceipt, ProviderRejectedError } from "../providers/receipts.ts";
 import { collapseWhitespace } from "../lib/text.ts";
@@ -417,6 +418,8 @@ export interface AnalyzeResult {
  * is kept for traceability but never overwrites a newer input (stale = true).
  */
 export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Promise<AnalyzeResult | null> {
+  const [managed] = await sql`SELECT managed_backfill_id FROM articles WHERE id=${articleId}`;
+  if (managed?.managed_backfill_id && backfillContext.getStore()?.runId !== managed.managed_backfill_id) throw new Error("Managed history requires its backfill executor");
   const input = await loadAnalyzeInput(articleId);
   if (!input) return null;
   // Its page first; extraction queues the analysis again (normally the queue already routed it there).

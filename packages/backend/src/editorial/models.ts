@@ -4,6 +4,7 @@
 // affects work done from then on (history is not re-judged).
 import { sql } from "../db.ts";
 import { MODELS } from "../providers/llm.ts";
+import { backfillContext, BACKFILL_PRESETS } from "../backfill/context.ts";
 
 export interface Capability {
   label: string;
@@ -47,6 +48,10 @@ export function invalidateModelCache() {
 
 /** The model a capability uses now: admin switch, else environment, else the code default. */
 export async function modelFor(capability: CapabilityKey): Promise<string> {
+  if (backfillContext.getStore()) {
+    if (!(capability in BACKFILL_PRESETS)) throw new Error(`Capability ${capability} is outside backfill`);
+    return BACKFILL_PRESETS[capability as keyof typeof BACKFILL_PRESETS];
+  }
   const c: Capability = CAPABILITIES[capability];
   const chosen = (await overrides())[capability] ?? process.env[c.env] ?? c.default;
   return MODELS[chosen] ? chosen : c.default;

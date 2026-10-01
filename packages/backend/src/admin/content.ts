@@ -157,8 +157,9 @@ export async function overrideFields(id: string, input: { fields: unknown; clear
  */
 export async function rerun(id: string, step: "extract" | "analyze" | "group", requestId: string, actor: string) {
   if (!/^[\w-]{8,80}$/.test(requestId)) throw new Error("a stable request id is required");
-  const [a] = await sql`SELECT id FROM articles WHERE id = ${id}`;
+  const [a] = await sql`SELECT id, managed_backfill_id FROM articles WHERE id = ${id}`;
   if (!a) return null;
+  if (a.managed_backfill_id) throw new Error("这篇历史文章由回填批次管理，请在历史回填页面操作");
   let jobId: string | null;
   if (step === "group") {
     // An explicit regroup replaces an earlier manual "keep standalone" decision and the automatic membership.

@@ -7,6 +7,7 @@ import { sha256 } from "../lib/ids.ts";
 import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
 import { prepareGatewayRequest } from "./gateway.ts";
 import { sql } from "../db.ts";
+import { backfillBinding, backfillContext } from "../backfill/context.ts";
 
 export interface ModelSpec {
   key: string;
@@ -153,10 +154,14 @@ function isConnectFailure(error: unknown): boolean {
 }
 
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
-  const spec = MODELS[opts.model];
-  if (!spec) throw new Error(`Unknown model ${opts.model}`);
+  const preset = MODELS[opts.model];
+  if (!preset) throw new Error(`Unknown model ${opts.model}`);
+  const binding = backfillBinding(opts.model);
+  const spec = binding ? { ...preset, model: binding.model, service: "backfill" } : preset;
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const gateway = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000);
+  await backfillContext.getStore()?.beforeCall(opts.purpose, spec.model);
+  const gateway = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000, binding ?? undefined);
+  if (binding && !gateway) throw new Error("Backfill requires the personal Gateway; direct providers are forbidden");
   const baseUrl = gateway ? null : credential("models", spec.baseUrlEnv);
   const apiKey = gateway ? null : credential("models", spec.apiKeyEnv);
   if ((!gateway && (!baseUrl || !apiKey)) || !spec.model) throw new Error(`Model ${opts.model} is not configured (${spec.baseUrlEnv}, ${spec.apiKeyEnv}${spec.key === "default" ? ", LLM_MODEL" : ""})`);

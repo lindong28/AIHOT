@@ -8,6 +8,7 @@
 | 配置站点品牌、行业和分类 | [行业定制](customize.md) |
 | 添加信源、试抓、调整参与方式 | [信源](sources.md) |
 | 运行服务、迁移 Wechat2RSS | [服务运维](operations/services.md) |
+| 准备历史原文、执行回填并查看进度 | [历史回填](operations/backfill.md) |
 | 理解精选门槛、准备样本并校准 | [精选与校准](selection.md) |
 | 配置模型排行榜与 Codex 重置监控 | [模型榜与监控](leaderboard.md) |
 | 理解当前模块、处理阶段与数据流 | [架构](architecture.md) |

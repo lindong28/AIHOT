@@ -14,6 +14,7 @@ import { releaseReceipt, requeueFailedArticles, resolveDelivery, runsOverview } 
 import { listBudgets, listTargets, replaceContactQr, setTargetEnabled, updateBudget } from "@aihot/backend/admin/settings";
 import { createSource, fetchNow, listSources, previewSource, sourceDetail, updateSource } from "@aihot/backend/admin/sources";
 import { sql } from "@aihot/backend/db";
+import { backfillOverview, controlBackfill } from "@aihot/backend/backfill/runs";
 import { loadContact } from "@aihot/backend/site/contact";
 import { sendProblem } from "../http/respond.ts";
 import { adminHandler } from "./admin-auth.ts";
@@ -91,6 +92,9 @@ export function registerAdmin(app: FastifyInstance) {
 
   // Runs (F20)
   app.get("/api/admin/runs", adminHandler(async () => runsOverview()));
+  app.get("/api/admin/backfill", adminHandler(async () => backfillOverview()));
+  app.post("/api/admin/backfill/:id/:action", adminHandler(async (req, _reply, admin) =>
+    controlBackfill(param(req, "id"), param(req, "action") as "pause" | "resume" | "retry", actorOf(admin))));
   app.post("/api/admin/receipts/:id/release", adminHandler(async (req, reply, admin) => orNotFound(req, reply, await releaseReceipt(Number(param(req, "id")), body(req) as never, actorOf(admin)))));
   app.post("/api/admin/deliveries/:id/resolve", adminHandler(async (req, reply, admin) => orNotFound(req, reply, await resolveDelivery(Number(param(req, "id")), body(req) as never, actorOf(admin)))));
   app.post("/api/admin/processing/requeue", adminHandler(async (req, _reply, admin) => requeueFailedArticles(body(req) as never, actorOf(admin))));

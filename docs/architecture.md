@@ -54,6 +54,8 @@ flowchart LR
 
 ## 核心数据与状态
 
+历史批次入口为 `scripts/backfill.ts`，状态保存在 `backfill_runs` / `backfill_items`。一次性 RADAR 转换器输出原生材料和绑定内容 hash 的完整性证据；受管历史经独立执行上下文调用现有五角色编辑链和 publication，以个人 Gateway 的固定 self_hosted 路由处理，预算服务为 `backfill`。普通队列、原文提取和全文翻译跳过受管条目，实时模型配置不受影响。管理员通过 `/admin/backfill` 查看逐日进度并暂停或准备续跑；有界执行命令负责实际运行。操作见[历史回填](operations/backfill.md)，决定与未验证边界见[实现决定](references/20261001-backfill-design.md)。
+
 三个核心概念分别回答不同问题：`article` 是一份来源材料，`fact` 是一次现实发生，`story` 是这次发生及其直接后续。多家媒体报道同一次发布可以共享一个 `fact`；同一事件的后续进展可以形成新的 `fact` 并挂在同一个 `story` 下。模型抽出的事实框架是归组输入，不等于已经创建的 `facts` 记录。
 
 | 持久对象 | 写入与变换 | 主要消费者 |

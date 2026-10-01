@@ -5,7 +5,7 @@ export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
 }
 
-export function prepareGatewayRequest(model: string, timeoutMs: number) {
+export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: { route: string; actualModel: string }) {
   if (!gatewayConfigured()) return null;
   const url = new URL(process.env.LLM_GATEWAY_URL!);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
@@ -21,7 +21,7 @@ export function prepareGatewayRequest(model: string, timeoutMs: number) {
     throw new Error("Gateway upstream timeout must be between 1 and 180000 ms");
   }
   const requestId = randomUUID();
-  const identity = { baseUrl, project, mode, model, timeoutMs };
+  const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { route: pin.route, actualModel: pin.actualModel } : {}) };
   return {
     requestId,
     identity,
@@ -31,7 +31,7 @@ export function prepareGatewayRequest(model: string, timeoutMs: number) {
       // guarantee: expiry remains unknown. Gateway owns transport retry and fallback.
       const res = await fetch(`${baseUrl}/v1/${endpoint}`, {
         method: "POST",
-        headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode },
+        headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode, ...(pin ? { "X-LLM-Route": pin.route } : {}) },
         body: JSON.stringify({ ...body, model, timeout: timeoutMs / 1000 }),
         signal: AbortSignal.timeout(2 * timeoutMs + 200_000),
       });
@@ -50,6 +50,9 @@ export function prepareGatewayRequest(model: string, timeoutMs: number) {
       if (compressed && companion?.projection_version === "1") companion.projection_version = 1;
       if (companion?.projection_version !== 1 || companion.logical_request_id !== requestId) {
         throw new Error(`Gateway identity mismatch; reconcile request ${requestId} before retrying`);
+      }
+      if (pin && (companion.selected_route_id !== pin.route || companion.actual_model !== pin.actualModel)) {
+        throw new Error(`Gateway backfill route mismatch; reconcile request ${requestId} before retrying`);
       }
       return { ...json, llm_gateway: companion };
     },
