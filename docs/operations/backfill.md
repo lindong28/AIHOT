@@ -2,7 +2,7 @@
 
 供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。实时新闻继续使用原模型配置；历史批次通过同一个个人 llm-gateway 限制候选路由，GLM 允许自部署与已授权的两个订阅来源，Qwen/DeepSeek 仅允许自部署。
 
-2026-10-02 准备状态：以下多候选绑定、有界 drain、生产 timer 与 Mac 监督代码已准备，正在统一审查；尚未部署，也未完成真实模型与通知投递验收。首批原文已批准，尚未线上导入。下列命令是部署与验收入口，不表示已经执行。
+2026-10-02 上线快照：AIHOT `bbbb789` 已发布至生产 `backfill-bbbb789`，个人 Gateway `2d5d4aab549ae355339509469af60703d85f11d9` 已重装运行。启动批已导入，首篇完成处理并公开；生产 timer 与 Mac 监督已启动。以下读数不表示整批或全部历史已完成，具体覆盖与待办见下文。
 
 ## 准备原文，不调用模型
 
@@ -33,7 +33,19 @@ node scripts/backfill.ts status
 
 原生清单位于不入 Git 的 `.data/backfill-launch-20261002/first-batch-approved.jsonl`，由仓库内 `scripts/prepare-radar-backfill.ts` 生成，包含上述 44 条 `complete` 与 10 条 `unverified`。X 原文以核心文本自足为批准条件；仅有视频/GIF 静帧不能证明媒体内容完整，引用缺正文时不能仅凭主帖长度批准。旧 `/i/web/status/` URL 在一次性转换中改为原生 handle/status URL，不改变长期 URL 规范化逻辑。
 
-原始归档有 169,805 行，此前 canonical 候选为 169,100 条；二者都不是批准处理进度的分母。后续审核由 AIHOT 迁移维护者继续，批准新的完整连续原文后再建下一批；不把未审核余量计成失败或已完成。
+两个原始包分别有 raw 169,936 行、differences 3,265 行；按旧 ID 诊断合并后为 170,191 条，排除 386 条日期为 2026-10-01 及以后的材料，剩 169,805 条。该数量不是原始行数，也未按 native identity 去重；此前 canonical 169,100 候选来自不同口径，不能混用。上述数量都不是批准处理进度的分母。后续审核由 AIHOT 迁移维护者继续，批准新的完整连续原文后再建下一批；不把未审核余量计成失败或已完成。
+
+生产批次为 `f8ff402f-fb8c-47a2-8170-d2fb9268e641`，manifest hash 为 `7af3dcb5376c0eb80cea8a1c0b4865275546fbcbcc1f8ecabec75350c5ae188e`。已导入 44 条合格原文，10 条待核实材料作为排除项保留；44 是本批分母，不是完整历史分母。
+
+首篇 `zkirb51bgptt3jyc9amb1tqni` 已为 `published`，主线程经浏览器读取[公开详情](https://news.aiplanet.live/items/zkirb51bgptt3jyc9amb1tqni)，看到标题、正文、AI 导读与新评分。该篇 5 次应用回执均 completed，且按 exact request ID 对应 Gateway success：Qwen 预筛与结构使用 `self_hosted/qwen3.8-flash-next`，GLM 两次评分使用 `personal_zai`，DeepSeek 摘要使用 `self_hosted/deepseek-v4-flash-0731`。这是 1 篇、4 个角色、5 次调用的读数；该篇未触发 `understand`，不代表五角色全实跑。
+
+随后 `wn3lc8ow41i5vcpinhqxnmljd` 已触发理解并公开，真实浏览器与 Gateway success 账本均已核对；completed request `0f8c5646-cd39-45c0-a523-acb26e5da977` 对应 `openai/glm-5.3-flash`、`personal_zai`、`zhipu`。五角色因此在批内覆盖，并非同篇全部触发。
+
+2026-10-02 08:06 UTC 首批进入 `needs_attention`：43/44（97.7%）、2/3 天，28 published、13 filtered、2 existing、1 failed，另 10 excluded。真实后台浏览器取得相同终态。逐日 published/filtered/existing/failed 分别为 08-17：8/1/0/0，08-18：10/4/1/1，08-19：10/8/1/0。这是本启动批完成率，不是全历史完成率。
+
+失败条目 `qb20oni3wgw91r0ih25hg37dh` 在发布阶段报 `Analysis not complete: unknown`；其 5 个模型回执均 completed，理解回执为 `3dd29fa5-6be3-4990-9e14-a5c98b73d6c7`。原文来自 `radar-x-sama`，模型生成 OpenAI 主体的标题和摘要，但原文未明写该实体，既有 identity guard 标出 `unsupportedTitleEntityIds/unsupportedSummaryEntityIds=[openai]` 并 fallback，未取得可用中文文案。这是内容校验未通过，不是供应商超时或未知扣费。由 AIHOT 迁移维护者确认内容主体并处理受控重新写作；保留已完成回执，不透明重发，不自动重试或放宽既有 guard/发布标准。
+
+主线程完成本批全量回执与 Gateway 账本关联：157 条应用回执全部 completed（预筛 42、结构 29、评分 58、理解 5、摘要 23），对应 157 个 logical success、173 次 attempt。self-hosted 为 94 次 success；Zai 为 63 次 success 与 12 次 HTTP 429；Ark 实际接到 4 次 fallback，均 HTTP 429、无 success。173 次 attempt 全在调用方 allowlist 内，无其他按量 API；最终 GLM 都由 Zai 完成。429 是限速还是额度所致尚未核实，不能据此声称余额耗尽或配置不支持，也未证明 Ark 是成功后备。原始关联证据位于主 checkout `.data/backfill-launch-20261002/receipt-ledger-acceptance.json`，不入 Git。该核账证明本批请求及路由关联，不是供应商结算账单。
 
 ## 模型接入与首次真实验收
 
@@ -60,7 +72,9 @@ MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_I
 
 将三个大写参数替换为真实批次 ID、容量并发和本次最多处理条数。`resume` 只改变状态，需运行执行命令；命令到达条数上限、队列耗尽或暂停后退出，进度留在数据库。单条失败保留错误并继续本次限额；本次结束后仍有失败则进入 `needs_attention`。
 
-本轮部署主线程实测：Qwen 在 DGX0026 使用 4 GPU，DeepSeek 在 DGX0022 使用 8 GPU，二者 vLLM `--max-num-seqs=16`、`--max-model-len=32768`，并与线上共享。回填采用容量并发 8，给实时处理留余量。首次端到端验收前逐条执行（并发 1、单次 1 条）；第一次观察到同一干净样本完成五角色成功，核对 Gateway 账本身份与公开结果后立即放开并发 8，不等整批结束。预筛直接过滤不构成五角色验收。以上是部署容量与释放条件，不是已测吞吐承诺。
+本轮部署主线程实测：Qwen 在 DGX0026 使用 4 GPU，DeepSeek 在 DGX0022 使用 8 GPU，二者 vLLM `--max-num-seqs=16`、`--max-model-len=32768`，并与线上共享。首篇逐条验收后，生产回填已采用容量并发 8，给实时处理留余量。此前“同篇五角色”表述修正为同篇完整原生链路、已结算回执与公开结果：原生理解与摘要是互斥写作分支，本轮未改模型、门槛或发布标准。实际角色覆盖见上文，不把首篇 5 次调用写成五角色。以上是部署容量与实际启动状态，不是已测吞吐承诺。
+
+生产 HTTP preflight 已通过，未部署的 GLM 自托管候选正确显示不可用；Zai → Ark fallback 已实际触发，4 次 Ark attempt 均为 HTTP 429，成功后备能力尚未证实，最终 GLM 调用由 Zai 完成。
 
 每次模型调用成对携带 `X-LLM-Allowed-Routes`（JSON 数组）与 `X-LLM-Registry-Revision`，Gateway 在同一快照内核 revision 后，只在批准集合里选路和 fallback。AIHOT 同时核对响应中的 provider、route、actual model 与 credential profile；身份缺失或不符保留未知回执，核账前不重发。预算仍经过原生回执，独立服务名 `backfill`；默认限额见后台预算页，未知费用不会记成零。历史回填不调用 embedding、不生成历史日报或当前热点，也不触发额外的全文/引用翻译。
 
@@ -70,10 +84,10 @@ MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_I
 
 | 必须显式配置的环境变量 | 含义 |
 |---|---|
-| `BACKFILL_CONCURRENCY` | 并发 1–32；本部署按上述首次验收条件从 1 释放到 8 |
-| `BACKFILL_MAX_ITEMS` | 整轮最多领取条数，正整数；失败领取也消耗该上限 |
-| `BACKFILL_MAX_RUNS` | 整轮最多访问批次数，正整数 |
-| `BACKFILL_DRAIN_SECONDS` | 1–1500 秒，到时停止后续调用并等待在途结算 |
+| `BACKFILL_CONCURRENCY` | 并发 1–32；当前生产为 8 |
+| `BACKFILL_MAX_ITEMS` | 整轮最多领取条数，正整数；当前生产为 64，失败领取也消耗该上限 |
+| `BACKFILL_MAX_RUNS` | 整轮最多访问批次数，正整数；当前生产为 4 |
+| `BACKFILL_DRAIN_SECONDS` | 1–1500 秒；当前生产为 1500，到时停止后续调用并等待在途结算 |
 
 ```bash
 node scripts/backfill.ts drain
@@ -108,6 +122,10 @@ python3 deploy/production/backfill-monitor.py uninstall
 
 默认每 300 秒检查一次（`--interval` 最低 60 秒），install 会加载并立即探测。launchd label 为 `live.aiplanet.aihot-backfill-probe`，日志在 `~/Library/Logs/aihot/backfill-probe.log` 与 `backfill-probe.err.log`，通知生命周期状态在 `~/.local/state/aihot/backfill-probe.json`。停止或卸载 Mac 监督不停止生产回填。
 
+本轮已从主 checkout 路径安装并加载该 launchd 作业，每 300 秒监督生产。2026-10-02 07:59:22 UTC 的真实 scheduler inactive 告警及 08:01:10 UTC 的恢复通知均在 im-notify 账本记录 `push=sent`；恢复 probe exit 0。生产 timer 已 install、enable、restart。通知投递读数不证明整批完成，也不覆盖公开站点可用性。
+
+本批 `needs_attention` 告警于 08:04:24 UTC 记录 `push=sent`，08:06:07 UTC 重复探测为 `push=skipped(unchanged)`，去重已取得实测。08:07 UTC timer 为 active/waiting，oneshot service 为 inactive/dead、`Result=success`、`ExecMainStatus=0`，表示本轮正常退出；该批不再自动重试，后续新 `ready` 批仍可由 timer 执行。
+
 探针读取生产批次和 systemd 状态，对 timer 未运行、runner 异常、`needs_attention`、`waiting_models` 发低紧急度通知，并沿用 im-notify 去重与恢复；探测或投递失败由 run-or-alert 接住。批次消失不算恢复，暂停后的告警退役不算处理完成。探针不覆盖公开站点可用性，也不能仅凭 timer 存活证明内容持续产出。正式无人值守前须实测通知投递；注册 launchd 不等于已验收。
 
 ## 查看与续跑
@@ -116,4 +134,4 @@ python3 deploy/production/backfill-monitor.py uninstall
 
 暂停按钮或 `node scripts/backfill.ts pause BATCH_ID` 阻止后续模型调用；在途请求仍会结算，已发布内容不撤回。恢复沿用已结算回执。`waiting_models` 表示没有通过就绪检查，修复部署或绑定后恢复；`needs_attention` 查看条目错误，修复后使用“重试失败项”或 `retry BATCH_ID`。未知回执先在现有运维入口核对 Gateway 账本，再允许恢复；单纯点击重试不会重新发送未知请求。
 
-范围与验收记录见[迁移清单](../migration.md)和[启动决定](../references/20261002-backfill-launch.md)。当前尚欠生产部署、首批导入、五角色真实验收、公开结果及持续调度与投递验收，归 AIHOT 实施主线程；全历史余量的完整性审核与后续批次归 AIHOT 迁移维护者，不计入本启动批完成量。
+范围与验收记录见[迁移清单](../migration.md)和[启动决定](../references/20261002-backfill-launch.md)。本批 `needs_attention` 条目的主体确认与受控重新写作、全历史余量的完整性审核及后续批次归 AIHOT 迁移维护者；Ark HTTP 429 的限速/额度归因及成功后备能力尚未核实，归 Gateway 维护者。全历史余量不计入本启动批完成量。

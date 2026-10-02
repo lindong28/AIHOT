@@ -1,6 +1,6 @@
 # 历史回填启动决定（2026-10-02）
 
-读者：开发者与迁移维护者。状态：决定已通过一轮 L1 独立审查；代码已准备、统一审查中，部署与真实执行验收尚待完成，本文不是上线完成证明。
+读者：开发者与迁移维护者。状态：决定经一轮 L1 独立审查，AIHOT `bbbb789` 已发布为生产 `backfill-bbbb789`；个人 Gateway `2d5d4aab549ae355339509469af60703d85f11d9` 已重装运行。启动批已导入并处理，生产 timer 与 Mac 监督已启用；本记录不代表全部历史完成。
 
 本文替代[2026-10-01 决定](20261001-backfill-design.md)中“所有回填角色仅限 self-hosted、禁止订阅 fallback”及“本轮仅提供手动有界执行”的边界。原文完整性、固定 hash、连续 UTC 日期、排除旧衍生数据、独立预算与未知回执不得透明重试的要求保持有效。运维入口见[历史原文回填](../operations/backfill.md)。
 
@@ -32,18 +32,30 @@
 
 决定经独立 reviewer `/root/backfill_decision_review` 一轮 L1 审查，七项成立后放行。审查放行只覆盖上述决定，实施时必须兑现同快照核验、允许集合约束和锁取得后的状态恢复；代码和真实链路仍需各自验证。
 
-本节运行快照来自实施主线程的现场读数：2026-10-02 06:46 UTC，回填 run 为空、receipt 为 0；生产 Qwen/DeepSeek GPU 可用，GLM 自托管探测失败。该读数不证明订阅 fallback、完整流水线或持续执行已经验收。
+以下上线读数由实施主线程在生产、Gateway 账本和浏览器取得。启动前 2026-10-02 06:46 UTC 的 run 空、receipt 0 是历史起点，已被下述首批运行状态更新。
 
-实施基线 `9e0483f` 的回填 gateway 是 CLI discovery、严格 self-hosted 与有界单次 run。本轮已准备多候选绑定、HTTP 预检、请求路由与 revision 绑定、响应身份核验及 drain/timer 接续，代码统一审查与部署验收尚未完成。HTTP 预检使用 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project`，核对 version 2 的逐模型安全投影；CLI 仅在显式配置时保留。
+实施基线 `9e0483f` 的回填 gateway 是 CLI discovery、严格 self-hosted 与有界单次 run。本轮上线多候选绑定、HTTP 预检、请求路由与 revision 绑定、响应身份核验及 drain/timer 接续。生产 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 预检已通过，未部署的 GLM 自托管候选正确为不可用；Zai → Ark fallback 在真实运行中发生 4 次，均 HTTP 429，未证明成功后备能力。
 
-原始材料启动批现已由迁移主线程逐篇审核：54 候选中 44 条 `complete`、10 条 `unverified`，批准 2026-08-17/18/19（UTC）每日 9/16/19 条。清单位于 `.data/backfill-launch-20261002/first-batch-approved.jsonl`，尚未线上导入，不是处理完成量。169,805 原始行与此前 169,100 canonical 候选均不能作为批准进度分母；全历史尚未全审，后续审核归 AIHOT 迁移维护者，沿[运维待办](../operations/backfill.md#当前批准的启动批)接续。
+原始材料启动批已由迁移主线程逐篇审核并导入：54 候选中 44 条 `complete`、10 条 `unverified` 被排除，批准 2026-08-17/18/19（UTC）每日 9/16/19 条。清单为 `.data/backfill-launch-20261002/first-batch-approved.jsonl`，manifest hash `7af3dcb5376c0eb80cea8a1c0b4865275546fbcbcc1f8ecabec75350c5ae188e`，批次 ID `f8ff402f-fb8c-47a2-8170-d2fb9268e641`。
 
-部署主线程实测 Qwen DGX0026 4 GPU、DeepSeek DGX0022 8 GPU，均为 `max-num-seqs=16`、`max-model-len=32768`，与线上共享。回填容量取并发 8 留出实时余量；首次五角色端到端验收前逐条运行，观察到同一干净样本五角色成功后立即释放到 8，不等待整批。预筛过滤不算这次释放条件，真实吞吐仍待验证。
+原始 raw/differences 包分别为 169,936/3,265 行，按旧 ID 诊断合并为 170,191 条，排除 386 条 2026-10-01 及以后材料后为 169,805 条；未按 native identity 去重，不是原始行数。此前 canonical 169,100 候选为不同口径，不能混用，也不能作为批准进度分母。全历史尚未全审，后续审核归 AIHOT 迁移维护者，沿[运维待办](../operations/backfill.md#当前批准的启动批)接续。
+
+部署主线程实测 Qwen DGX0026 4 GPU、DeepSeek DGX0022 8 GPU，均为 `max-num-seqs=16`、`max-model-len=32768`，与线上共享。回填现以并发 8 运行，整轮最多 64 条、4 批次、1500 秒。此前“同篇五角色”的释放表述有误：既有原生处理的理解与摘要是互斥写作分支，正确条件是同篇完整原生链路、已结算回执与公开结果；本轮未改变模型、门槛或用户范围。
+
+首篇 `zkirb51bgptt3jyc9amb1tqni` 完整处理并 published，浏览器读到公开标题、正文、AI 导读与新评分；5 次 completed 回执按 exact request ID 对应 Gateway success（Qwen 预筛/结构、自托管；GLM 双评分、personal_zai；DeepSeek 摘要、自托管）。该篇未触发理解。其后 `wn3lc8ow41i5vcpinhqxnmljd` 触发理解并 published，completed request `0f8c5646-cd39-45c0-a523-acb26e5da977` 的 actual model 为 `openai/glm-5.3-flash`、profile `personal_zai`、provider `zhipu`。五角色已在批内覆盖，不能写成同篇覆盖。
+
+2026-10-02 08:06 UTC，后台浏览器与批次状态均为 `needs_attention`：43/44（97.7%）、2/3 天，28 published、13 filtered、2 existing、1 failed，另 10 excluded。逐日 published/filtered/existing/failed 为 08-17：8/1/0/0，08-18：10/4/1/1，08-19：10/8/1/0。该分母只覆盖本启动批，不能外推全历史。
+
+失败条目 `qb20oni3wgw91r0ih25hg37dh` 的 5 个模型回执都 completed，发布因 `Analysis not complete: unknown` 停止：既有 identity guard 拒绝原文未明写的 OpenAI 主体标题/摘要，fallback 后无可用中文文案。不是未知扣费或供应商超时，不自动重试，不放宽既有 guard。主体确认与受控重新写作归 AIHOT 迁移维护者，保留已结算回执。
+
+本批 157 条应用回执全部 completed（预筛 42、结构 29、评分 58、理解 5、摘要 23），全部关联到 Gateway logical success，共 173 次 attempt：self-hosted 94 success；Zai 63 success、12 HTTP 429；Ark 4 HTTP 429、无 success。所有 attempt 均在调用方 allowlist 内，无其他按量 API，最终 GLM 均由 Zai 完成。不能由 429 推断余额耗尽或配置不支持，限速/额度归因仍未核实。原始关联保留于主 checkout `.data/backfill-launch-20261002/receipt-ledger-acceptance.json`，不入 Git；该读数不是供应商结算账单。
+
+生产 timer 已 install、enable、restart；Mac `live.aiplanet.aihot-backfill-probe` 从主 checkout 每 300 秒监督。真实 scheduler inactive 告警于 07:59:22 UTC、恢复通知于 08:01:10 UTC 均有 im-notify `push=sent`，恢复 probe exit 0。通知只覆盖回填监督，不外推公开站点可用性。
+
+批次 needs_attention 告警于 08:04:24 UTC `push=sent`，08:06:07 UTC 重复探测 `push=skipped(unchanged)`，去重生效。08:07 UTC timer active/waiting，service inactive/dead、Result success、ExecMainStatus 0：有界执行器正常结束，不是崩溃；该批等待内容处置，不自动重试，新 ready 批仍可执行。
 
 | 未完成项 | 归属与完成证据 |
 |---|---|
-| Gateway 限定与 HTTP discovery | Gateway 实施任务：实现和测试 revision 不符、集合越界、合法 fallback，并核验生产 HTTP 投影。 |
-| AIHOT 多候选与 drain | AIHOT 实施任务：核验候选身份、实际响应身份、锁忙跳过与恢复，并保留未知回执阻断。 |
-| 首批导入与后续原文 | AIHOT 迁移任务：启动批 44 条已批准，待生产导入冻结分母；其余历史继续审核，不沿用全量候选数。 |
-| 真实模型与公开结果 | AIHOT 迁移任务：取得五角色真实响应、Gateway 账本关联、最终公开结果与批次进度。 |
-| 持续运行与监督投递 | AIHOT 运维任务：验收有界 drain、timer 接续及 Mac 通知；未验收前不宣称无人值守就绪。 |
+| 单条内容处置 | AIHOT 迁移维护者：确认失败条目主体并受控重新写作，不重发已完成回执、不放宽 guard；当前批次 needs_attention 不自动接续。 |
+| 全历史后续原文 | AIHOT 迁移维护者：其余历史继续逐批审核，不沿用全量候选数作为合格分母。 |
+| Ark 后备能力 | Gateway 维护者：4 次真实 fallback 均 429，限速/额度归因与成功后备能力未核实；最终 GLM 由 personal_zai 完成。 |
