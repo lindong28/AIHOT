@@ -70,7 +70,7 @@ node scripts/backfill.ts status
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 
-预检核对 projection version 2、project 的 personal billing scope、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。每个角色至少有一个候选可用即可，不要求未部署的 GLM 自托管候选 ready。GLM 候选按 self-hosted → `personal_zai`（`zhipu`）→ `personal_ark`（`volcengine-ark`），订阅候选还必须为 `funding_source=personal_subscription`；Qwen 不开放商业 API。DeepSeek 摘要必须是 V4.1 Flash 的唯一腾讯候选，资金归属保持真实的 `company_paid`；不允许伪装为 personal，也不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
+预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯摘要另外要求包含 company。主 Gateway 的 `aihot` 应登记 `billing_scope=["personal","company"]`，订阅逐项目授权和实际 credential 资金归属保持不变。每个角色至少有一个候选可用即可，不要求未部署的 GLM 自托管候选 ready。GLM 候选按 self-hosted → `personal_zai`（`zhipu`）→ `personal_ark`（`volcengine-ark`），订阅候选还必须为 `funding_source=personal_subscription`；Qwen 不开放商业 API。DeepSeek 摘要必须是 V4.1 Flash 的唯一腾讯候选，资金归属保持真实的 `company_paid`；不允许伪装为 personal，也不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
 
 ```bash
 node scripts/backfill.ts configure BATCH_ID deploy/production/backfill-models.json

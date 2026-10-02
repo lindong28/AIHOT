@@ -28,7 +28,7 @@ const server = createServer(async (req, res) => {
   if (req.url?.startsWith("/v1/discovery?")) {
     const model = new URL(req.url, "http://localhost").searchParams.get("model");
     res.end(JSON.stringify({ projection_version: 2, view_scope: "logical_model", requested_logical_model: model,
-      status: "ready", project: { id: "aihot-runner-test", billing_scope: "personal" }, project_allowed_logical_model_ids: [model],
+      status: "ready", project: { id: "aihot-runner-test", billing_scope: ["personal", "company"] }, project_allowed_logical_model_ids: [model],
       loaded_registry_revision: "runner-fixture", file_registry_revision: "runner-fixture",
       routes: Object.values(models).filter(b => b.model === model).flatMap(b => bindingRoutes(b).map(r => ({ id: r.route, actual_model: r.actualModel, provider_id: r.provider, credential_profile_id: r.credentialProfile, funding_source: r.provider === "tencent-vod" ? "company_paid" : "personal_paid", project_allowed: true, policy_allowed: true, effectively_eligible: true }))) })); return;
   }

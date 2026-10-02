@@ -62,7 +62,7 @@ config.modelCallsEnabled=true;
 const directory=await mkdtemp(join(tmpdir(),"aihot-backfill-fixtures-"));
 const cli=join(directory,"gateway-discover");
 const discovery=(model:string)=>({projection_version:2,view_scope:"logical_model",requested_logical_model:model,status:"ready",
-  project:{id:"aihot-test",billing_scope:"personal"},project_allowed_logical_model_ids:[model],registry:{file_revision:"test-revision",loaded_revision:"test-revision"},endpoint:`${baseUrl}/v1/chat/completions`,
+  project:{id:"aihot-test",billing_scope:["personal","company"]},project_allowed_logical_model_ids:[model],registry:{file_revision:"test-revision",loaded_revision:"test-revision"},endpoint:`${baseUrl}/v1/chat/completions`,
   routes:Object.values(models).filter(b=>b.model===model).flatMap(b=>bindingRoutes(b).map(r=>({id:r.route,logical_model:model,actual_model:r.actualModel,provider_id:r.provider,credential_profile_id:r.credentialProfile,funding_source:r.provider==="tencent-vod" ? "company_paid" : "personal_paid",effectively_eligible:true,project_allowed:true,policy_allowed:true}))),
 });
 await writeFile(cli,`#!${process.execPath}\nconst views=${JSON.stringify(Object.fromEntries(["gpu-qwen","gpu-glm","deepseek-v4.1-flash"].map(m=>[m,discovery(m)])))}; console.log(JSON.stringify(views[process.argv.at(-1)]));\n`,{mode:0o700});

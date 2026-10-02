@@ -38,8 +38,11 @@ export function verifyDiscovery(view: any, model: string, models: BackfillBindin
   bindingsSchema.parse(models);
   const revision = view.loaded_registry_revision ?? view.registry?.loaded_revision;
   const fileRevision = view.file_registry_revision ?? view.registry?.file_revision;
+  const scopes = z.union([z.enum(["personal", "company"]), z.array(z.enum(["personal", "company"])).min(1)
+    .refine((v) => new Set(v).size === v.length)]).safeParse(view.project?.billing_scope);
+  const billingScopes = scopes.success ? (Array.isArray(scopes.data) ? scopes.data : [scopes.data]) : [];
   if (view.projection_version !== 2 || view.view_scope !== "logical_model" || view.requested_logical_model !== model ||
-      view.status !== "ready" || view.project?.id !== project || view.project?.billing_scope !== "personal" ||
+      view.status !== "ready" || view.project?.id !== project || !billingScopes.includes("personal") ||
       JSON.stringify(view.project_allowed_logical_model_ids) !== JSON.stringify([model]) ||
       !revision || revision !== fileRevision ||
       (!view.loaded_registry_revision && view.endpoint !== `${baseUrl}/v1/chat/completions`)) throw new Error(`Gateway discovery is not ready for personal backfill model ${model}`);
@@ -49,6 +52,7 @@ export function verifyDiscovery(view: any, model: string, models: BackfillBindin
       const found = view.routes?.find((r: any) => r.id === candidate.route && r.actual_model === candidate.actualModel && r.provider_id === candidate.provider &&
         (!candidate.credentialProfile || r.credential_profile_id === candidate.credentialProfile));
       if (!found || found.project_allowed === false || found.policy_allowed === false ||
+          (candidate.provider === "tencent-vod" && !billingScopes.includes("company")) ||
           (candidate.provider !== BACKFILL_PROVIDER && found.funding_source !==
             (candidate.provider === "tencent-vod" ? "company_paid" : "personal_subscription"))) throw new Error(`Backfill route identity or funding changed: ${candidate.route}`);
       eligible ||= found.effectively_eligible === true;

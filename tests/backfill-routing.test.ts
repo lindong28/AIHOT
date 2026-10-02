@@ -21,7 +21,7 @@ const models: BackfillBindings = { prefilter: qwen, structure: qwen, score: glm,
 const revision = "a".repeat(64);
 function view(model: string) {
   return { projection_version: 2, view_scope: "logical_model", requested_logical_model: model, status: "ready",
-    project: { id: "fixture", billing_scope: "personal" }, project_allowed_logical_model_ids: [model],
+    project: { id: "fixture", billing_scope: ["personal", "company"] }, project_allowed_logical_model_ids: [model],
     loaded_registry_revision: revision, file_registry_revision: revision,
     routes: (model === "qwen" ? [gpu] : model === deepseek.model ? [tencent] : [glmGpu, zai, ark]).map((r) => ({ id: r.route, actual_model: r.actualModel,
       provider_id: r.provider, credential_profile_id: r.credentialProfile, funding_source: r === tencent ? "company_paid" : r === zai || r === ark ? "personal_subscription" : "personal_paid",
@@ -79,6 +79,10 @@ test("production summaries require exactly Tencent VOD V4.1 and reject old, mixe
 
 test("Tencent discovery preserves company funding and requires Gateway project eligibility", () => {
   assert.equal(verifyDiscovery(view(deepseek.model), deepseek.model, models, "fixture", baseUrl), revision);
+  for (const billing_scope of ["personal", "company", [], ["personal"], ["personal", "company", "company"], ["personal", "unknown"]]) {
+    assert.throws(() => verifyDiscovery({ ...view(deepseek.model), project: { id: "fixture", billing_scope } }, deepseek.model, models, "fixture", baseUrl));
+  }
+  assert.equal(verifyDiscovery({ ...view("qwen"), project: { id: "fixture", billing_scope: "personal" } }, "qwen", models, "fixture", baseUrl), revision);
   for (const change of [
     { funding_source: "personal_paid" }, { funding_source: "personal_subscription" },
     { project_allowed: false }, { policy_allowed: false }, { effectively_eligible: false },
