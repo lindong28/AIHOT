@@ -6,7 +6,7 @@
 
 2026-09-30 迁移配置保留原 18 个 RSS，新增 36 个公开来源和 109 个 X 账号。Google Research、Mistral 已有 RSS，不重复加网页；Sierra 使用新发现的官方 RSS。`scripts/seed.ts` 可重跑，只添加尚不存在的来源，不覆盖后台编辑。当前 3 个故障 RSS 与已暂停的 xAI 尚待处置，Mp2RSS 已明确排除；真实验证范围见[迁移记录](migration.md)。
 
-X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL_DATA_API_KEY`，同时配置时前者优先。只把所需凭据放进本机 `.env` 或 `AIHOT_CREDENTIALS_DIR/collectors.env`，不要把整个个人凭据文件复制进仓库。账号首次回灌单独采集，取得水位后自动分组搜索。Wechat2RSS 部署与原生 RSS 登记见[运维说明](operations/wechat2rss.md)。
+X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL_DATA_API_KEY`，同时配置时前者优先。只把所需凭据放进本机 `.env` 或 `AIHOT_CREDENTIALS_DIR/collectors.env`，不要把整个个人凭据文件复制进仓库。账号首次回灌单独采集，取得水位后自动分组搜索。每页保存后更新断点，未读区间持续保留；每轮最多两页新内容和两次旧区间请求，积压续采约一分钟后重新调度，正常轮询频率不变。预算耗尽等到实际滚动窗口释放再调度；游标失效时用已保存的 ID 边界续采，没有可恢复边界的旧区间保留错误供排查。Wechat2RSS 部署与原生 RSS 登记见[运维说明](operations/wechat2rss.md)。
 
 ## 六种信源
 
@@ -15,7 +15,7 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 | `rss` | 有 RSS / Atom 的博客、媒体、Substack、公众号转 RSS 服务 | 无 |
 | `web_list` | 没有 RSS 的网页列表（新闻页、博客列表、更新日志） | 写选择器；抓不到时可以经 Jina Reader 渲染（按次计费） |
 | `json_list` | 返回 JSON 的接口（GitHub Releases 等） | 写字段路径 |
-| `x_search` | X（推特）账号 | SocialData 的 key，按请求计费 |
+| `x_search` | X（推特）账号 | SocialData 的 key，按返回条数计费，空响应可能有最低费用；请求次数另受预算限制 |
 | `mp_account` | 微信公众号 | 极致了（Dajiala）的 key，按请求计费 |
 | `external` | 你自己的脚本推送进来的内容 | `INGEST_TOKEN`，见下文 |
 
@@ -72,7 +72,7 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 
 每个信源有自己的抓取间隔。每天 04:20 会按近 7 天的产出自动调整：产出多的抓得勤，最短 15 分钟；免费信源最长 60 分钟，按次计费的信源最长 120–180 分钟。
 
-抓取失败不推进位置，下次从同一处继续；连续失败的信源在后台标红，每周一会在运营群发一份信源周报（配置了飞书内部群时）。
+X 分页抓取已保存的页面保留进度，失败页下次从断点继续；预算等待不增加信源失败次数。其他连续失败的信源在后台标红，每周一会在运营群发一份信源周报（配置了飞书内部群时）。
 
 ## 规则：旧文不刷屏
 

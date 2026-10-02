@@ -1,10 +1,12 @@
 // Tibo post collection for the reset monitor (SocialData, paid). Posts and their reply/quote
-// context are stored before the cursor moves; recognition runs afterwards in publication order.
+// context are collected separately: raw posts precede the cursor; context and recognition follow.
 // Normal cadence is 5 minutes, as the public v1 description states; after an outage or an
 // announcement it is 3 minutes for a while.
 import { sql } from "../db.ts";
 import { shutdownSignal } from "../jobs/queue.ts";
-import { getTweet, searchTweets, tweetText, type SdTweet } from "../providers/socialdata.ts";
+import { getTweet, tweetText, type SdTweet } from "../providers/socialdata.ts";
+import { BudgetExceededError } from "../providers/receipts.ts";
+import { readXSearch, type XBacklog } from "../sources/x.ts";
 import { deliverContent } from "../notify/deliver.ts";
 import { applyRecognition } from "./assemble.ts";
 import { recognizePost, type ContextInput, type OpenEventInput } from "./recognize.ts";
@@ -31,12 +33,11 @@ async function touchWatermarks(patch: Record<string, string>) {
   await setState("watermarks", { ...current, ...patch });
 }
 
-const idGreater = (a: string, b: string) => (a.length !== b.length ? a.length > b.length : a > b);
-
 /** Whether a scan is due now (called every few minutes by the scheduler). */
 export async function scanDue(now = Date.now()): Promise<boolean> {
   const hot = await getState<{ until: string }>("hot");
-  const w = await getState<{ lastAttemptAt?: string }>("watermarks");
+  const w = await getState<{ lastAttemptAt?: string; retryAt?: string }>("watermarks");
+  if (w?.retryAt) return now >= Date.parse(w.retryAt);
   const last = w?.lastAttemptAt ? Date.parse(w.lastAttemptAt) : 0;
   const every = hot && Date.parse(hot.until) > now ? HOT_EVERY_MS : NORMAL_EVERY_MS;
   return now - last >= every - 30_000;
@@ -59,52 +60,69 @@ async function contextOf(t: SdTweet, subject: string): Promise<Array<ContextInpu
 }
 
 async function storePost(t: SdTweet) {
-  const context = await contextOf(t, `x:${t.id_str}`);
-  await sql`
+  const rows = await sql`
     INSERT INTO monitor_posts (id, author, published_at, text, url, context, raw, origin)
     VALUES (${t.id_str}, ${t.user.screen_name}, ${new Date(t.tweet_created_at)}, ${tweetText(t)}, ${`https://x.com/${AUTHOR}/status/${t.id_str}`},
-            ${sql.json(context.map(({ publishedAt: _p, ...c }) => ({ id: c.id, author: c.author, relation: c.relation, text: null, originalText: c.text, url: c.url })) as never)},
-            ${sql.json({ tweet: t, context } as never)}, 'live')
-    ON CONFLICT (id) DO NOTHING`;
+            '[]', ${sql.json({ tweet: t, contextPending: true } as never)}, 'live')
+    ON CONFLICT (id) DO NOTHING RETURNING id`;
+  return rows.length;
 }
 
 /** Collects new posts (or a lookback window) and stores them before moving the cursor. */
 export async function collectPosts(opts: { lookbackHours?: number } = {}): Promise<{ stored: number; pages: number }> {
   const started = new Date();
   await touchWatermarks({ lastAttemptAt: started.toISOString() });
-  const cursor = (await getState<{ sinceId: string | null }>("cursor")) ?? { sinceId: null };
-  const since = opts.lookbackHours ? Math.floor((Date.now() - opts.lookbackHours * 3600_000) / 1000) : null;
-  const query = since ? `from:${AUTHOR} since_time:${since}` : `from:${AUTHOR}`;
-  const window = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
-  const found: SdTweet[] = [];
-  let next: string | null = null;
-  let pages = 0;
-  do {
-    const res = await searchTweets(query, { purpose: opts.lookbackHours ? "monitor.lookback" : "monitor.scan", subject: `x:${AUTHOR}`, window, cursor: next });
-    pages++;
-    let reachedKnown = false;
-    for (const t of res.tweets) {
-      if (t.retweeted_status) continue; // native reposts are not his words
-      if (!since && cursor.sinceId && !idGreater(t.id_str, cursor.sinceId)) {
-        reachedKnown = true;
-        continue;
-      }
-      found.push(t);
+  let cursor = await getState<{ sinceId: string | null; backlog?: XBacklog[] }>("cursor");
+  // Upgrade recovery: the old collector could buy several pages and fail on context before saving
+  // its first cursor. Those raw receipts already belong to us; do not buy their posts again.
+  if (!cursor) {
+    const received = await sql<{ tweet: SdTweet }[]>`
+      SELECT DISTINCT ON (t->>'id_str') t AS tweet FROM receipts r,
+        jsonb_array_elements(coalesce(r.response->'tweets', '[]'::jsonb)) t
+      WHERE r.service = 'socialdata' AND r.purpose = 'monitor.scan' AND r.origin = 'live'
+        AND r.status IN ('received', 'completed') AND r.request->>'query' = ${`from:${AUTHOR}`}
+        AND t->'user'->>'screen_name' = ${AUTHOR}`;
+    let newest: string | null = null;
+    for (const { tweet } of received) {
+      if (!tweet.retweeted_status) await storePost(tweet);
+      if (!newest || BigInt(tweet.id_str) > BigInt(newest)) newest = tweet.id_str;
     }
-    next = reachedKnown ? null : res.nextCursor;
-  } while (next && pages < MAX_PAGES);
-
-  let stored = 0;
-  for (const t of found.sort((a, b) => (idGreater(a.id_str, b.id_str) ? 1 : -1))) {
-    const [exists] = await sql`SELECT 1 FROM monitor_posts WHERE id = ${t.id_str}`;
-    if (exists) continue;
-    await storePost(t);
-    stored++;
+    cursor = { sinceId: newest };
+    // An old run may have stopped after fewer than its five initial pages. Keep its oldest
+    // continuation as well as its newest watermark; raw recovery must not imply completeness.
+    const pages = await sql<{ response: { tweets?: SdTweet[]; next_cursor?: string } }[]>`
+      SELECT DISTINCT response FROM receipts WHERE service = 'socialdata' AND purpose = 'monitor.scan'
+        AND origin = 'live' AND status IN ('received', 'completed') AND request->>'query' = ${`from:${AUTHOR}`}`;
+    const unique = new Map(pages.map((p) => [(p.response.tweets ?? []).map((t) => t.id_str).join(","), p.response]));
+    if (newest && unique.size < MAX_PAGES) {
+      const oldest = [...unique.values()].filter((p) => p.tweets?.length).sort((a, b) => {
+        const low = (p: typeof a) => p.tweets!.reduce((m, t) => BigInt(t.id_str) < m ? BigInt(t.id_str) : m, BigInt(p.tweets![0]!.id_str));
+        return low(a) < low(b) ? -1 : 1;
+      })[0];
+      if (oldest?.next_cursor) {
+        const low = oldest.tweets!.reduce((m, t) => BigInt(t.id_str) < m ? BigInt(t.id_str) : m, BigInt(oldest.tweets![0]!.id_str));
+        cursor.backlog = [{ query: `from:${AUTHOR} max_id:${low}`, next: null, maxId: String(low),
+          window: started.toISOString(), initialRemaining: MAX_PAGES - unique.size }];
+      }
+    }
+    if (newest) await setState("cursor", cursor);
   }
-  const newest = found.reduce<string | null>((m, t) => (!m || idGreater(t.id_str, m) ? t.id_str : m), cursor.sinceId);
-  if (newest && newest !== cursor.sinceId) await setState("cursor", { sinceId: newest });
-  await touchWatermarks({ lastCollectedAt: started.toISOString() });
-  return { stored, pages };
+  const since = opts.lookbackHours ? Math.floor((Date.now() - opts.lookbackHours * 3600_000) / 1000) : null;
+  let stored = 0;
+  // A requested lookback joins the same durable backlog. Normal incremental scans then finish it.
+  const backlog = cursor.backlog ?? [];
+  if (since) backlog.push({ query: `from:${AUTHOR} since_time:${since}`, next: null, window: started.toISOString() });
+  const read = await readXSearch(`from:${AUTHOR}`, {
+    lastId: cursor.sinceId, backlog, subject: `x:${AUTHOR}`, purpose: "monitor.scan", initialPages: MAX_PAGES, maxPages: 1, maxBacklogPages: 1,
+    window: started.toISOString(),
+    checkpoint: async (tweets, state) => {
+      for (const t of tweets) stored += await storePost(t);
+      await setState("cursor", { sinceId: state.lastId, backlog: state.backlog });
+    },
+  });
+  const retry = read.retryAfterSeconds ?? (read.backlog.some((b) => !b.error) ? 60 : null);
+  await touchWatermarks({ lastCollectedAt: started.toISOString(), retryAt: retry ? new Date(Date.now() + (retry + 1) * 1000).toISOString() : "" });
+  return { stored, pages: read.pages + read.backlogPages };
 }
 
 async function openEvents(before: Date): Promise<OpenEventInput[]> {
@@ -153,19 +171,33 @@ function resetCard(eventId: string, action: "announce" | "confirm", snapshot: Aw
  * for long, which an admin can then skip.
  */
 export async function processPending(limit = 20): Promise<{ processed: number; failed: number }> {
-  const posts = await sql<{ id: string; text: string; published_at: Date; raw: { context?: Array<ContextInput & { url: string }> } | null }[]>`
+  // SQL publication order is insufficient while an older announce may still be in an unread page.
+  if ((await getState<{ backlog?: XBacklog[] }>("cursor"))?.backlog?.length) return { processed: 0, failed: 0 };
+  const posts = await sql<{ id: string; text: string; published_at: Date; raw: { tweet?: SdTweet; contextPending?: boolean; context?: Array<ContextInput & { url: string }> } | null }[]>`
     SELECT id, text, published_at, raw FROM monitor_posts WHERE processed_at IS NULL AND author = ${AUTHOR}
     ORDER BY published_at, id LIMIT ${limit}`;
   let processed = 0;
   let failed = 0;
+  let hydrated = 0;
   for (const p of posts) {
     if (shutdownSignal.signal.aborted) break; // later posts wait for the next tick, in order
     try {
+      if (p.raw?.contextPending && p.raw.tweet) {
+        // One post per turn, at most two ancestors: the monitor cannot consume the whole
+        // ten-request minute while the source queues are waiting. Cached ancestors cost nothing.
+        if (p.raw.tweet.in_reply_to_status_id_str && hydrated >= 1) break;
+        const context = await contextOf(p.raw.tweet, `x:${p.id}`);
+        p.raw = { ...p.raw, contextPending: false, context };
+        await sql`UPDATE monitor_posts SET raw = ${sql.json(p.raw as never)},
+          context = ${sql.json(context.map((c) => ({ id: c.id, author: c.author, relation: c.relation, text: null, originalText: c.text, url: c.url })) as never)} WHERE id = ${p.id}`;
+        if (p.raw.tweet!.in_reply_to_status_id_str) hydrated++;
+      }
       const rec = await recognizePost({ id: p.id, text: p.text, publishedAt: p.published_at.toISOString(), context: p.raw?.context ?? [], openEvents: await openEvents(p.published_at) });
       await applyRecognition(p.id, rec);
       processed++;
       await sql`DELETE FROM monitor_state WHERE key = ${`failures:${p.id}`}`;
     } catch (error) {
+      if (error instanceof BudgetExceededError) break;
       failed++;
       const prev = (await getState<{ count: number; since: string }>(`failures:${p.id}`)) ?? { count: 0, since: new Date().toISOString() };
       await setState(`failures:${p.id}`, { count: prev.count + 1, since: prev.since, error: String(error).slice(0, 300) });
@@ -205,12 +237,48 @@ export async function flushResetPushes(): Promise<number> {
 
 /** One scheduled tick: scan when due, process what was stored, push what is owed, then move the verified watermark. */
 export async function monitorTick(opts: { force?: boolean; lookbackHours?: number } = {}) {
-  if (!opts.force && !opts.lookbackHours && !(await scanDue())) return { skipped: true };
+  // A daily request must survive losing the shared lock to the ordinary tick.
+  if (opts.lookbackHours) await setState("lookbackPending", {
+    since: Math.floor((Date.now() - opts.lookbackHours * 3600_000) / 1000), window: new Date().toISOString(),
+  });
+  // Tick and daily lookback have distinct job queues but mutate the same cursor and event history.
+  const lock = await sql.reserve();
+  let acquired = false;
+  try {
+    const [row] = await lock`SELECT pg_try_advisory_lock(hashtext('monitor.collect-recognize')) AS locked`;
+    acquired = !!row?.locked;
+    if (!acquired) return { skipped: true, reason: "monitor already running" };
+    return await runMonitorTick(opts);
+  } finally {
+    try { if (acquired) await lock`SELECT pg_advisory_unlock(hashtext('monitor.collect-recognize'))`; }
+    finally { lock.release(); }
+  }
+}
+
+async function runMonitorTick(opts: { force?: boolean; lookbackHours?: number }) {
+  const lookback = await getState<{ since: number; window: string }>("lookbackPending");
+  if (lookback) {
+    const cursor = (await getState<{ sinceId: string | null; backlog?: XBacklog[] }>("cursor")) ?? { sinceId: null };
+    cursor.backlog = [...(cursor.backlog ?? []), { query: `from:${AUTHOR} since_time:${lookback.since}`, next: null, window: lookback.window }];
+    await sql.begin(async (tx) => {
+      await tx`INSERT INTO monitor_state (key, value) VALUES ('cursor', ${tx.json(cursor as never)})
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+      await tx`DELETE FROM monitor_state WHERE key = 'lookbackPending' AND value = ${tx.json(lookback)}`;
+    });
+  }
+  if (!opts.force && !lookback && !(await scanDue())) return { skipped: true };
   const started = new Date();
-  const collected = await collectPosts({ lookbackHours: opts.lookbackHours });
+  let collected = { stored: 0, pages: 0 };
+  try {
+    collected = await collectPosts();
+  } catch (error) {
+    if (!(error instanceof BudgetExceededError)) throw error;
+    await touchWatermarks({ retryAt: new Date(Date.now() + (error.retryAfterSeconds + 1) * 1000).toISOString() });
+  }
   const result = await processPending();
   const pushed = await flushResetPushes();
   const [pending] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM monitor_posts WHERE processed_at IS NULL AND author = ${AUTHOR}`;
-  if (!pending?.n) await touchWatermarks({ lastVerifiedAt: started.toISOString() });
-  return { ...collected, ...result, pushed, pending: pending?.n ?? 0, verifiedAt: pending?.n ? null : bjIso(started) };
+  const backlog = (await getState<{ backlog?: XBacklog[] }>("cursor"))?.backlog?.length ?? 0;
+  if (!pending?.n && !backlog) await touchWatermarks({ lastVerifiedAt: started.toISOString() });
+  return { ...collected, ...result, pushed, pending: pending?.n ?? 0, backlog, verifiedAt: pending?.n || backlog ? null : bjIso(started) };
 }

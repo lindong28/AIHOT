@@ -1,7 +1,7 @@
 // X accounts via SocialData search ("from:handle -filter:replies", newest first). Plain account queries
-// are read together, about two dozen accounts per search (planXShards); SocialData bills per request.
+// are read together, about two dozen accounts per search (planXShards); SocialData bills returned objects.
 import { searchTweets, tweetMedia, tweetText, type SdArticle, type SdTweet } from "../providers/socialdata.ts";
-import { ProviderRejectedError } from "../providers/receipts.ts";
+import { BudgetExceededError, ProviderRejectedError } from "../providers/receipts.ts";
 import type { XPostData } from "../content/materials.ts";
 import { sha256 } from "../lib/ids.ts";
 import { FetchError, type Candidate, type SourceRow } from "./types.ts";
@@ -78,16 +78,18 @@ function windowKey(now = Date.now()): string {
 }
 
 /** Pages of new posts read per run after a watermark; a longer search continues in later runs. */
-const MAX_PAGES = 10;
+const MAX_PAGES = 2;
 /** Pages per run spent on older stretches left over from earlier runs. */
-const MAX_BACKLOG_PAGES = 10;
-/** Stretches kept per source; beyond this the oldest is given up and reported. */
-const MAX_BACKLOG = 5;
+const MAX_BACKLOG_PAGES = 2;
 
 /** Where a newest-first search stopped at the page limit: the same query continues from `next`. */
 export interface XBacklog {
   query: string;
-  next: string;
+  next: string | null;
+  window?: string;
+  maxId?: string;
+  error?: string;
+  initialRemaining?: number;
 }
 
 export interface XRead {
@@ -99,9 +101,13 @@ export interface XRead {
   /** The new-post search stopped at the page limit; the rest joined the backlog. */
   truncated: boolean;
   backlogPages: number;
-  /** Stretches given up (too many, or the provider refused to continue one): posts in them may be missing. */
+  /** Legacy run-counter field; unfinished stretches are now retained, so this stays zero. */
   dropped: number;
+  retryAfterSeconds?: number;
+  checkedAt: string;
 }
+
+export type XCheckpoint = (tweets: SdTweet[], state: Pick<XRead, "lastId" | "backlog">) => Promise<void>;
 
 export interface XFetch extends Omit<XRead, "tweets"> {
   candidates: Candidate[];
@@ -114,74 +120,77 @@ export interface XFetch extends Omit<XRead, "tweets"> {
  * the old watermark, so nothing in between is skipped. Without a watermark (a source's very first
  * fetch) one page is read: its import is bounded anyway.
  */
-export async function readXSearch(base: string, opts: { lastId: string | null; backlog: XBacklog[]; subject: string; type?: "Latest" | "Top" }): Promise<XRead> {
+export async function readXSearch(base: string, opts: { lastId: string | null; backlog: XBacklog[]; subject: string; type?: "Latest" | "Top"; checkpoint?: XCheckpoint; purpose?: string; initialPages?: number; maxPages?: number; maxBacklogPages?: number; window?: string }): Promise<XRead> {
   const { lastId } = opts;
   const backlog = opts.backlog.map((b) => ({ ...b }));
-  const window = windowKey();
-  const search = (query: string, cursor: string | null) =>
-    searchTweets(query, { purpose: "source_fetch", subject: opts.subject, window, type: opts.type ?? "Latest", cursor });
   const all: SdTweet[] = [];
   const query = lastId ? `${base} since_id:${lastId}` : base;
-  let cursor: string | null = null;
+  let fresh = backlog.find((b) => b.query === query && !b.error);
+  if (!fresh) {
+    fresh = { query, next: null, window: opts.window ?? windowKey(), ...(!lastId ? { initialRemaining: opts.initialPages ?? 1 } : {}) };
+    backlog.push(fresh);
+  }
+  let maxId = lastId;
   let pages = 0;
-  let truncated = false;
-  for (;;) {
-    let res: Awaited<ReturnType<typeof search>>;
-    try {
-      res = await search(query, cursor);
-    } catch (error) {
-      // A later page failing keeps the pages already read; the search goes on from there next run.
-      if (!cursor) throw error;
-      truncated = true;
-      backlog.push({ query, next: cursor });
-      break;
-    }
-    pages += 1;
-    all.push(...res.tweets);
-    if (!lastId || !res.nextCursor || res.tweets.length === 0) break;
-    if (pages >= MAX_PAGES) {
-      truncated = true;
-      backlog.push({ query, next: res.nextCursor });
-      break;
-    }
-    cursor = res.nextCursor;
-  }
-
-  // Older stretches, oldest first. Budget, account or passing trouble leaves them for the next run; a
-  // position the provider refuses as a bad request (an expired cursor) is given up.
-  let dropped = 0;
-  while (backlog.length > MAX_BACKLOG) {
-    backlog.shift();
-    dropped += 1;
-  }
   let backlogPages = 0;
-  while (backlog.length > 0 && backlogPages < MAX_BACKLOG_PAGES) {
-    const stretch = backlog[0]!;
-    let res: Awaited<ReturnType<typeof search>>;
-    try {
-      res = await search(stretch.query, stretch.next);
-    } catch (error) {
-      if (error instanceof ProviderRejectedError && (error.status === 400 || error.status === 422)) {
-        backlog.shift();
-        dropped += 1;
-        continue;
+  let backlogAttempts = 0;
+  let retryAfterSeconds: number | undefined;
+  const checkpoint = async (tweets: SdTweet[] = []) => opts.checkpoint?.(tweets, { lastId: maxId, backlog });
+  // Persist identity before dispatch; restart recovery reuses the paid receipt even in a new bucket.
+  for (const b of backlog) b.window ??= windowKey();
+  await checkpoint();
+  const older = backlog.filter((b) => b !== fresh && !b.error);
+  for (const stretch of [fresh, ...older]) {
+    const isFresh = stretch === fresh;
+    let used = 0;
+    while (backlog.includes(stretch) && (isFresh ? used < (opts.maxPages ?? MAX_PAGES) : backlogAttempts < (opts.maxBacklogPages ?? MAX_BACKLOG_PAGES))) {
+      let res: Awaited<ReturnType<typeof searchTweets>>;
+      used++;
+      if (!isFresh) backlogAttempts++;
+      try {
+        res = await searchTweets(stretch.query, { purpose: opts.purpose ?? "source_fetch", subject: opts.subject,
+          window: stretch.window!, type: opts.type ?? "Latest", cursor: stretch.next });
+      } catch (error) {
+        if (error instanceof ProviderRejectedError && (error.status === 400 || error.status === 422) && stretch.next) {
+          if (stretch.maxId && (opts.type ?? "Latest") === "Latest") {
+            stretch.query = `${stretch.query.replace(/\s+max_id:\d+/g, "")} max_id:${stretch.maxId}`;
+            stretch.next = null;
+          } else stretch.error = "cursor rejected; no saved chronological ID boundary";
+          await checkpoint();
+        }
+        if (error instanceof BudgetExceededError) retryAfterSeconds = error.retryAfterSeconds;
+        if (pages + backlogPages === 0 && isFresh) throw error;
+        break;
       }
-      break;
+      if (isFresh) pages++; else backlogPages++;
+      all.push(...res.tweets);
+      for (const t of res.tweets) if (!maxId || BigInt(t.id_str) > BigInt(maxId)) maxId = t.id_str;
+      const lowest = res.tweets.reduce<string | undefined>((m, t) => !m || BigInt(t.id_str) < BigInt(m) ? t.id_str : m, undefined);
+      if (stretch.initialRemaining !== undefined) stretch.initialRemaining--;
+      if (!res.tweets.length || stretch.initialRemaining === 0) backlog.splice(backlog.indexOf(stretch), 1);
+      else if (!res.nextCursor && res.tweets.length >= 20 && lowest !== stretch.maxId && (opts.type ?? "Latest") === "Latest") {
+        stretch.query = `${stretch.query.replace(/\s+max_id:\d+/g, "")} max_id:${lowest}`;
+        stretch.next = null;
+        stretch.maxId = lowest;
+      }
+      else if (!res.nextCursor) backlog.splice(backlog.indexOf(stretch), 1);
+      else {
+        stretch.next = res.nextCursor;
+        stretch.maxId = lowest;
+      }
+      // Store this page before advancing its cursor. A failed save leaves the previous identity.
+      await checkpoint(res.tweets.filter((t) => !t.retweeted_status));
     }
-    backlogPages += 1;
-    all.push(...res.tweets);
-    if (!res.nextCursor || res.tweets.length === 0) backlog.shift();
-    else stretch.next = res.nextCursor;
+    if (retryAfterSeconds || backlogAttempts >= (opts.maxBacklogPages ?? MAX_BACKLOG_PAGES)) break;
   }
 
   const seen = new Set<string>();
   const tweets = all.filter((t) => !t.retweeted_status && !seen.has(t.id_str) && !!seen.add(t.id_str));
-  const maxId = tweets.reduce<string | null>((m, t) => (m === null || BigInt(t.id_str) > BigInt(m) ? t.id_str : m), lastId);
-  return { tweets, lastId: maxId, backlog, pages, truncated, backlogPages, dropped };
+  return { tweets, lastId: maxId, backlog, pages, truncated: backlog.length > 0, backlogPages, dropped: 0, retryAfterSeconds, checkedAt: fresh.window! };
 }
 
 /** One account's own search (its first fetch, a query of its own, or a manual run from the admin). */
-export async function fetchXSearch(source: SourceRow): Promise<XFetch> {
+export async function fetchXSearch(source: SourceRow, checkpoint?: XCheckpoint): Promise<XFetch> {
   const base = String(source.config.query ?? "");
   if (!base) throw new FetchError("query missing");
   const { tweets, ...read } = await readXSearch(base, {
@@ -189,6 +198,7 @@ export async function fetchXSearch(source: SourceRow): Promise<XFetch> {
     backlog: Array.isArray(source.cursor?.xBacklog) ? source.cursor.xBacklog : [],
     subject: `source:${source.id}`,
     type: source.config.searchType ?? "Latest",
+    checkpoint,
   });
   return { candidates: tweets.map(tweetToCandidate), ...read };
 }
@@ -199,8 +209,8 @@ export async function fetchXSearch(source: SourceRow): Promise<XFetch> {
 const SHARDABLE = /^from:([A-Za-z0-9_]{1,15}) -filter:replies$/i;
 /** The same test in SQL, for the schedulers. */
 export const SHARDABLE_SQL = "^from:[A-Za-z0-9_]{1,15} -filter:replies$";
-/** SocialData refuses queries over 512 characters; the since_id watermark takes about 30 of them. */
-const SHARD_QUERY_MAX = 470;
+/** Leave room under 512 characters for both since_id and a recovery max_id boundary. */
+const SHARD_QUERY_MAX = 440;
 const SHARD_MAX_ACCOUNTS = 24;
 
 /** The account a source reads, when it can share a search: a plain query and a watermark already set. */

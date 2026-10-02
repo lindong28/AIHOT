@@ -87,21 +87,21 @@ async function checkBudget(tx: Db, service: string): Promise<void> {
   const [budget] = await tx<{ per_minute: number; per_hour: number; per_day: number }[]>`
     SELECT per_minute, per_hour, per_day FROM budgets WHERE service = ${service}`;
   if (!budget) return; // default rows come with the migrations; a service an operator removed is unlimited
-  // Every request sent counts, retries of the same logical request included.
-  const [counts] = await tx<{ minute: number; hour: number; day: number }[]>`
-    SELECT
-      count(*) FILTER (WHERE started_at > now() - interval '1 minute') AS minute,
-      count(*) FILTER (WHERE started_at > now() - interval '1 hour') AS hour,
-      count(*) AS day
-    FROM receipt_attempts
-    WHERE service = ${service} AND origin = 'live' AND started_at > now() - interval '1 day'`;
-  const c = counts!;
   if (budget.per_minute <= 0 || budget.per_hour <= 0 || budget.per_day <= 0) {
     throw new BudgetExceededError(service, "stopped", 3600);
   }
-  if (c.minute >= budget.per_minute) throw new BudgetExceededError(service, "minute", 60);
-  if (c.hour >= budget.per_hour) throw new BudgetExceededError(service, "hour", 600);
-  if (c.day >= budget.per_day) throw new BudgetExceededError(service, "day", 3600);
+  // The limit-th newest attempt must expire before another fits. This also handles a lowered
+  // limit and several exhausted windows; releasing a minute slot does not release an hour slot.
+  const [blocked] = await tx<{ window: string; seconds: number }[]>`
+    SELECT w.name AS window, ceil(extract(epoch FROM a.started_at + make_interval(secs => w.seconds) - now()))::int AS seconds
+    FROM (VALUES ('minute', 60, ${budget.per_minute}::int), ('hour', 3600, ${budget.per_hour}::int),
+                 ('day', 86400, ${budget.per_day}::int)) AS w(name, seconds, capacity)
+    CROSS JOIN LATERAL (
+      SELECT started_at FROM receipt_attempts WHERE service = ${service} AND origin = 'live'
+        AND started_at > now() - make_interval(secs => w.seconds)
+      ORDER BY started_at DESC OFFSET w.capacity - 1 LIMIT 1
+    ) a ORDER BY seconds DESC LIMIT 1`;
+  if (blocked) throw new BudgetExceededError(service, blocked.window, Math.max(1, blocked.seconds));
 }
 
 /**

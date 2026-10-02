@@ -1,4 +1,4 @@
-// SocialData (X search). Paid per request: every call goes through receipts and the budget.
+// SocialData bills returned objects (with an empty-response minimum); requests share a hard budget.
 import { credential } from "../config.ts";
 import { guardedFetch } from "../lib/http-fetch.ts";
 import { paidRequest, ProviderRejectedError } from "./receipts.ts";
@@ -88,7 +88,9 @@ export async function searchTweets(query: string, opts: { purpose: string; subje
       if (res.status === 429 || res.status >= 500) throw new ProviderRejectedError(`socialdata HTTP ${res.status}`, res.status, true);
       const json = JSON.parse(text) as { tweets?: SdTweet[]; next_cursor?: string | null };
       const tweets = json.tweets?.length ?? 0;
-      return { response: json, usage: { tweets }, cost: objectsCost(tweets) };
+      // The account's first three empty responses/minute are free; other consumers may use them.
+      // Without the supplier ledger, record the conservative upper estimate, never a false zero.
+      return { response: json, usage: { tweets, ...(tweets === 0 ? { costEstimate: "upper_bound", costLowerUsd: 0, costUpperUsd: 0.0002 } : {}) }, cost: objectsCost(Math.max(1, tweets)) };
     },
   );
   const json = receipt.response as { tweets?: SdTweet[]; next_cursor?: string | null };

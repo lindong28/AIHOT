@@ -28,8 +28,10 @@ const tweet = (p: { id: bigint; handle: string }) => ({
 
 let failNext = false;
 let failPage2 = 0;
+let beforeReply: (() => Promise<void>) | null = null;
 const queries: string[] = [];
-const socialdata = await stub((_hit, req) => {
+const socialdata = await stub(async (_hit, req) => {
+  if (beforeReply) { const run = beforeReply; beforeReply = null; await run(); }
   const q = new URL(req.url, "http://stub").searchParams.get("query") ?? "";
   queries.push(q);
   if (failNext) {
@@ -111,7 +113,7 @@ test("a page failing after the first keeps what was read and goes on from there 
   // Another watermark (still below every post): paid responses are reused only for the same search.
   await sql`UPDATE sources SET cursor = (cursor - 'lastOkAt') || ${sql.json({ lastTweetId: String(WATERMARK - 1n) })} WHERE id IN ${sql(IDS)}`;
   await sql`DELETE FROM articles WHERE source_id IN ${sql(IDS)}`;
-  failPage2 = 2; // the page, and the same run's second try at it from the stretch kept
+  failPage2 = 1; // failed pages yield the turn instead of retrying immediately
   const first = await collectXShard(`editorial:test-${T}`, IDS);
   assert.equal(first.status, "ok", "the accounts are not failed for a later page");
   assert.equal(first.found, 2, "the first page is kept");
@@ -156,4 +158,21 @@ test("due accounts are scheduled by shard, not one by one", async () => {
   const shard = jobs.find((j) => j.name === "sources.fetch-x");
   assert.ok(shard, "the shard with the due account is enqueued");
   assert.ok(IDS.every((id) => jobs.some((j) => j.data.sourceIds?.includes(id))), "all its accounts are read together");
+});
+
+test("a regrouped shard cannot overwrite a newer checkpoint while its page is in flight", async () => {
+  await sql`UPDATE sources SET cursor = ${sql.json({ initializedAt: new Date().toISOString(), lastTweetId: String(WATERMARK - 50n) })} WHERE id IN ${sql(IDS)}`;
+  const foreign = { query: "from:foreign since_id:1", next: "99", window: new Date().toISOString() };
+  beforeReply = async () => {
+    await sql`UPDATE sources SET cursor = jsonb_set(cursor, '{xBacklog}', (cursor->'xBacklog') || ${sql.json([foreign])}) WHERE id = ${IDS[0]!}`;
+  };
+  const conflict = await collectXShard(`editorial:test-${T}`, IDS);
+  assert.equal(conflict.status, "failed");
+  assert.match(conflict.error!, /cursor changed/);
+  const [row] = await sql`SELECT cursor, health FROM sources WHERE id = ${IDS[0]!}`;
+  assert.ok(row.cursor.xBacklog.some((b: { query: string }) => b.query === foreign.query));
+  assert.equal(row.cursor.lastTweetId, String(WATERMARK - 50n));
+  const recovered = await collectXShard(`editorial:test-${T}`, IDS);
+  assert.equal(recovered.status, "ok");
+  assert.equal((await cursorOf(IDS[0]!)).lastTweetId, String(BASE + 104n));
 });

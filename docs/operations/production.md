@@ -65,7 +65,15 @@ node scripts/smoke.ts --base https://news.aiplanet.live
 
 `status` 显示 systemd 状态，任一服务 inactive 会使其返回非零，应逐个查看 unit。Gateway health 不证明模型授权或上游可用，Web/内部 smoke 不证明公网路由或内容更新。2026-10-02 切站后的公网 smoke 覆盖 19 个页面、14 个机器出口和 1 次 MCP 握手，均通过，模型榜无跳过项。日后模型榜无发布轮次时，脚本会跳过三个相关入口的 503，不能把这种结果记为榜单可用。
 
-切站时已从公网首页和文章详情读到中文标题、摘要与推荐理由；Gateway 账本取得 Qwen、GLM、DeepSeek 与 embedding 成功调用。worker 已观察到四轮 `sources.schedule` 成功及新增文章，不代表长期稳定性验收。来源健康快照中 RSS、Web、JSON 均为 ok，X 仍有账号为 unknown；SocialData 沿用每分钟 10、每小时 100、每日 1,000 的请求预算，触及预算后退避 15 分钟，未提高额度。具体数量、时间与验收证据见[生产切换记录](../references/20261001-production-cutover.md)。排查更新停滞时同时核对来源健康、预算、任务及公开内容，不只看进程。
+切站时已从公网首页和文章详情读到中文标题、摘要与推荐理由；Gateway 账本取得 Qwen、GLM、DeepSeek 与 embedding 成功调用。短窗口采集与发布证据见[生产切换记录](../references/20261001-production-cutover.md)，不代表长期稳定性验收。SocialData 保留每分钟 10、每小时 100、每日 1,000 的请求预算，按实际滚动窗口释放时间恢复；采集断点、并发保护与费用口径见[增量采集记录](../references/20261002-socialdata-recovery.md)。排查更新停滞时同时核对来源健康、预算、任务及公开内容，不只看进程。
+
+在腾讯云 release 目录执行只读诊断：
+
+```bash
+sudo -n -u postgres psql -X -d aihot -v ON_ERROR_STOP=1 -P pager=off < scripts/socialdata-status.sql
+```
+
+输出最近一小时请求、重复返回、空页和估计金额，以及待初始化来源、未完成区间和监控积压。`estimated_usd` 是本地估计，不是供应商账单；新空页按每次 0–0.0002 USD 的上界计入，旧空页记录保留旧估计。`attempts_without_cost` 非零表示金额不完整。分片游标在多个来源中保存，分别展示来源条目数与去重后的断点数；缺少恢复边界的区间需要维护者检查。
 
 服务日志在 journald，可用 `journalctl -u aihot-worker.service -n 100 --no-pager`，API/Web 换相应 unit；向外提供日志前先去除凭据和私有 URL。后台“运行”页查看任务与未知回执；未知模型结果先核对 Gateway 账本再恢复，不因进程重启自动重复请求。
 

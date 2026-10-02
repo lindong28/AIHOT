@@ -73,17 +73,18 @@ test("an X search longer than one run is read to the old watermark over the next
 
   const first = await collectSource(X_SOURCE, { force: true });
   assert.equal(first.status, "ok");
-  assert.equal(await stored(), 400, "a run reads its own pages and ten more of the stretch left over");
+  assert.equal(await stored(), 40, "two fresh pages leave capacity for other collectors");
   assert.equal((await cursor()).lastTweetId, String(BASE + 550n), "the watermark moves to the newest post");
   assert.equal((await cursor()).xBacklog?.length, 1, "the unread stretch is kept for the next run");
   const [run] = await sql<{ detail: { truncated: boolean; backlog: number } }[]>`SELECT detail FROM fetch_runs WHERE source_id = ${X_SOURCE} ORDER BY id DESC LIMIT 1`;
   assert.deepEqual([run!.detail.truncated, run!.detail.backlog], [true, 1], "the admin sees the stretch still to read");
 
-  const second = await collectSource(X_SOURCE, { force: true });
-  assert.equal(second.status, "ok");
+  for (let i = 0; i < 12 && (await cursor()).xBacklog?.length; i++) {
+    assert.equal((await collectSource(X_SOURCE, { force: true })).status, "ok");
+  }
   assert.equal(await stored(), 450, "every post between the old watermark and the newest is stored");
   assert.equal((await cursor()).xBacklog, undefined, "nothing is left to read");
-  assert.equal(socialdata.hits(), 20 + 1 + 3, "no page is requested twice");
+  assert.equal(socialdata.hits(), 23 + 1, "23 content pages plus one cached empty newest search; no paid page is repeated");
 });
 
 test("a WeChat body that failed for a passing reason is fetched on the next check and analysed again", async () => {

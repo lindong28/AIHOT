@@ -22,6 +22,9 @@ export interface CollectResult {
 }
 
 const MAX_ITEMS_PER_RUN = 60;
+class CursorChangedError extends Error {
+  constructor() { super("collection cursor changed; retry from the saved checkpoint"); }
+}
 
 export function noiseFiltered(c: Candidate, source: SourceRow): boolean {
   const f = source.config.ingestNoiseFilter;
@@ -95,6 +98,7 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
   let created = 0;
   let revised = 0;
   let found = 0;
+  let expectedCursor = source.cursor;
   try {
     // A config entry this kind does not implement fails the run, visibly, instead of being ignored.
     const unsupported = unsupportedConfig(source.kind, source.config);
@@ -102,6 +106,7 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
     let candidates: Candidate[];
     let nextCursor: Record<string, unknown> = { ...(source.cursor ?? {}) };
     let detail: Record<string, unknown> | null = null;
+    let retryAfterSeconds: number | undefined;
     if (source.kind === "rss") {
       const rss = await fetchRss(source, opts);
       candidates = rss.candidates;
@@ -114,13 +119,30 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
     else if (source.kind === "web_list") candidates = await fetchWebList(source);
     else if (source.kind === "json_list") candidates = await fetchJsonList(source);
     else {
-      const x = await fetchXSearch(source);
+      const x = await fetchXSearch(source, async (tweets, state) => {
+        let page = tweets.map(tweetToCandidate).filter((c) => allowed(c.url, source)).map((c) => rewriteUrl(c, source)).filter((c) => !noiseFiltered(c, source));
+        if (firstImport) {
+          const cutoff = Date.now() - Number(source.config._aihot?.initialBackfillMonths ?? 12) * 30 * 86400000;
+          page = page.filter((c) => !c.publishedAt || c.publishedAt.getTime() >= cutoff).slice(0, Number(source.config._aihot?.initialBackfillLimit ?? 30));
+        }
+        const saved = await store(sourceId, page, firstImport ? "first-import" : null);
+        created += saved.created;
+        revised += saved.revised;
+        if (state.lastId) nextCursor.lastTweetId = state.lastId;
+        nextCursor.xBacklog = state.backlog;
+        const updated = await sql`UPDATE sources SET cursor = ${sql.json(nextCursor as never)} WHERE id = ${sourceId}
+          AND cursor IS NOT DISTINCT FROM ${expectedCursor == null ? null : sql.json(expectedCursor as never)}::jsonb RETURNING id`;
+        if (!updated.length) throw new CursorChangedError();
+        expectedCursor = structuredClone(nextCursor);
+      });
       candidates = x.candidates;
       if (x.lastId) nextCursor.lastTweetId = x.lastId;
       // A search longer than one run keeps its position for the next runs (shown in the admin).
       if (x.backlog.length) nextCursor.xBacklog = x.backlog;
       else delete nextCursor.xBacklog;
       detail = { pages: x.pages, truncated: x.truncated, backlog: x.backlog.length, backlogPages: x.backlogPages, dropped: x.dropped };
+      nextCursor.lastOkAt = x.checkedAt;
+      retryAfterSeconds = x.retryAfterSeconds ?? (x.backlog.some((b) => !b.error) ? 60 : undefined);
     }
     found = candidates.length;
     candidates = candidates.filter((c) => allowed(c.url, source)).map((c) => rewriteUrl(c, source)).filter((c) => !noiseFiltered(c, source));
@@ -179,27 +201,32 @@ export async function collectSource(sourceId: string, opts: { force?: boolean } 
       }
     }
 
-    ({ created, revised } = await store(sourceId, candidates, firstImport ? "first-import" : null));
+    const saved = await store(sourceId, candidates, firstImport ? "first-import" : null);
+    created += saved.created;
+    revised += saved.revised;
 
     if (firstImport) nextCursor.initializedAt = new Date().toISOString();
-    nextCursor.lastOkAt = new Date().toISOString();
-    await sql`
+    if (source.kind !== "x_search") nextCursor.lastOkAt = new Date().toISOString();
+    const updated = await sql`
       UPDATE sources SET last_fetch_at = now(), last_ok_at = now(), fail_count = 0, last_error = NULL,
         health = 'ok', cursor = ${sql.json(nextCursor as never)}, updated_at = now(),
-        next_fetch_at = now() + make_interval(mins => interval_minutes)
-      WHERE id = ${sourceId}`;
+        next_fetch_at = now() + make_interval(secs => coalesce(${retryAfterSeconds === undefined ? null : retryAfterSeconds + 1}::int, interval_minutes * 60))
+      WHERE id = ${sourceId} AND (${source.kind !== "x_search"} OR cursor IS NOT DISTINCT FROM ${expectedCursor == null ? null : sql.json(expectedCursor as never)}::jsonb)
+      RETURNING id`;
+    if (!updated.length) throw new CursorChangedError();
     await sql`UPDATE fetch_runs SET status = 'ok', finished_at = now(), found_count = ${found}, new_count = ${created},
                 detail = ${detail ? sql.json(detail as never) : null} WHERE id = ${run!.id}`;
     return { sourceId, status: "ok", found, created, revised };
   } catch (error) {
     const message = String(error instanceof Error ? error.message : error).slice(0, 1000);
-    const budget = error instanceof BudgetExceededError;
+    const wait = error instanceof BudgetExceededError ? error.retryAfterSeconds + 1 : error instanceof CursorChangedError ? 1 : null;
+    const budget = wait !== null;
     await sql`
       UPDATE sources SET last_fetch_at = now(),
         fail_count = CASE WHEN ${budget} THEN fail_count ELSE fail_count + 1 END,
         last_error = ${message},
         health = CASE WHEN ${budget} THEN health WHEN fail_count + 1 >= 5 THEN 'failing' ELSE 'degraded' END,
-        next_fetch_at = now() + make_interval(mins => CASE WHEN ${budget} THEN 15 ELSE LEAST(interval_minutes * (fail_count + 2), 360) END),
+        next_fetch_at = now() + make_interval(secs => CASE WHEN ${budget} THEN ${wait ?? 0} ELSE LEAST(interval_minutes * (fail_count + 2), 360) * 60 END),
         updated_at = now()
       WHERE id = ${sourceId}`;
     await sql`UPDATE fetch_runs SET status = 'failed', finished_at = now(), found_count = ${found}, new_count = ${created}, error = ${message} WHERE id = ${run!.id}`;
@@ -256,18 +283,47 @@ export async function collectXShard(key: string, sourceIds: string[]): Promise<{
     }
   }
   let read: XRead;
+  let created = 0;
+  const savedBySource = new Map<string, number>();
   try {
-    read = await readXSearch(shardQuery(members.map((m) => shardHandle(m)!)), { lastId: String(since), backlog, subject: `x-shard:${key}` });
+    read = await readXSearch(shardQuery(members.map((m) => shardHandle(m)!)), { lastId: String(since), backlog, subject: `x-shard:${key}`,
+      checkpoint: async (tweets, state) => {
+        // Keep old shard owners in the durable cursor. If membership changes, store every returned
+        // post under its configured source before any member advances the shared stretch.
+        const handles = [...new Set(tweets.map((t) => t.user.screen_name.toLowerCase()))];
+        const owners = handles.length ? await sql<SourceRow[]>`SELECT * FROM sources WHERE kind = 'x_search'
+          AND lower(substring(config->>'query' from '^from:([A-Za-z0-9_]+) -filter:replies$')) IN ${sql(handles)}` : [];
+        for (const m of owners) {
+          const handle = /^from:([A-Za-z0-9_]+)/i.exec(String(m.config.query))![1]!.toLowerCase();
+          const mine = tweets.filter((t) => t.user.screen_name.toLowerCase() === handle);
+          const saved = await store(m.id, mine.map(tweetToCandidate).map((c) => rewriteUrl(c, m)).filter((c) => !noiseFiltered(c, m)), null);
+          savedBySource.set(m.id, (savedBySource.get(m.id) ?? 0) + saved.created);
+          created += saved.created;
+        }
+        const cursors = new Map<string, Record<string, unknown>>();
+        await sql.begin(async (tx) => {
+          for (const m of members) {
+            const own = String(m.cursor!.lastTweetId);
+            const cursor = { ...m.cursor, lastTweetId: state.lastId && BigInt(state.lastId) > BigInt(own) ? state.lastId : own, xBacklog: state.backlog };
+            const updated = await tx`UPDATE sources SET cursor = ${tx.json(cursor as never)} WHERE id = ${m.id}
+              AND cursor IS NOT DISTINCT FROM ${tx.json(m.cursor as never)}::jsonb RETURNING id`;
+            if (!updated.length) throw new CursorChangedError();
+            cursors.set(m.id, structuredClone(cursor));
+          }
+        });
+        for (const m of members) m.cursor = cursors.get(m.id)!;
+      } });
   } catch (error) {
     const message = String(error instanceof Error ? error.message : error).slice(0, 1000);
-    const budget = error instanceof BudgetExceededError;
+    const wait = error instanceof BudgetExceededError ? error.retryAfterSeconds + 1 : error instanceof CursorChangedError ? 1 : null;
+    const budget = wait !== null;
     for (const m of members) {
       await sql`
         UPDATE sources SET last_fetch_at = now(),
           fail_count = CASE WHEN ${budget} THEN fail_count ELSE fail_count + 1 END,
           last_error = ${message},
           health = CASE WHEN ${budget} THEN health WHEN fail_count + 1 >= 5 THEN 'failing' ELSE 'degraded' END,
-          next_fetch_at = now() + make_interval(mins => CASE WHEN ${budget} THEN 15 ELSE LEAST(${minutes} * (fail_count + 2), 360) END),
+          next_fetch_at = now() + make_interval(secs => CASE WHEN ${budget} THEN ${wait ?? 0} ELSE LEAST(${minutes} * (fail_count + 2), 360) * 60 END),
           updated_at = now()
         WHERE id = ${m.id}`;
       await sql`UPDATE fetch_runs SET status = 'failed', finished_at = now(), error = ${message}, detail = ${sql.json({ shard: key, accounts: members.length })} WHERE id = ${runs.get(m.id)!}`;
@@ -277,7 +333,6 @@ export async function collectXShard(key: string, sourceIds: string[]): Promise<{
 
   const detail = { shard: key, accounts: members.length, pages: read.pages, truncated: read.truncated, backlog: read.backlog.length, backlogPages: read.backlogPages, dropped: read.dropped };
   let found = 0;
-  let created = 0;
   for (const m of members) {
     const handle = shardHandle(m)!.toLowerCase();
     const mine = read.tweets.filter((t) => t.user.screen_name.toLowerCase() === handle);
@@ -285,15 +340,15 @@ export async function collectXShard(key: string, sourceIds: string[]): Promise<{
     found += mine.length;
     created += stored.created;
     const own = String(m.cursor!.lastTweetId);
-    const cursor: Record<string, unknown> = { ...m.cursor, lastTweetId: read.lastId && BigInt(read.lastId) > BigInt(own) ? read.lastId : own, lastOkAt: new Date().toISOString() };
+    const cursor: Record<string, unknown> = { ...m.cursor, lastTweetId: read.lastId && BigInt(read.lastId) > BigInt(own) ? read.lastId : own, lastOkAt: read.checkedAt };
     if (read.backlog.length) cursor.xBacklog = read.backlog;
     else delete cursor.xBacklog;
     await sql`
       UPDATE sources SET last_fetch_at = now(), last_ok_at = now(), fail_count = 0, last_error = NULL,
         health = 'ok', cursor = ${sql.json(cursor as never)}, interval_minutes = ${minutes}, updated_at = now(),
-        next_fetch_at = now() + make_interval(mins => ${minutes})
-      WHERE id = ${m.id}`;
-    await sql`UPDATE fetch_runs SET status = 'ok', finished_at = now(), found_count = ${mine.length}, new_count = ${stored.created},
+        next_fetch_at = now() + make_interval(secs => ${read.retryAfterSeconds !== undefined ? read.retryAfterSeconds + 1 : read.backlog.some((b) => !b.error) ? 60 : minutes * 60})
+      WHERE id = ${m.id} AND cursor IS NOT DISTINCT FROM ${sql.json(m.cursor as never)}::jsonb`;
+    await sql`UPDATE fetch_runs SET status = 'ok', finished_at = now(), found_count = ${mine.length}, new_count = ${stored.created + (savedBySource.get(m.id) ?? 0)},
                 detail = ${sql.json(detail as never)} WHERE id = ${runs.get(m.id)!}`;
   }
   return { key, status: "ok", accounts: members.length, found, created };
@@ -304,12 +359,14 @@ const sharded = () => sql`kind = 'x_search' AND config->>'query' ~* ${SHARDABLE_
 
 /** Every minute: a shard is read when any of its accounts is due, all of them at once. */
 async function scheduleXShards(): Promise<number> {
-  const rows = await sql<Array<Pick<SourceRow, "id" | "kind" | "config" | "cursor" | "participation_mode"> & { due: boolean }>>`
-    SELECT id, kind, config, cursor, participation_mode, (next_fetch_at IS NULL OR next_fetch_at <= now()) AS due
+  const rows = await sql<Array<Pick<SourceRow, "id" | "kind" | "config" | "cursor" | "participation_mode"> & { due: boolean; last_ok_at: Date | null }>>`
+    SELECT id, kind, config, cursor, participation_mode, last_ok_at, (next_fetch_at IS NULL OR next_fetch_at <= now()) AS due
     FROM sources WHERE enabled AND ${sharded()}`;
   const due = new Set(rows.filter((r) => r.due).map((r) => r.id));
   let enqueued = 0;
-  for (const shard of planXShards(rows)) {
+  const checked = new Map(rows.map((r) => [r.id, r.last_ok_at?.getTime() ?? 0]));
+  const oldest = (s: { sourceIds: string[] }) => Math.min(...s.sourceIds.map((id) => checked.get(id) ?? 0));
+  for (const shard of planXShards(rows).sort((a, b) => oldest(a) - oldest(b))) {
     if (!shard.sourceIds.some((id) => due.has(id))) continue;
     await enqueue(QUEUES.fetchXShard, { key: shard.key, sourceIds: shard.sourceIds }, { singletonKey: shard.key });
     await sql`UPDATE sources SET next_fetch_at = now() + interval '10 minutes' WHERE id IN ${sql(shard.sourceIds)}`;
@@ -327,7 +384,7 @@ export async function scheduleDueSources(limit = Number(process.env.FETCH_SCHEDU
     SELECT id FROM sources
     WHERE enabled AND kind IN ${sql(kinds)} AND (next_fetch_at IS NULL OR next_fetch_at <= now()) AND NOT (${sharded()})
       ${skipJina ? sql`AND config::text NOT LIKE '%r.jina.ai%'` : sql``}
-    ORDER BY next_fetch_at NULLS FIRST LIMIT ${limit}`;
+    ORDER BY last_ok_at NULLS FIRST, next_fetch_at NULLS FIRST, id LIMIT ${limit}`;
   for (const r of rows) {
     await enqueue(QUEUES.fetchSource, { sourceId: r.id }, { singletonKey: r.id });
     await sql`UPDATE sources SET next_fetch_at = now() + interval '10 minutes' WHERE id = ${r.id}`;
