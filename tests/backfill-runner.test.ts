@@ -14,8 +14,8 @@ const T = tag(), source = `runner-${T}`;
 const models: BackfillBindings = {
   prefilter: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
   structure: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
-  score: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
-  understand: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
+  score: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
+  understand: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
   summarize: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
 };
 let requestCount = 0;

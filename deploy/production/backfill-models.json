@@ -22,48 +22,24 @@
     ]
   },
   "score": {
-    "model": "glm-5.3-flash",
+    "model": "deepseek-v4.1-flash",
     "routes": [
       {
-        "route": "personal_self_hosted/glm-5.3-flash/stream",
-        "actualModel": "self_hosted/glm-5.3-flash",
-        "provider": "self-hosted",
-        "credentialProfile": "personal_self_hosted"
-      },
-      {
-        "route": "personal_zai/glm-5.3-flash/stream",
-        "actualModel": "openai/glm-5.3-flash",
-        "provider": "zhipu",
-        "credentialProfile": "personal_zai"
-      },
-      {
-        "route": "personal_ark/glm-5.3-flash/stream",
-        "actualModel": "openai/glm-5.3-flash",
-        "provider": "volcengine-ark",
-        "credentialProfile": "personal_ark"
+        "route": "company_tencent_vod/deepseek-v4.1-flash/stream",
+        "actualModel": "openai/deepseek-v4.1-flash",
+        "provider": "tencent-vod",
+        "credentialProfile": "company_tencent_vod"
       }
     ]
   },
   "understand": {
-    "model": "glm-5.3-flash",
+    "model": "deepseek-v4.1-flash",
     "routes": [
       {
-        "route": "personal_self_hosted/glm-5.3-flash/stream",
-        "actualModel": "self_hosted/glm-5.3-flash",
-        "provider": "self-hosted",
-        "credentialProfile": "personal_self_hosted"
-      },
-      {
-        "route": "personal_zai/glm-5.3-flash/stream",
-        "actualModel": "openai/glm-5.3-flash",
-        "provider": "zhipu",
-        "credentialProfile": "personal_zai"
-      },
-      {
-        "route": "personal_ark/glm-5.3-flash/stream",
-        "actualModel": "openai/glm-5.3-flash",
-        "provider": "volcengine-ark",
-        "credentialProfile": "personal_ark"
+        "route": "company_tencent_vod/deepseek-v4.1-flash/stream",
+        "actualModel": "openai/deepseek-v4.1-flash",
+        "provider": "tencent-vod",
+        "credentialProfile": "company_tencent_vod"
       }
     ]
   },

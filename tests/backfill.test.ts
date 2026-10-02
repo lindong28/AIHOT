@@ -24,11 +24,11 @@ const T = tag(), source = `bf-${T}`;
 const models: BackfillBindings = {
   prefilter: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
   structure: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
-  score: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
-  understand: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
+  score: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
+  understand: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
   summarize: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
 };
-const requests: Array<{ model: string; route: string | undefined; stage: string; user: string }> = [];
+const requests: Array<{ model: string; route: string | undefined; stage: string; user: string; thinking: unknown; maxTokens: number }> = [];
 let pauseOnPrefilter: string | null = null, malformed = false, healthRevision = "test-revision";
 let waiting: ReturnType<typeof gate> | null = null, entered: ReturnType<typeof gate> | null = null;
 let healthWait: ReturnType<typeof gate> | null = null, healthEntered: ReturnType<typeof gate> | null = null;
@@ -39,7 +39,7 @@ const server = createServer(async (req,res) => {
   const system = String(body.messages[0]?.role === "system" ? body.messages[0].content : "");
   const user = JSON.stringify(body.messages.at(-1).content);
   const stage = system.includes("宽召回的AI相关性预筛") ? "prefilter" : system.includes("事件注意力评分器") ? "score" : system.includes("内容理解编辑") ? "understand" : system.includes("资料结构化助手") ? "structure" : "summarize";
-  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user });
+  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user,thinking:body.thinking,maxTokens:body.max_tokens });
   if (stage === "prefilter" && pauseOnPrefilter) { const id=pauseOnPrefilter;pauseOnPrefilter=null;await controlBackfill(id,"pause","test"); }
   if (stage === "prefilter" && waiting) { entered?.open(undefined); await waiting.promise; }
   const answer = stage === "prefilter" ? { label:user.includes("OFFTOPIC") ? "BLOCK" : "PASS",reason:"fixture" }
@@ -109,6 +109,15 @@ test("native publication progresses by day, filters noise, preserves existing or
   const sent=requests.slice(start);assert.ok(sent.some(r=>r.model==="qwen3.8-flash"&&!r.route));assert.ok(sent.filter(r=>r.model.startsWith("gpu-")).every(r=>r.route?.startsWith("personal_gpu/")));
   assert.deepEqual([...new Set(sent.filter(r=>r.route).map(r=>r.stage))].sort(),["prefilter","score","structure","summarize","understand"]);
   assert.ok(sent.some(r=>r.model==="deepseek-v4.1-flash"&&r.route==="company_tencent_vod/deepseek-v4.1-flash/stream"));
+  for (const stage of ["score", "understand", "summarize"]) {
+    const calls = sent.filter(r => r.stage === stage && r.route);
+    assert.ok(calls.length > 0, `${stage} was called`);
+    assert.ok(calls.every(r => r.model === "deepseek-v4.1-flash" && r.route === "company_tencent_vod/deepseek-v4.1-flash/stream"));
+    for (const call of calls) {
+      assert.deepEqual(call.thinking, stage === "score" ? undefined : { type: "disabled" });
+      if (stage === "score") assert.equal(call.maxTokens, 5024);
+    }
+  }
   const rows=await sql`SELECT * FROM backfill_items WHERE run_id=${id}`;
   assert.deepEqual(rows.map(r=>r.state).sort(),["excluded","existing","filtered","published","published"]);
   assert.equal((await sql`SELECT body_text FROM articles WHERE id=${existing.articleId}`)[0]!.body_text,"Keep native original");
@@ -192,6 +201,7 @@ test("model bindings cannot change while discovery is in flight even after pause
   const running=runBackfill(id,{concurrency:1,maxItems:1});await healthEntered.promise;
   try {
     await controlBackfill(id,"pause","test");
-    await assert.rejects(()=>configureBackfill(id,{...models,score:{...models.score,model:"other-glm-model"}}),/executor/);
+    const otherQwen = { ...models.prefilter, model: "other-qwen-model" };
+    await assert.rejects(()=>configureBackfill(id,{...models,prefilter:otherQwen,structure:otherQwen}),/executor/);
   } finally { healthWait.open(undefined);healthWait=null;healthEntered=null;await running; }
 });

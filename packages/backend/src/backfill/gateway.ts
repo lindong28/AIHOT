@@ -10,26 +10,25 @@ const binding = z.union([
 ]);
 export const bindingsSchema = z.object({ prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding }).strict()
   .refine((v) => JSON.stringify(v.prefilter) === JSON.stringify(v.structure), "Prefilter and structure share the Qwen preset and must use the same binding")
+  .refine((v) => JSON.stringify(v.understand) === JSON.stringify(v.summarize), "Understand and summarize share the DeepSeek preset and must use the same binding")
   .superRefine((models, ctx) => {
     for (const [role, b] of Object.entries(models)) {
       const candidates = bindingRoutes(b);
-      if (role === "summarize") {
+      if (["score", "understand", "summarize"].includes(role)) {
         const r = candidates[0];
         if (b.model !== "deepseek-v4.1-flash" || candidates.length !== 1 ||
             r?.route !== "company_tencent_vod/deepseek-v4.1-flash/stream" ||
             r.actualModel !== "openai/deepseek-v4.1-flash" || r.provider !== "tencent-vod" ||
             r.credentialProfile !== "company_tencent_vod") {
-          ctx.addIssue({ code: "custom", message: "Backfill summaries require DeepSeek V4.1 Flash on company_tencent_vod only" });
+          ctx.addIssue({ code: "custom", message: `Backfill ${role} requires DeepSeek V4.1 Flash on company_tencent_vod only` });
         }
         continue;
       }
-      if (b.model.startsWith("deepseek")) ctx.addIssue({ code: "custom", message: "DeepSeek is only authorized for backfill summaries on Tencent VOD" });
+      if (b.model.startsWith("deepseek")) ctx.addIssue({ code: "custom", message: "DeepSeek is not authorized for backfill prefilter or structure" });
       if (new Set(candidates.map((r) => r.route)).size !== candidates.length) ctx.addIssue({ code: "custom", message: `Duplicate backfill route in ${role}` });
       for (const r of candidates) {
         const self = r.provider === BACKFILL_PROVIDER && r.actualModel.startsWith("self_hosted/");
-        const subscription = ["score", "understand"].includes(role) && b.model.startsWith("glm-") &&
-          ((r.provider === "zhipu" && r.credentialProfile === "personal_zai") || (r.provider === "volcengine-ark" && r.credentialProfile === "personal_ark"));
-        if (!self && !subscription) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
+        if (!self) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
       }
     }
   });

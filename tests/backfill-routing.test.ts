@@ -17,7 +17,7 @@ const qwen = { model: "qwen", routes: [gpu] };
 const glm = { model: "glm-flash", routes: [glmGpu, zai, ark] };
 const tencent = { route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" };
 const deepseek = { model: "deepseek-v4.1-flash", routes: [tencent] };
-const models: BackfillBindings = { prefilter: qwen, structure: qwen, score: glm, understand: glm, summarize: deepseek };
+const models: BackfillBindings = { prefilter: qwen, structure: qwen, score: deepseek, understand: deepseek, summarize: deepseek };
 const revision = "a".repeat(64);
 function view(model: string) {
   return { projection_version: 2, view_scope: "logical_model", requested_logical_model: model, status: "ready",
@@ -53,9 +53,9 @@ Object.assign(process.env, { LLM_GATEWAY_URL: baseUrl, LLM_GATEWAY_PROJECT: "fix
 delete process.env.LLM_GATEWAY_CLI;
 after(async () => { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); await closeDb(); });
 
-test("GLM subscription fallback is role/profile bounded; Qwen and summaries cannot use subscriptions", () => {
+test("backfill rejects GLM for every role and commercial routes for Qwen", () => {
   assert.ok(bindingsSchema.safeParse(models).success);
-  for (const role of ["prefilter", "structure", "summarize"]) {
+  for (const role of Object.keys(models)) {
     assert.equal(bindingsSchema.safeParse({ ...models, [role]: glm }).success, false);
   }
   for (const candidate of [{ ...zai, credentialProfile: "other_account" }, { ...zai, provider: "paid" }]) {
@@ -63,16 +63,18 @@ test("GLM subscription fallback is role/profile bounded; Qwen and summaries cann
   }
 });
 
-test("production summaries require exactly Tencent VOD V4.1 and reject old, mixed or reassigned routes", () => {
+test("production scoring, understanding and summaries require exactly Tencent VOD V4.1", () => {
   const production = JSON.parse(readFileSync(new URL("../deploy/production/backfill-models.json", import.meta.url), "utf8"));
   assert.ok(bindingsSchema.safeParse(production).success);
-  assert.deepEqual(production.summarize, deepseek);
+  for (const role of ["score", "understand", "summarize"]) assert.deepEqual(production[role], deepseek);
   for (const summarize of [qwen, glm, { ...deepseek, model: "deepseek-v4-flash-0731" },
     { ...deepseek, routes: [tencent, gpu] }, ...[
       { provider: "deepseek" }, { credentialProfile: "personal_deepseek" },
       { actualModel: "openai/deepseek-v4-flash" }, { route: "other/deepseek-v4.1-flash/stream" },
     ].map((change) => ({ ...deepseek, routes: [{ ...tencent, ...change }] }))]) {
-    assert.equal(bindingsSchema.safeParse({ ...models, summarize }).success, false);
+    for (const role of ["score", "understand", "summarize"]) {
+      assert.equal(bindingsSchema.safeParse({ ...models, [role]: summarize }).success, false);
+    }
   }
   assert.equal(bindingsSchema.safeParse({ ...models, score: { ...glm, model: deepseek.model } }).success, false);
 });
@@ -105,30 +107,30 @@ test("DeepSeek transport sends the Tencent-only allowlist and rejects other resp
   selected = zai;
 });
 
-test("discovery accepts an unavailable GPU plus eligible subscription and rejects funding/revision/identity drift", () => {
-  assert.equal(verifyDiscovery(view("glm-flash"), "glm-flash", models, "fixture", baseUrl), revision);
+test("discovery rejects Tencent funding/revision/identity drift", () => {
+  assert.equal(verifyDiscovery(view(deepseek.model), deepseek.model, models, "fixture", baseUrl), revision);
   for (const change of ["funding", "actual", "profile", "revision", "unavailable"]) {
-    const d = view("glm-flash");
-    if (change === "funding") d.routes[1]!.funding_source = "personal_paid";
-    if (change === "actual") d.routes[1]!.actual_model = "openai/other";
-    if (change === "profile") d.routes[1]!.credential_profile_id = "other_account";
+    const d = view(deepseek.model);
+    if (change === "funding") d.routes[0]!.funding_source = "personal_paid";
+    if (change === "actual") d.routes[0]!.actual_model = "openai/other";
+    if (change === "profile") d.routes[0]!.credential_profile_id = "other_account";
     if (change === "revision") d.loaded_registry_revision = "changed";
     if (change === "unavailable") d.routes.forEach((r) => { r.effectively_eligible = false; });
-    assert.throws(() => verifyDiscovery(d, "glm-flash", models, "fixture", baseUrl));
+    assert.throws(() => verifyDiscovery(d, deepseek.model, models, "fixture", baseUrl));
   }
 });
 
-test("remote HTTP preflight binds revision; transport sends one constrained request and validates Zai/Ark identities", async () => {
+test("remote HTTP preflight binds revision; every DeepSeek role sends one Tencent-only request", async () => {
   const ready = await preflightBackfill(models);
-  for (const candidate of [zai, ark]) {
-    selected = candidate;
+  for (const role of ["score", "understand", "summarize"] as const) {
+    selected = tencent;
     const before = hits;
-    await prepareGatewayRequest("glm-flash", 1000, ready.models.score)!.send("chat/completions", { enable_thinking: false });
+    await prepareGatewayRequest(deepseek.model, 1000, ready.models[role])!.send("chat/completions", { enable_thinking: false });
     assert.equal(hits - before, 1);
   }
-  selected = { ...zai, credentialProfile: "other_account" };
-  await assert.rejects(() => prepareGatewayRequest("glm-flash", 1000, ready.models.score)!.send("chat/completions", { enable_thinking: false }), /route mismatch/);
-  assert.throws(() => prepareGatewayRequest("glm-flash", 1000, glm), /verified Gateway registry revision/);
+  selected = { ...tencent, credentialProfile: "other_account" };
+  await assert.rejects(() => prepareGatewayRequest(deepseek.model, 1000, ready.models.score)!.send("chat/completions", { enable_thinking: false }), /route mismatch/);
+  assert.throws(() => prepareGatewayRequest(deepseek.model, 1000, deepseek), /verified Gateway registry revision/);
   stale = true; await assert.rejects(ready.check, /configuration changed/); stale = false;
 });
 

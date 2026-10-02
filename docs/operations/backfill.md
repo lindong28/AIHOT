@@ -1,8 +1,8 @@
 # 历史原文回填
 
-供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。历史批次通过同一个个人 llm-gateway 限制候选路由，GLM 允许自部署与已授权的两个订阅来源，Qwen 仅允许自部署。2026-10-02 用户明确升级 DeepSeek 至 V4.1 Flash，并授权此次 backfill 使用腾讯 VOD 公司账户特例：摘要仅允许 `tencent-vod` provider 的 `company_tencent_vod`，不回退自托管或其它付费来源。
+供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。历史批次通过同一个个人 llm-gateway 限制候选路由。2026-10-03 用户明确将回填中的 GLM 全部替换为 DeepSeek V4.1 Flash：评分、内容理解和摘要仅允许 `tencent-vod` provider 的 `company_tencent_vod`，按公司付费归属，不回退自托管或其它付费来源；预筛与结构仍只用自托管 Qwen。
 
-V4.1 配置与校验代码已更新，运行时接入尚未完成：个人 Gateway 的 `aihot` personal 项目目前不具备 company_paid 腾讯账户资格，须由 Gateway 维护者落实该特例后才能通过预检。本次未变更生产环境或既有批次；旧 V4 绑定会被新版预检拒绝，开始执行后的绑定不可改写，后续 V4.1 回填须准备新批次。已有回执和历史验收读数保留原模型名。
+个人 Gateway 的 `aihot` 已登记 personal/company 双归属，腾讯账户仍为 `company_paid`。新绑定按当前策略预检；旧 GLM/V4 绑定不能启动新调用，开始执行后的绑定不可改写。已完成批次及回执保留原模型名，不重算；后续批次使用新配置。切换决定和验证边界见[模型替换记录](../references/20261003-backfill-deepseek.md)。以下旧批次的 GLM、自托管 DeepSeek 读数均为历史快照，不表示当前配置。
 
 2026-10-02 上线快照：AIHOT `bbbb789` 已发布至生产 `backfill-bbbb789`，个人 Gateway `2d5d4aab549ae355339509469af60703d85f11d9` 已重装运行。启动批已导入，首篇完成处理并公开；生产 timer 与 Mac 监督已启动。以下读数不表示整批或全部历史已完成，具体覆盖与待办见下文。
 
@@ -62,15 +62,15 @@ node scripts/backfill.ts status
 | 角色键 | 模型与参数来源 |
 |---|---|
 | `prefilter`、`structure` | 同一个 Qwen3.8-Flash 同系列部署，沿用 `qwen3.8-flash` preset |
-| `score` | GLM5.3-Flash，沿用 `glm-5.3-flash-selection` preset，双评分 |
-| `understand` | GLM5.3-Flash，沿用 `glm-5.3-flash` preset |
+| `score` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash-think` preset，双评分；请求上限 5024 tokens、120 秒，temperature 0.2 |
+| `understand` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` 非思考 preset |
 | `summarize` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` preset；唯一候选为 `company_tencent_vod/deepseek-v4.1-flash/stream`，actual model 为 `openai/deepseek-v4.1-flash` |
 
-绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。
+绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；理解和摘要共享非思考 preset，绑定也须相同。开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 
-预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯摘要另外要求包含 company。主 Gateway 的 `aihot` 应登记 `billing_scope=["personal","company"]`，订阅逐项目授权和实际 credential 资金归属保持不变。每个角色至少有一个候选可用即可，不要求未部署的 GLM 自托管候选 ready。GLM 候选按 self-hosted → `personal_zai`（`zhipu`）→ `personal_ark`（`volcengine-ark`），订阅候选还必须为 `funding_source=personal_subscription`；Qwen 不开放商业 API。DeepSeek 摘要必须是 V4.1 Flash 的唯一腾讯候选，资金归属保持真实的 `company_paid`；不允许伪装为 personal，也不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
+预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯角色另外要求包含 company。主 Gateway 的 `aihot` 登记 `billing_scope=["personal","company"]`，各账户保留实际资金归属。每个角色至少有一个候选可用；Qwen 不开放商业 API。评分、理解和摘要必须使用 V4.1 Flash 的唯一腾讯候选，资金归属为 `company_paid`；不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
 
 ```bash
 node scripts/backfill.ts configure BATCH_ID deploy/production/backfill-models.json

@@ -2,11 +2,11 @@
 
 面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
 
-实时与历史两条模型链均经个人 Gateway，历史启动批已导入并开始处理。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)：Qwen 仅限 self-hosted，GLM 可依次使用 self-hosted、`personal_zai`、`personal_ark`，DeepSeek V4.1 Flash 摘要仅限 `company_tencent_vod`；请求按允许路由集合与 registry revision 限定，不扩大到其他商业 API。
+实时与历史两条模型链均经个人 Gateway，历史启动批已导入并开始处理。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)：Qwen 仅限 self-hosted，评分、理解与摘要统一使用 DeepSeek V4.1 Flash，唯一候选为 `company_tencent_vod`；请求按允许路由集合与 registry revision 限定，不扩大到其他商业 API。
 
 ## 环境与持久数据
 
-DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`，推理变体为 `deepseek-v4.1-flash-think`。摘要、归组、综述、报告、翻译与监控统一选择 V4.1；backfill 摘要另外固定腾讯 VOD，见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
+DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`，推理变体为 `deepseek-v4.1-flash-think`。摘要、归组、综述、报告、翻译与监控统一选择 V4.1；backfill 评分、理解与摘要另外固定腾讯 VOD，见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
 
 V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库模型设置、运行进程或既有回填绑定。Gateway 项目需显式登记 personal/company 双归属，腾讯账户保持 company_paid；应用预检核对双归属和唯一腾讯路由。启动回填前必须以运行中的 Gateway 完成预检与真实模型验证，不能把源文件已修改视为生产已加载。
 
