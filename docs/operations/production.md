@@ -2,7 +2,7 @@
 
 面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
 
-实时与历史两条模型链均经个人 Gateway，历史回填尚未启动。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向 `personal_bailian_token_plan::qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)。
+实时与历史两条模型链均经个人 Gateway，历史回填尚未启动。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)，保留 self-hosted 限制与显式 route，不使用实时流的商业回退。
 
 ## 环境与持久数据
 
