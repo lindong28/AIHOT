@@ -159,15 +159,17 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
             const [analysis] = await sql`SELECT relevance FROM analyses WHERE article_id=${articleId}
               AND input_revision=(SELECT revision FROM articles WHERE id=${articleId}) ORDER BY id DESC LIMIT 1`;
             state = a!.processing_state === "skipped" ? "skipped" : analysis?.relevance ?? "missing-analysis";
-            if (!["pass", "block", "skipped"].includes(state)) throw new Error(`Analysis not complete: ${state}`);
+            if (!["pass", "block", "unknown", "skipped"].includes(state)) throw new Error(`Analysis not complete: ${state}`);
             await publishArticle(articleId);
           } else {
             ({ state } = await backfillContext.run({ runId: id, models: ready.models, beforeCall }, () => processArticle(articleId)));
           }
-          if (!["pass", "block", "skipped"].includes(state)) throw new Error(`Analysis not complete: ${state}`);
+          // Native content checks may leave unusable copy as unknown; that is a filtered result,
+          // not an executor failure. Exceptions and missing analyses still require attention.
+          if (!["pass", "block", "unknown", "skipped"].includes(state)) throw new Error(`Analysis not complete: ${state}`);
           await beforeCall("finished", "");
           const [p] = await sql`SELECT visibility,eligible FROM publications WHERE article_id=${articleId}`;
-          await sql`UPDATE backfill_items SET state=${p?.visibility === "public" && p.eligible ? "published" : "filtered"},stage='finished',reason=NULL,updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
+          await sql`UPDATE backfill_items SET state=${p?.visibility === "public" && p.eligible ? "published" : "filtered"},stage='finished',reason=${state === "unknown" ? "analysis_unknown" : null},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
           processed++;
         } catch (e) {
           await sql`UPDATE backfill_items SET state=${e instanceof BackfillPaused ? "pending" : "failed"},reason=${String(e).slice(0,500)},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;

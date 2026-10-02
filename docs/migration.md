@@ -11,7 +11,7 @@
 | 生产采集与处理 | 10:30 CST 快照：682 篇文章，88 篇满足公开条件，其中精选 12 篇，未知回执为 0；此前来源快照中 40 RSS、10 Web、4 JSON 健康状态均为 ok | X 来源快照为 109 个账号中 21 个 ok、88 个 unknown，首次触发 SocialData 预算退避 15 分钟；AIHOT 维护者跟进剩余 X 首采及此前观察到的待处理、blocked 条目，不上调既有预算 |
 | 个人 Gateway 路径 | 用户知悉用途条件后明确选择 Token Plan 用于生产后端及无人值守批量调用；Qwen、GLM、DeepSeek、Embedding 均有真实成功账本，各取 1 个应用回执与唯一 attempt 匹配 | 该选择不改变供应商条款；4 例匹配不外推全部请求或总费用，重启恢复未验 |
 | 页面与发布 | Nginx 于 `2026-10-02T02:25:07Z` reload，原域名与 TLS 保留；新站页面、详情、RSS/API 已读到新内容，公网 smoke 无跳过项；条款、隐私已应用用户确认正文 | reload 后首次源站请求出现 404，随后公网检查正常；AIHOT 维护者跟进后续稳定性，不将短窗口验证写成长期保证 |
-| 微信、历史与告警 | Wechat2RSS 仍原机运行；44 条历史启动批已运行并产生公开内容，回填 timer 与 Mac 监督已启动，异常与恢复通知已发送 | 微信迁移未完成；回填 1 条内容校验失败，主体确认与全历史余量审核归 AIHOT 迁移维护者；其他新服务外部告警仍待 AIHOT 维护者接管 |
+| 微信、历史与告警 | Wechat2RSS 仍原机运行；44 条历史启动批已完成，内容校验未通过计为过滤、无需介入；回填 timer 与 Mac 监督已启动，异常与恢复通知已发送 | 微信迁移未完成；全历史余量审核归 AIHOT 迁移维护者；其他新服务外部告警仍待 AIHOT 维护者接管 |
 
 操作、发布目录、状态检查与回滚见[生产运维](operations/production.md)；停止时间及拓扑决定见[切换记录](references/20261001-production-cutover.md)。以下本机阶段记录保留原时间范围。
 
@@ -41,7 +41,7 @@
 | MIG-EVAL-001 | 待定；后续由用户决定，不阻塞切站 | 是否迁移旧评测样本、人工标注和实验结果；本轮不转换、不删除旧资产 |
 | MIG-HISTORY-001 | 启动批审核已完成，余量待 AIHOT 迁移维护者继续 | 54 候选中批准 44 条、10 条上下文待核实；其余原始字段来源、摘要/全文、日期占位、同身份版本差异、公众号与 X 上下文仍须清洗和映射，不把全量诊断候选数当合格分母 |
 | MIG-BUDGET-001 | 授权路由已上线、首批全量请求已核账；Ark 后备能力待 Gateway 维护者核实 | 回填 Qwen/DeepSeek 仅公司 GPU 自部署；GLM 限 self-hosted → personal_zai → personal_ark。157 completed 回执对应 157 logical success、173 attempt，全部在 allowlist 内，无其他按量 API；Ark 4 次 fallback 均 429，最终 GLM 由 Zai 完成，限速/额度原因未核实；实时流配置不变 |
-| MIG-BACKFILL-001 | 已上线并运行首批，43/44、needs_attention；内容处置归 AIHOT 迁移维护者 | AIHOT bbbb789、生产 backfill-bbbb789；批次 f8ff402f-fb8c-47a2-8170-d2fb9268e641 于 08:06 UTC 为 28 published、13 filtered、2 existing、1 failed，2/3 天完成、10 excluded。五角色批内真实覆盖，公开页面与后台已读；timer、监督及异常/恢复通知已验。qb20oni3wgw91r0ih25hg37dh 因主体 guard 拒绝文案而 unknown：确认主体并受控重新写作，保留 5 个 completed 回执，不透明重发或放宽标准；非未知扣费。操作与证据见[历史回填](operations/backfill.md)、[启动决定](references/20261002-backfill-launch.md)，全历史余量另由 MIG-HISTORY-001 接续 |
+| MIG-BACKFILL-001 | 首批完成，44/44、complete、3/3 天；全历史余量另由 MIG-HISTORY-001 接续 | 批次 f8ff402f-fb8c-47a2-8170-d2fb9268e641 于 12:51 UTC 后台读数为 28 published、14 filtered、2 existing、0 failed、10 excluded。用户明确内容校验未通过无需介入；qb20oni3wgw91r0ih25hg37dh 的 unknown 分析已计为 filtered，保留 5 个 completed 回执、未重发模型请求。生产 backfill-content-filter-20261002 保留此前 receipt-recovery 部署。五角色批内真实覆盖，公开页面与后台已读；timer、监督及异常/恢复通知已验。操作与证据见[历史回填](operations/backfill.md)、[启动决定](references/20261002-backfill-launch.md) |
 
 ## 本机 MVP
 

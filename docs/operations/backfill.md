@@ -43,7 +43,13 @@ node scripts/backfill.ts status
 
 2026-10-02 08:06 UTC 首批进入 `needs_attention`：43/44（97.7%）、2/3 天，28 published、13 filtered、2 existing、1 failed，另 10 excluded。真实后台浏览器取得相同终态。逐日 published/filtered/existing/failed 分别为 08-17：8/1/0/0，08-18：10/4/1/1，08-19：10/8/1/0。这是本启动批完成率，不是全历史完成率。
 
-失败条目 `qb20oni3wgw91r0ih25hg37dh` 在发布阶段报 `Analysis not complete: unknown`；其 5 个模型回执均 completed，理解回执为 `3dd29fa5-6be3-4990-9e14-a5c98b73d6c7`。原文来自 `radar-x-sama`，模型生成 OpenAI 主体的标题和摘要，但原文未明写该实体，既有 identity guard 标出 `unsupportedTitleEntityIds/unsupportedSummaryEntityIds=[openai]` 并 fallback，未取得可用中文文案。这是内容校验未通过，不是供应商超时或未知扣费。由 AIHOT 迁移维护者确认内容主体并处理受控重新写作；保留已完成回执，不透明重发，不自动重试或放宽既有 guard/发布标准。
+当时的失败条目 `qb20oni3wgw91r0ih25hg37dh` 在发布阶段报 `Analysis not complete: unknown`；其 5 个模型回执均 completed，理解回执为 `3dd29fa5-6be3-4990-9e14-a5c98b73d6c7`。原文来自 `radar-x-sama`，模型生成 OpenAI 主体的标题和摘要，但原文未明写该实体，既有 identity guard 标出 `unsupportedTitleEntityIds/unsupportedSummaryEntityIds=[openai]` 并 fallback，未取得可用中文文案。这是内容校验未通过，不是供应商超时或未知扣费。
+
+2026-10-02 用户调整处置口径：上游内容过滤或文案校验未通过属于内容结果，无需运营介入。回填将已持久化的 `unknown` 分析结果计为 `filtered`（原因 `analysis_unknown`），计入已处理和完成天数，不再列为失败待处理；原文、分析及回执保留，公开展示条件不变。不再要求对上述条目确认主体或重新写作。缺失分析、模型调用异常、未知回执等执行问题仍计为失败。旧执行器留下的此类失败可在更新代码后重试，复用已有分析；重试仍须通过批次模型预检。
+
+12:48 UTC 已完成生产状态纠正，12:51 UTC 从真实后台页面读到：44/44、3/3 天、28 published、14 filtered、2 existing、0 failed，另 10 excluded。新发布目录 `backfill-content-filter-20261002` 复制当时的 `receipt-recovery-20261002`，仅覆盖回填执行器文件，保留同期回执修复。常规重试被模型预检挡在 `waiting_models`，未领取条目；维护者随后在持有批次锁的单笔事务中，核对原文 revision/hash、已持久化 unknown 分析与五个 completed 回执后，将该条计为 filtered、批次计为 complete，并写入审计记录。没有新增模型调用，没有改写原文、分析、回执或公开状态。一次性处置脚本和测试日志保留在主 checkout `.data/backfill-content-filter-20261002/`，不入 Git；此结果不证明当时所有模型就绪。
+
+本次实现验证：回填专项 8 项、后端全套 175 项、Web 11 项通过，另完成 typecheck、Web 构建及公网 smoke。专项使用本机 PostgreSQL 与模拟模型，覆盖短文缺文案、主体 guard 拒绝、既有失败恢复和真正执行异常；线上验收为一个启动批及上述一条历史失败恢复，不外推全历史或模型质量。
 
 主线程完成本批全量回执与 Gateway 账本关联：157 条应用回执全部 completed（预筛 42、结构 29、评分 58、理解 5、摘要 23），对应 157 个 logical success、173 次 attempt。self-hosted 为 94 次 success；Zai 为 63 次 success 与 12 次 HTTP 429；Ark 实际接到 4 次 fallback，均 HTTP 429、无 success。173 次 attempt 全在调用方 allowlist 内，无其他按量 API；最终 GLM 都由 Zai 完成。429 是限速还是额度所致尚未核实，不能据此声称余额耗尽或配置不支持，也未证明 Ark 是成功后备。原始关联证据位于主 checkout `.data/backfill-launch-20261002/receipt-ledger-acceptance.json`，不入 Git。该核账证明本批请求及路由关联，不是供应商结算账单。
 
@@ -134,4 +140,4 @@ python3 deploy/production/backfill-monitor.py uninstall
 
 暂停按钮或 `node scripts/backfill.ts pause BATCH_ID` 阻止后续模型调用；在途请求仍会结算，已发布内容不撤回。恢复沿用已结算回执。`waiting_models` 表示没有通过就绪检查，修复部署或绑定后恢复；`needs_attention` 查看条目错误，修复后使用“重试失败项”或 `retry BATCH_ID`。未知回执先在现有运维入口核对 Gateway 账本，再允许恢复；单纯点击重试不会重新发送未知请求。
 
-范围与验收记录见[迁移清单](../migration.md)和[启动决定](../references/20261002-backfill-launch.md)。本批 `needs_attention` 条目的主体确认与受控重新写作、全历史余量的完整性审核及后续批次归 AIHOT 迁移维护者；Ark HTTP 429 的限速/额度归因及成功后备能力尚未核实，归 Gateway 维护者。全历史余量不计入本启动批完成量。
+范围与验收记录见[迁移清单](../migration.md)和[启动决定](../references/20261002-backfill-launch.md)。全历史余量的完整性审核及后续批次归 AIHOT 迁移维护者；上游内容过滤不再要求主体确认或重新写作。Ark HTTP 429 的限速/额度归因及成功后备能力尚未核实，归 Gateway 维护者。全历史余量不计入本启动批完成量。

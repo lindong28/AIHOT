@@ -45,7 +45,7 @@ const server = createServer(async (req,res) => {
   const answer = stage === "prefilter" ? { label:user.includes("OFFTOPIC") ? "BLOCK" : "PASS",reason:"fixture" }
     : stage === "score" ? {attentionScore:user.includes("LOW") ? 35 : 80}
     : stage === "structure" ? {category:"ai-models",tags:["模型发布"],subjects:[],fact:{title:"新模型发布",subject:"实验室",action:"发布",object:"模型",occurredAt:null}}
-    : stage === "understand" ? {itemType:"model_release",authorRole:"principal",tags:["模型发布"],editorialJudgment:"发布了可下载的新模型",titleZh:"实验室发布开放模型",summaryZh:"实验室发布可下载的新模型，并公布基准成绩与使用说明。"}
+    : stage === "understand" ? {itemType:"model_release",authorRole:"principal",tags:["模型发布"],editorialJudgment:"发布了可下载的新模型",titleZh:user.includes("IDENTITY_GUARD") ? "OpenAI 发布开放模型" : "实验室发布开放模型",summaryZh:user.includes("IDENTITY_GUARD") ? "OpenAI 发布可下载的新模型。" : "实验室发布可下载的新模型，并公布基准成绩与使用说明。"}
     : "title_zh: 模型更新\nsummary_zh: 实验室更新模型，并公布测试方法及使用说明。";
   const binding = Object.values(models).find(b=>b.model===body.model);
   res.setHeader("content-type","application/json");res.end(JSON.stringify({
@@ -158,17 +158,30 @@ test("executor lock prevents concurrent drains; stale running rows recover using
   await sweepUnprocessed();assert.equal(await queueProcessing(a!.article_id),null);
 });
 
-test("unknown native analysis stays incomplete after retry",async()=>{
+test("native content rejection counts as filtered, including recovery of previously failed items",async()=>{
   const short=entry("LOW_SHORT");short.material.bodyText="We shipped it.";short.quality.contentHash=materialHash(short.material);
-  const id=await batch([short,entry("GOOD_AFTER_SHORT","2026-06-02")]);
-  assert.equal((await runBackfill(id,{concurrency:2,maxItems:2})).state,"needs_attention");
-  const [incomplete]=await sql`SELECT a.processing_state,n.relevance FROM backfill_items i JOIN articles a ON a.id=i.article_id JOIN analyses n ON n.article_id=a.id WHERE i.run_id=${id} AND i.state='failed'`;
-  assert.equal(incomplete!.processing_state,"analyzed");assert.equal(incomplete!.relevance,"unknown");
+  const id=await batch([short,entry("IDENTITY_GUARD"),entry("GOOD_AFTER_SHORT","2026-06-02")]);
+  assert.equal((await runBackfill(id,{concurrency:2,maxItems:3})).state,"complete");
+  const rejected=await sql`SELECT i.article_id,i.reason,a.processing_state,n.relevance,n.output,p.eligible,p.selected
+    FROM backfill_items i JOIN articles a ON a.id=i.article_id JOIN analyses n ON n.article_id=a.id
+    JOIN publications p ON p.article_id=a.id WHERE i.run_id=${id} AND i.state='filtered'`;
+  assert.equal(rejected.length,2);
+  for (const row of rejected) {
+    assert.equal(row.processing_state,"analyzed");assert.equal(row.relevance,"unknown");
+    assert.equal(row.eligible,false);assert.equal(row.selected,false);assert.equal(row.reason,"analysis_unknown");
+  }
+  assert.ok(rejected.some(row=>row.output.identityGuard?.outcome==="fallback"));
+  // Recreate the old runner's terminal state; recovery must reuse the existing analyses and receipts.
+  await sql`UPDATE backfill_items SET state='failed',reason='Error: Analysis not complete: unknown' WHERE run_id=${id} AND state='filtered'`;
+  await sql`UPDATE backfill_runs SET state='needs_attention' WHERE id=${id}`;
   await controlBackfill(id,"retry","test");const before=requests.length;
-  assert.equal((await runBackfill(id,{concurrency:2,maxItems:2})).state,"needs_attention");
+  assert.equal((await runBackfill(id,{concurrency:2,maxItems:2})).state,"complete");
   assert.equal(requests.length,before);
   const run=(await backfillOverview()).runs.find((r:any)=>r.id===id)!;
-  assert.equal(run.days.reduce((s,d)=>s+Number(d.done),0),1);
+  assert.equal(run.days.reduce((s,d)=>s+Number(d.done),0),3);
+  assert.equal(run.days.reduce((s,d)=>s+Number(d.filtered),0),2);
+  assert.equal(run.days.reduce((s,d)=>s+Number(d.failed),0),0);
+  assert.equal(run.days.filter(d=>d.done===d.total).length,2);
 });
 
 test("model bindings cannot change while discovery is in flight even after pause",async()=>{
