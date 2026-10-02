@@ -51,7 +51,7 @@ const server = createServer(async (req,res) => {
   res.setHeader("content-type","application/json");res.end(JSON.stringify({
     choices:[{message:{content:malformed ? "bad" : binding ? typeof answer === "string" ? answer : JSON.stringify(answer) : '{"ok":true}'}}],
     usage:{prompt_tokens:20,completion_tokens:10},
-    llm_gateway:{projection_version:1,logical_request_id:req.headers["x-llm-request-id"],selected_route_id:binding?.route,actual_model:binding?.actualModel},
+    llm_gateway:{projection_version:1,logical_request_id:req.headers["x-llm-request-id"],provider_id:binding ? "self-hosted" : "bailian",selected_route_id:binding?.route,actual_model:binding?.actualModel},
   }));
 });
 await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -62,7 +62,7 @@ const directory=await mkdtemp(join(tmpdir(),"aihot-backfill-fixtures-"));
 const cli=join(directory,"gateway-discover");
 const discovery=(model:string)=>({projection_version:2,view_scope:"logical_model",requested_logical_model:model,status:"ready",
   project:{id:"aihot-test",billing_scope:"personal"},project_allowed_logical_model_ids:[model],registry:{file_revision:"test-revision",loaded_revision:"test-revision"},endpoint:`${baseUrl}/v1/chat/completions`,
-  routes:Object.values(models).filter(b=>b.model===model).map(b=>({id:b.route,logical_model:model,actual_model:b.actualModel,effectively_eligible:true,project_allowed:true,policy_allowed:true})),
+  routes:Object.values(models).filter(b=>b.model===model).map(b=>({id:b.route,logical_model:model,actual_model:b.actualModel,provider_id:"self-hosted",effectively_eligible:true,project_allowed:true,policy_allowed:true})),
 });
 await writeFile(cli,`#!${process.execPath}\nconst views=${JSON.stringify(Object.fromEntries(["gpu-qwen","gpu-glm","gpu-deepseek"].map(m=>[m,discovery(m)])))}; console.log(JSON.stringify(views[process.argv.at(-1)]));\n`,{mode:0o700});
 process.env.LLM_GATEWAY_CLI=cli;
@@ -91,6 +91,9 @@ test("discovery rejects commercial, wrong-project and ineligible routes before i
   const view=discovery("gpu-qwen");assert.equal(verifyDiscovery(view,"gpu-qwen",models,"aihot-test",baseUrl),"test-revision");
   for(const change of [ {project:{id:"company",billing_scope:"company"}}, {routes:view.routes.map(r=>({...r,actual_model:"openai/qwen"}))}, {routes:view.routes.map(r=>({...r,effectively_eligible:false}))}, {endpoint:"http://elsewhere/v1/chat/completions"} ]) {
     assert.throws(()=>verifyDiscovery({...view,...change},"gpu-qwen",models,"aihot-test",baseUrl));
+  }
+  for (const provider_id of ["deepseek", "bailian", undefined]) {
+    assert.throws(()=>verifyDiscovery({...view,routes:view.routes.map(r=>({...r,provider_id}))},"gpu-qwen",models,"aihot-test",baseUrl),/Self-hosted route is not eligible/);
   }
 });
 

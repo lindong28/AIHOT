@@ -1,5 +1,6 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
+import { BACKFILL_PROVIDER } from "../backfill/context.ts";
 
 export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
@@ -51,7 +52,7 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: { 
       if (companion?.projection_version !== 1 || companion.logical_request_id !== requestId) {
         throw new Error(`Gateway identity mismatch; reconcile request ${requestId} before retrying`);
       }
-      if (pin && (companion.selected_route_id !== pin.route || companion.actual_model !== pin.actualModel)) {
+      if (pin && (companion.provider_id !== BACKFILL_PROVIDER || companion.selected_route_id !== pin.route || companion.actual_model !== pin.actualModel)) {
         throw new Error(`Gateway backfill route mismatch; reconcile request ${requestId} before retrying`);
       }
       return { ...json, llm_gateway: companion };

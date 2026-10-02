@@ -9,11 +9,14 @@ import { closeDb, sql } from "@aihot/backend/db";
 import { chatJson } from "@aihot/backend/providers/llm";
 import { ReceiptUnknownError } from "@aihot/backend/providers/receipts";
 import { autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
+import { backfillContext, type BackfillBindings } from "@aihot/backend/backfill/context";
 
 let mode = "ok";
 let hits = 0;
 const fixtureErrors: unknown[] = [];
 const usage = { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 };
+const binding = { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" };
+const backfillModels: BackfillBindings = { prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding };
 const server = createServer(async (req, res) => {
   hits++;
   try {
@@ -34,14 +37,22 @@ const server = createServer(async (req, res) => {
     assert.equal(body.api_key, undefined);
     if (mode === "disconnect") { req.socket.destroy(); return; }
     if (mode === "http-error") { res.writeHead(503); res.end("upstream uncertain"); return; }
-    const companion = { projection_version: 1, logical_request_id: mode === "mismatch" ? "wrong" : id, attempt_id: "stub-attempt" };
+    const pinned = req.headers["x-llm-route"] !== undefined;
+    if (pinned) { assert.equal(req.headers["x-llm-route"], binding.route); assert.equal(body.model, binding.model); }
+    const companion = { projection_version: 1, logical_request_id: mode === "mismatch" ? "wrong" : id, attempt_id: "stub-attempt",
+      provider_id: mode.includes("commercial") ? "deepseek" : mode.includes("no-provider") ? undefined : "self-hosted",
+      selected_route_id: mode.includes("wrong-route") ? "other-route" : binding.route,
+      actual_model: mode.includes("wrong-model") ? "openai/qwen" : binding.actualModel };
     const result = req.url === "/v1/embeddings"
       ? { data: mode === "bad-embedding" ? [null] : body.input.map((_: string, index: number) => ({ index, embedding: [0.25, 0.75] })).reverse() }
       : { choices: [{ message: { content: mode === "bad-output" ? '{"ok":"not boolean"}' : '{"ok":true}' } }] };
     if (mode.startsWith("gzip")) {
       res.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip",
         ...(mode === "gzip-missing" ? {} : { "X-LLM-Gateway-projection-version": "1",
-          "X-LLM-Gateway-logical-request-id": encodeURIComponent(mode === "gzip-mismatch" ? "wrong" : String(id)) }) });
+          "X-LLM-Gateway-logical-request-id": encodeURIComponent(mode === "gzip-mismatch" ? "wrong" : String(id)),
+          ...(pinned ? { "X-LLM-Gateway-selected-route-id": encodeURIComponent(companion.selected_route_id),
+            "X-LLM-Gateway-actual-model": encodeURIComponent(companion.actual_model),
+            ...(companion.provider_id ? { "X-LLM-Gateway-provider-id": companion.provider_id } : {}) } : {}) }) });
       res.end(gzipSync(JSON.stringify({ ...result, usage })));
       return;
     }
@@ -76,6 +87,23 @@ after(async () => {
 });
 
 const ask = (subject: string) => chatJson({ model: "default", purpose: "gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) });
+const askBackfill = (subject: string) => backfillContext.run({ runId: "fixture", models: backfillModels, beforeCall: async () => {} },
+  () => chatJson({ model: "qwen3.8-flash", purpose: "backfill_gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) }));
+
+for (const encoding of ["", "gzip-"]) {
+  test(`backfill ${encoding || "JSON "}accepts only matching self-hosted identity`, async () => {
+    mode = `${encoding}ok`;
+    assert.deepEqual((await askBackfill(tag())).data, { ok: true });
+    for (const failure of ["commercial", "no-provider", "wrong-route", "wrong-model"]) {
+      mode = `${encoding}${failure}`;
+      const subject = tag(), before = hits;
+      await assert.rejects(askBackfill(subject), ReceiptUnknownError);
+      mode = `${encoding}ok`;
+      await assert.rejects(askBackfill(subject), ReceiptUnknownError);
+      assert.equal(hits - before, 1, "identity failures never replay or fall back");
+    }
+  });
+}
 
 test("Gateway chat needs no provider key, persists identity before send, and reuses receipts", async () => {
   mode = "ok";

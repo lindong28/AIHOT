@@ -48,7 +48,9 @@ MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_I
 
 将三个大写参数替换为真实批次 ID、已确认的 GPU 并发容量、本次最多处理条数。`resume` 只改变状态，需运行执行命令；命令到达条数上限、队列耗尽或暂停后退出，进度留在数据库。单条失败保留错误并继续本次限额；本次结束后仍有失败则进入 `needs_attention`。未部署模型时不要执行最后一行。首批真实联调应核对五个角色的响应、Gateway 账本身份和最终公开页面，再扩量。
 
-执行前检查个人项目、模型授权、self_hosted 路由与已加载版本；每次调用固定 route 并核对响应中的 route/actual model，不允许付费 fallback。预算仍经过原生回执，独立服务名 `backfill`；默认限额见后台预算页，未知费用不会记成零。历史回填不调用 embedding、不生成历史日报或当前热点，也不触发额外的全文/引用翻译。
+回填只允许个人 Gateway 的 `provider_id=self-hosted`，即自行部署的 GPU 模型；第三方托管 API（含订阅套餐）不允许用于回填。这是代码强制限制，不依赖 Gateway 的默认 provider 优先级，也不能只凭 `self_hosted/` 模型名前缀判定。五个角色均执行同一限制。
+
+执行前检查个人项目、模型授权、路由的 `provider_id=self-hosted`、实际模型与已加载版本；每次调用通过 `X-LLM-Route` 固定 route，并核对响应中的 provider、route 和 actual model。自部署路由不可用时失败，不切换到第三方 API；响应身份缺失或不符则保留未知回执，核账前不重发。预算仍经过原生回执，独立服务名 `backfill`；默认限额见后台预算页，未知费用不会记成零。历史回填不调用 embedding、不生成历史日报或当前热点，也不触发额外的全文/引用翻译。
 
 ## 查看与续跑
 

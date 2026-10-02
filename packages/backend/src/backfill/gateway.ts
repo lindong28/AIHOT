@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { BACKFILL_PRESETS, type BackfillBindings, type BackfillRole } from "./context.ts";
+import { BACKFILL_PRESETS, BACKFILL_PROVIDER, type BackfillBindings, type BackfillRole } from "./context.ts";
 
 const binding = z.object({ model: z.string().min(1), route: z.string().min(1), actualModel: z.string().startsWith("self_hosted/") }).strict();
 export const bindingsSchema = z.object({ prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding }).strict()
@@ -14,7 +14,7 @@ export function verifyDiscovery(view: any, model: string, models: BackfillBindin
       !view.registry?.loaded_revision || view.registry.loaded_revision !== view.registry.file_revision ||
       view.endpoint !== `${baseUrl}/v1/chat/completions`) throw new Error(`Gateway discovery is not ready for personal backfill model ${model}`);
   for (const b of Object.values(models).filter((b) => b.model === model)) {
-    if (!view.routes?.some((r: any) => r.id === b.route && r.logical_model === model && r.actual_model === b.actualModel &&
+    if (!view.routes?.some((r: any) => r.id === b.route && r.logical_model === model && r.actual_model === b.actualModel && r.provider_id === BACKFILL_PROVIDER &&
         r.effectively_eligible === true && r.project_allowed === true && r.policy_allowed === true)) throw new Error(`Self-hosted route is not eligible: ${b.route}`);
   }
   return view.registry.loaded_revision;
