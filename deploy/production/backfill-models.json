@@ -1,0 +1,81 @@
+{
+  "prefilter": {
+    "model": "qwen3.8-flash",
+    "routes": [
+      {
+        "route": "personal_self_hosted/qwen3.8-flash-next/stream",
+        "actualModel": "self_hosted/qwen3.8-flash-next",
+        "provider": "self-hosted",
+        "credentialProfile": "personal_self_hosted"
+      }
+    ]
+  },
+  "structure": {
+    "model": "qwen3.8-flash",
+    "routes": [
+      {
+        "route": "personal_self_hosted/qwen3.8-flash-next/stream",
+        "actualModel": "self_hosted/qwen3.8-flash-next",
+        "provider": "self-hosted",
+        "credentialProfile": "personal_self_hosted"
+      }
+    ]
+  },
+  "score": {
+    "model": "glm-5.3-flash",
+    "routes": [
+      {
+        "route": "personal_self_hosted/glm-5.3-flash/stream",
+        "actualModel": "self_hosted/glm-5.3-flash",
+        "provider": "self-hosted",
+        "credentialProfile": "personal_self_hosted"
+      },
+      {
+        "route": "personal_zai/glm-5.3-flash/stream",
+        "actualModel": "openai/glm-5.3-flash",
+        "provider": "zhipu",
+        "credentialProfile": "personal_zai"
+      },
+      {
+        "route": "personal_ark/glm-5.3-flash/stream",
+        "actualModel": "openai/glm-5.3-flash",
+        "provider": "volcengine-ark",
+        "credentialProfile": "personal_ark"
+      }
+    ]
+  },
+  "understand": {
+    "model": "glm-5.3-flash",
+    "routes": [
+      {
+        "route": "personal_self_hosted/glm-5.3-flash/stream",
+        "actualModel": "self_hosted/glm-5.3-flash",
+        "provider": "self-hosted",
+        "credentialProfile": "personal_self_hosted"
+      },
+      {
+        "route": "personal_zai/glm-5.3-flash/stream",
+        "actualModel": "openai/glm-5.3-flash",
+        "provider": "zhipu",
+        "credentialProfile": "personal_zai"
+      },
+      {
+        "route": "personal_ark/glm-5.3-flash/stream",
+        "actualModel": "openai/glm-5.3-flash",
+        "provider": "volcengine-ark",
+        "credentialProfile": "personal_ark"
+      }
+    ]
+  },
+  "summarize": {
+    "model": "deepseek-v4-flash-0731",
+    "routes": [
+      {
+        "route": "personal_self_hosted/deepseek-v4-flash-0731/stream",
+        "actualModel": "self_hosted/deepseek-v4-flash-0731",
+        "provider": "self-hosted",
+        "credentialProfile": "personal_self_hosted"
+      }
+    ]
+  }
+}

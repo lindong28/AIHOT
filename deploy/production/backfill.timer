@@ -1,0 +1,11 @@
+[Unit]
+Description=Continue approved AI Radar historical backfill
+
+[Timer]
+OnActiveSec=15s
+OnUnitInactiveSec=60s
+Unit=aihot-backfill.service
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

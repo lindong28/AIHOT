@@ -93,7 +93,7 @@ test("discovery rejects commercial, wrong-project and ineligible routes before i
     assert.throws(()=>verifyDiscovery({...view,...change},"gpu-qwen",models,"aihot-test",baseUrl));
   }
   for (const provider_id of ["deepseek", "bailian", undefined]) {
-    assert.throws(()=>verifyDiscovery({...view,routes:view.routes.map(r=>({...r,provider_id}))},"gpu-qwen",models,"aihot-test",baseUrl),/Self-hosted route is not eligible/);
+    assert.throws(()=>verifyDiscovery({...view,routes:view.routes.map(r=>({...r,provider_id}))},"gpu-qwen",models,"aihot-test",baseUrl),/Backfill route identity or subscription changed/);
   }
 });
 

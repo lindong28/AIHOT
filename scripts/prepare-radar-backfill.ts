@@ -29,7 +29,18 @@ for (const file of inputs) {
     const date = new Date(row.published_at);
     if (!row.published_at || !Number.isFinite(date.getTime())) { reject("invalid_date"); continue; }
     if (!String(row.content_text ?? "").trim()) { reject("missing_body"); continue; }
-    const m = { sourceId: sourceMap[row.source_id]!, url: row.url, title: row.title, author: row.author ?? null,
+    let url = row.url;
+    // RADAR's official-X collector saved /i/web/status URLs. Convert once here;
+    // native readers retain their single /<handle>/status/<id> representation.
+    try {
+      const old = new URL(url);
+      const match = /^\/i\/web\/status(?:es)?\/(\d+)\/?$/.exec(old.pathname);
+      if (["x.com", "twitter.com", "www.x.com", "www.twitter.com"].includes(old.hostname) && match) {
+        const handle = reviews[`x:${match[1]}`]?.xPost?.handle;
+        url = `https://x.com/${handle && /^[A-Za-z0-9_]+$/.test(handle) ? handle : "i"}/status/${match[1]}`;
+      }
+    } catch { reject("invalid_material"); continue; }
+    const m = { sourceId: sourceMap[row.source_id]!, url, title: row.title, author: row.author ?? null,
       publishedAt: date.toISOString(), bodyText: row.content_text, bodyHtml: sanitizeBody(row.content_html ?? "", row.url) };
     let e: ManifestEntry;
     try {

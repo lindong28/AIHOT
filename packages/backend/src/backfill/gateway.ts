@@ -1,23 +1,48 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { BACKFILL_PRESETS, BACKFILL_PROVIDER, type BackfillBindings, type BackfillRole } from "./context.ts";
+import { BACKFILL_PRESETS, BACKFILL_PROVIDER, bindingRoutes, type BackfillBindings, type BackfillRole } from "./context.ts";
 
-const binding = z.object({ model: z.string().min(1), route: z.string().min(1), actualModel: z.string().startsWith("self_hosted/") }).strict();
+const route = z.object({ route: z.string().min(1), actualModel: z.string().min(1), provider: z.string().min(1), credentialProfile: z.string().min(1) }).strict();
+const binding = z.union([
+  z.object({ model: z.string().min(1), route: z.string().min(1), actualModel: z.string().startsWith("self_hosted/") }).strict(),
+  z.object({ model: z.string().min(1), routes: z.array(route).min(1).max(16) }).strict(),
+]);
 export const bindingsSchema = z.object({ prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding }).strict()
-  .refine((v) => JSON.stringify(v.prefilter) === JSON.stringify(v.structure), "Prefilter and structure share the Qwen preset and must use the same binding");
+  .refine((v) => JSON.stringify(v.prefilter) === JSON.stringify(v.structure), "Prefilter and structure share the Qwen preset and must use the same binding")
+  .superRefine((models, ctx) => {
+    for (const [role, b] of Object.entries(models)) {
+      const candidates = bindingRoutes(b);
+      if (new Set(candidates.map((r) => r.route)).size !== candidates.length) ctx.addIssue({ code: "custom", message: `Duplicate backfill route in ${role}` });
+      for (const r of candidates) {
+        const self = r.provider === BACKFILL_PROVIDER && r.actualModel.startsWith("self_hosted/");
+        const subscription = ["score", "understand"].includes(role) && b.model.startsWith("glm-") &&
+          ((r.provider === "zhipu" && r.credentialProfile === "personal_zai") || (r.provider === "volcengine-ark" && r.credentialProfile === "personal_ark"));
+        if (!self && !subscription) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
+      }
+    }
+  });
 
 export function verifyDiscovery(view: any, model: string, models: BackfillBindings, project: string, baseUrl: string): string {
+  const revision = view.loaded_registry_revision ?? view.registry?.loaded_revision;
+  const fileRevision = view.file_registry_revision ?? view.registry?.file_revision;
   if (view.projection_version !== 2 || view.view_scope !== "logical_model" || view.requested_logical_model !== model ||
       view.status !== "ready" || view.project?.id !== project || view.project?.billing_scope !== "personal" ||
       JSON.stringify(view.project_allowed_logical_model_ids) !== JSON.stringify([model]) ||
-      !view.registry?.loaded_revision || view.registry.loaded_revision !== view.registry.file_revision ||
-      view.endpoint !== `${baseUrl}/v1/chat/completions`) throw new Error(`Gateway discovery is not ready for personal backfill model ${model}`);
+      !revision || revision !== fileRevision ||
+      (!view.loaded_registry_revision && view.endpoint !== `${baseUrl}/v1/chat/completions`)) throw new Error(`Gateway discovery is not ready for personal backfill model ${model}`);
   for (const b of Object.values(models).filter((b) => b.model === model)) {
-    if (!view.routes?.some((r: any) => r.id === b.route && r.logical_model === model && r.actual_model === b.actualModel && r.provider_id === BACKFILL_PROVIDER &&
-        r.effectively_eligible === true && r.project_allowed === true && r.policy_allowed === true)) throw new Error(`Self-hosted route is not eligible: ${b.route}`);
+    let eligible = false;
+    for (const candidate of bindingRoutes(b)) {
+      const found = view.routes?.find((r: any) => r.id === candidate.route && r.actual_model === candidate.actualModel && r.provider_id === candidate.provider &&
+        (!candidate.credentialProfile || r.credential_profile_id === candidate.credentialProfile));
+      if (!found || found.project_allowed === false || found.policy_allowed === false ||
+          (candidate.provider !== BACKFILL_PROVIDER && found.funding_source !== "personal_subscription")) throw new Error(`Backfill route identity or subscription changed: ${candidate.route}`);
+      eligible ||= found.effectively_eligible === true;
+    }
+    if (!eligible) throw new Error(`No eligible authorized backfill route for ${model}`);
   }
-  return view.registry.loaded_revision;
+  return revision;
 }
 
 export async function checkGatewayRevision(baseUrl: string, revision: string): Promise<void> {
@@ -28,7 +53,7 @@ export async function checkGatewayRevision(baseUrl: string, revision: string): P
 
 /** Discovery is read-only. No model check, deployment or cloud fallback is performed here. */
 export async function preflightBackfill(input: unknown): Promise<{ models: BackfillBindings; check: () => Promise<void> }> {
-  if (!input) throw new Error("尚未绑定回填模型，请在部署完成后配置五个角色的自部署路由");
+  if (!input) throw new Error("尚未绑定回填模型，请先配置五个角色的授权路由");
   const models = bindingsSchema.parse(input);
   const project = process.env.LLM_GATEWAY_PROJECT;
   const endpoint = process.env.LLM_GATEWAY_URL;
@@ -38,12 +63,21 @@ export async function preflightBackfill(input: unknown): Promise<{ models: Backf
   const baseUrl = u.toString().replace(/\/+$/, "").replace(/\/v1$/, "");
   const revisions = new Set<string>();
   for (const model of new Set((Object.keys(BACKFILL_PRESETS) as BackfillRole[]).map((r) => models[r].model))) {
-    const { stdout } = await promisify(execFile)(process.env.LLM_GATEWAY_CLI || "llm-gateway",
-      ["--format", "json", "discover", "--project", project, "--logical-model", model], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
-    revisions.add(verifyDiscovery(JSON.parse(stdout), model, models, project, baseUrl));
+    let view: unknown;
+    if (process.env.LLM_GATEWAY_CLI) {
+      const { stdout } = await promisify(execFile)(process.env.LLM_GATEWAY_CLI,
+        ["--format", "json", "discover", "--project", project, "--logical-model", model], { timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+      view = JSON.parse(stdout);
+    } else {
+      const response = await fetch(`${baseUrl}/v1/discovery?model=${encodeURIComponent(model)}`, { headers: { "X-LLM-Project": project }, signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`Gateway discovery HTTP ${response.status}`);
+      view = await response.json();
+    }
+    revisions.add(verifyDiscovery(view, model, models, project, baseUrl));
   }
   if (revisions.size !== 1) throw new Error("Gateway changed during preflight");
   const check = () => checkGatewayRevision(baseUrl, [...revisions][0]!);
   await check();
-  return { models, check };
+  const verified: BackfillBindings = Object.fromEntries(Object.entries(models).map(([role, b]) => [role, { ...b, registryRevision: [...revisions][0]! }])) as BackfillBindings;
+  return { models: verified, check };
 }

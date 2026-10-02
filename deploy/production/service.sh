@@ -2,6 +2,7 @@
 set -euo pipefail
 # Run on the production host; secrets and database survive uninstall.
 action=${1:-status}
+here=$(cd -- "$(dirname -- "$0")" && pwd)
 units=(aihot-api.service aihot-web.service aihot-worker.service)
 installed=()
 for unit in "${units[@]}"; do
@@ -19,14 +20,20 @@ case "$action" in
     sudo systemctl daemon-reload
     sudo systemctl enable "${units[@]}"
     sudo systemctl restart "${units[@]}"
+    if [[ $(systemctl show aihot-backfill.timer -p LoadState --value) != not-found ]]; then bash "$here/backfill-service.sh" install; fi
     echo 'AI Radar services restarted. Check: bash deploy/production/service.sh status; logs: journalctl -u aihot-worker. Public Nginx routing is unchanged.'
     ;;
-  start|restart) sudo systemctl "$action" "${units[@]}" ;;
+  start|restart)
+    sudo systemctl "$action" "${units[@]}"
+    if [[ $(systemctl show aihot-backfill.timer -p LoadState --value) != not-found ]]; then bash "$here/backfill-service.sh" start; fi
+    ;;
   stop)
+    bash "$here/backfill-service.sh" stop
     if ((${#installed[@]})); then sudo systemctl stop "${installed[@]}"; fi
     echo 'AI Radar services stopped (absent services require no action).'
     ;;
   status)
+    bash "$here/backfill-service.sh" status
     if ((${#installed[@]})); then
       systemctl --no-pager status "${installed[@]}"
     else
@@ -34,6 +41,7 @@ case "$action" in
     fi
     ;;
   uninstall)
+    bash "$here/backfill-service.sh" uninstall
     if ((${#installed[@]})); then sudo systemctl disable --now "${installed[@]}"; fi
     for unit in "${units[@]}"; do sudo rm -f "/etc/systemd/system/$unit"; done
     sudo systemctl daemon-reload

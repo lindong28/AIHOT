@@ -6,7 +6,18 @@ export const BACKFILL_PRESETS = {
   understand: "glm-5.3-flash", summarize: "deepseek-v4-flash-0731",
 } as const;
 export type BackfillRole = keyof typeof BACKFILL_PRESETS;
-export interface BackfillBinding { model: string; route: string; actualModel: string }
+export interface BackfillRoute { route: string; actualModel: string; provider: string; credentialProfile?: string }
+export interface BackfillBinding {
+  model: string;
+  // Old single-route manifests remain readable; new batches can restrict automatic fallback.
+  route?: string;
+  actualModel?: string;
+  routes?: BackfillRoute[];
+  registryRevision?: string;
+}
+export function bindingRoutes(binding: BackfillBinding): BackfillRoute[] {
+  return binding.routes ?? [{ route: binding.route!, actualModel: binding.actualModel!, provider: BACKFILL_PROVIDER }];
+}
 export type BackfillBindings = Record<BackfillRole, BackfillBinding>;
 export interface BackfillContext {
   runId: string;

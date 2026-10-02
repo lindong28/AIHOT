@@ -9,7 +9,7 @@ import { AdminPage, Badge, Button, Card, DataTable, Empty, Stat } from "../../fe
 
 type Day = { day: string; total: number; done: number; published: number; filtered: number; existing: number; failed: number; running: number };
 type Batch = { id: string; label: string; start_day: string; end_day: string; state: string; error: string | null; heartbeat_at: string | null;
-  models: Record<string, { model: string; route: string }> | null; days: Day[]; excluded: Array<{ reason: string; n: number }>;
+  models: Record<string, { model: string; route?: string; routes?: Array<{ route: string; credentialProfile?: string }> }> | null; days: Day[]; excluded: Array<{ reason: string; n: number }>;
   active: Array<{ article_id: string | null; day: string; stage: string | null; model: string | null; state: string; reason: string | null }> };
 export async function loader({ request }: Route.LoaderArgs) { return adminGet<{ checkedAt: string; runs: Batch[] }>(request, "/api/admin/backfill"); }
 export const meta: Route.MetaFunction = () => [{ title: `历史回填 · ${SITE.name} 后台` }];
@@ -50,7 +50,7 @@ export default function Backfill({ loaderData }: Route.ComponentProps) {
         </div>
         <details className="mb-4 text-sm"><summary className="cursor-pointer">回填模型与批次信息</summary>
           <p className="my-2 font-mono text-xs">{b.id}</p>
-          {b.models ? Object.entries(b.models).map(([role,m]) => <p key={role}>{roles[role] ?? role}：{m.model} · {m.route}</p>) : <p>尚未绑定自部署模型；不会调用商业 API。</p>}
+          {b.models ? Object.entries(b.models).map(([role,m]) => <p key={role}>{roles[role] ?? role}：{m.model} · {(m.routes?.map((r) => r.credentialProfile ?? r.route) ?? [m.route]).join(" → ")}</p>) : <p>尚未绑定模型；绑定并完成预检后才能开始处理。</p>}
           <p className="mt-2 text-ink-3">本批包含编辑分析与发布；不生成历史日报、事件热度或独立全文/引用翻译。</p>
         </details>
         <DataTable rows={b.days} rowKey={(d) => d.day} columns={[

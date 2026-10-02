@@ -1,0 +1,13 @@
+[Unit]
+Description=AI Radar bounded historical backfill
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/aihot/current
+ExecStart=/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/app.env scripts/backfill.ts drain
+TimeoutStartSec=30min
+TimeoutStopSec=5min
+KillSignal=SIGTERM
+UMask=0077

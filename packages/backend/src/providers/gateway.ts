@@ -1,12 +1,12 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
-import { BACKFILL_PROVIDER } from "../backfill/context.ts";
+import { bindingRoutes, type BackfillBinding } from "../backfill/context.ts";
 
 export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
 }
 
-export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: { route: string; actualModel: string }) {
+export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: BackfillBinding) {
   if (!gatewayConfigured()) return null;
   const url = new URL(process.env.LLM_GATEWAY_URL!);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
@@ -22,17 +22,24 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: { 
     throw new Error("Gateway upstream timeout must be between 1 and 180000 ms");
   }
   const requestId = randomUUID();
-  const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { route: pin.route, actualModel: pin.actualModel } : {}) };
+  const routes = pin ? bindingRoutes(pin) : [];
+  if (pin?.routes && !pin.registryRevision) throw new Error("Backfill fallback requires a verified Gateway registry revision");
+  // The registry revision constrains this dispatch, not the semantic request:
+  // unrelated registry edits must not bypass an unknown or settled receipt.
+  const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { routes } : {}) };
   return {
     requestId,
     identity,
-    summary: { ...identity, logicalRequestId: requestId },
+    summary: { ...identity, ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
     async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>): Promise<Record<string, unknown>> {
       // One send only. This deadline reserves for recovery windows, not a completion
       // guarantee: expiry remains unknown. Gateway owns transport retry and fallback.
       const res = await fetch(`${baseUrl}/v1/${endpoint}`, {
         method: "POST",
-        headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode, ...(pin ? { "X-LLM-Route": pin.route } : {}) },
+        headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode,
+          ...(pin?.route ? { "X-LLM-Route": pin.route } : {}),
+          ...(pin?.registryRevision ? { "X-LLM-Allowed-Routes": JSON.stringify(routes.map((r) => r.route)), "X-LLM-Registry-Revision": pin.registryRevision } : {}),
+        },
         body: JSON.stringify({ ...body, model, timeout: timeoutMs / 1000 }),
         signal: AbortSignal.timeout(2 * timeoutMs + 200_000),
       });
@@ -52,7 +59,8 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: { 
       if (companion?.projection_version !== 1 || companion.logical_request_id !== requestId) {
         throw new Error(`Gateway identity mismatch; reconcile request ${requestId} before retrying`);
       }
-      if (pin && (companion.provider_id !== BACKFILL_PROVIDER || companion.selected_route_id !== pin.route || companion.actual_model !== pin.actualModel)) {
+      if (pin && !routes.some((r) => companion.provider_id === r.provider && companion.selected_route_id === r.route && companion.actual_model === r.actualModel &&
+          (!r.credentialProfile || companion.credential_profile_id === r.credentialProfile))) {
         throw new Error(`Gateway backfill route mismatch; reconcile request ${requestId} before retrying`);
       }
       return { ...json, llm_gateway: companion };

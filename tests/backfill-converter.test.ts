@@ -1,12 +1,12 @@
 import "./setup.ts";
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { entryIdentity } from "@aihot/backend/backfill/manifest";
+import { materialHash, validateManifest, entryIdentity } from "@aihot/backend/backfill/manifest";
 
 test("one-time converter strips legacy derivations and requires version-bound completeness evidence", async () => {
   const dir = await mkdtemp(join(tmpdir(), "backfill-converter-"));
@@ -35,4 +35,28 @@ test("one-time converter strips legacy derivations and requires version-bound co
     assert.equal(summary.rejected.missing_body,1);
     assert.deepEqual(summary.intervals,[{start:"2026-06-01",end:"2026-06-01",days:1}]);
   } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test("one-time X conversion normalizes legacy URLs, verifies reviewed versions and drops RADAR derivations", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "radar-native-"));
+  try {
+    const rows = [], reviews: Record<string, unknown> = {};
+    for (const [id, old] of [["100", "https://x.com/i/web/status/100"], ["101", "https://twitter.com/i/web/statuses/101"]]) {
+      const xPost = { tweetId: id!, handle: "writer", authorName: "Writer", text: "A complete original statement.", media: [] };
+      const material = { sourceId: "native", url: `https://x.com/writer/status/${id}`, title: "Original", author: "Writer", publishedAt: "2026-06-01T00:00:00.000Z", bodyText: xPost.text, bodyHtml: "", xPost };
+      reviews[`x:${id}`] = { state: "complete", evidence: "Reviewed original text", contentHash: materialHash(material), xPost };
+      rows.push({ source_id: "old", url: old, title: material.title, author: material.author, published_at: material.publishedAt, content_text: material.bodyText, content_html: "", score: 100, tags: ["old-derived"], summary: "Legacy generated text" });
+    }
+    await Promise.all([writeFile(join(dir, "sources.json"), JSON.stringify({ old: "native" })), writeFile(join(dir, "reviews.json"), JSON.stringify(reviews)), writeFile(join(dir, "raw.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n"))]);
+    await promisify(execFile)(process.execPath, ["scripts/prepare-radar-backfill.ts", join(dir, "sources.json"), join(dir, "reviews.json"), join(dir, "native.jsonl"), join(dir, "raw.jsonl")]);
+    const entries = (await readFile(join(dir, "native.jsonl"), "utf8")).trim().split("\n").map((s) => JSON.parse(s));
+    assert.equal(validateManifest(entries, "2026-06-01", "2026-06-01").entries.length, 2);
+    assert.ok(entries.every((e) => e.quality.state === "complete" && e.material.url.startsWith("https://x.com/writer/status/")));
+    assert.ok(entries.every((e) => !["score", "tags", "summary"].some((k) => k in e.material)));
+    (reviews["x:100"] as { contentHash: string }).contentHash = "0".repeat(64);
+    await writeFile(join(dir, "reviews.json"), JSON.stringify(reviews));
+    await promisify(execFile)(process.execPath, ["scripts/prepare-radar-backfill.ts", join(dir, "sources.json"), join(dir, "reviews.json"), join(dir, "stale.jsonl"), join(dir, "raw.jsonl")]);
+    const stale = (await readFile(join(dir, "stale.jsonl"), "utf8")).trim().split("\n").map((s) => JSON.parse(s));
+    assert.equal(stale.find((e) => e.material.xPost.tweetId === "100").quality.state, "unverified");
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

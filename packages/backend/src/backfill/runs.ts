@@ -97,46 +97,53 @@ async function articleFor(runId: string, key: string) {
 }
 
 /** A bounded drain, not a new daemon. Concurrency is supplied from the deployed GPU capacity. */
-export async function runBackfill(id: string, options: { concurrency: number; maxItems: number }) {
+export async function runBackfill(id: string, options: { concurrency: number; maxItems: number; signal?: AbortSignal; skipLocked?: boolean }) {
   if (![options.concurrency, options.maxItems].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 32) throw new Error("Supply positive maxItems and concurrency (1–32) from deployed capacity");
   const lock = await sql.reserve();
   let acquired = false;
   try {
     const [l] = await lock`SELECT pg_try_advisory_lock(hashtext(${'backfill:' + id})) AS locked`;
     acquired = !!l!.locked;
-    if (!acquired) throw new Error("This batch already has an executor");
+    if (!acquired) {
+      if (options.skipLocked) return { state: "locked", processed: 0, claimed: 0 };
+      throw new Error("This batch already has an executor");
+    }
     const [run] = await sql`SELECT * FROM backfill_runs WHERE id=${id}`;
     if (!run) throw new Error("Backfill batch not found");
-    if (["paused", "complete"].includes(run.state)) return { state: run.state, processed: 0 };
+    if (!["ready", "waiting_models", "running"].includes(run.state) || options.signal?.aborted) return { state: String(run.state), processed: 0, claimed: 0 };
     let ready: Awaited<ReturnType<typeof preflightBackfill>>;
     try { ready = await preflightBackfill(run.models); }
     catch (e) {
-      await sql`UPDATE backfill_runs SET state='waiting_models',error=${String(e).slice(0,500)} WHERE id=${id} AND state<>'paused'`;
-      return { state: "waiting_models", processed: 0 };
+      await sql`UPDATE backfill_runs SET state='waiting_models',heartbeat_at=now(),error=${String(e).slice(0,500)} WHERE id=${id} AND state IN ('ready','waiting_models','running')`;
+      const [last] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
+      return { state: String(last!.state), processed: 0, claimed: 0 };
     }
     // Acquiring the session lock proves the former executor is gone; reuse settled receipts.
     await sql`UPDATE backfill_items SET state='pending' WHERE run_id=${id} AND state='running'`;
     await sql`UPDATE backfill_runs SET state='running',heartbeat_at=now(),error=NULL WHERE id=${id} AND state<>'paused'`;
-    let claimed = 0, processed = 0;
+    let reserved = 0, claimed = 0, processed = 0;
     async function work() {
-      while (claimed < options.maxItems) {
-        claimed++;
+      while (reserved < options.maxItems && !options.signal?.aborted) {
+        reserved++;
         const item = await sql.begin(async (tx) => {
           const [r] = await tx`SELECT state FROM backfill_runs WHERE id=${id} FOR UPDATE`;
-          if (r?.state !== "running") return null;
+          if (r?.state !== "running" || options.signal?.aborted) return null;
           const [i] = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='pending' ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED`;
-          if (!i) return null;
+          if (!i || options.signal?.aborted) return null;
           await tx`UPDATE backfill_items SET state='running',attempts=attempts+1,updated_at=now() WHERE run_id=${id} AND identity_key=${i.identity_key}`;
           return i;
         });
         if (!item) return;
+        claimed++;
         const key = String(item.identity_key);
         try {
           await ready.check();
           const articleId = await articleFor(id, key);
           if (!articleId) { processed++; continue; }
           const beforeCall = async (stage: string, model: string) => {
+            if (options.signal?.aborted) throw new BackfillPaused("Executor stopping; settled receipts will be reused");
             await ready.check();
+            if (options.signal?.aborted) throw new BackfillPaused("Executor stopping; settled receipts will be reused");
             const [r] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
             if (r?.state !== "running") throw new BackfillPaused("Backfill paused; settled receipts will be reused");
             const [i] = await sql`SELECT 1 FROM backfill_items i JOIN articles a ON a.id=i.article_id
@@ -167,14 +174,33 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
         }
       }
     }
-    await Promise.all(Array.from({ length: options.concurrency }, work));
+    // Never release the batch lock while a sibling is still settling a receipt.
+    const workers = await Promise.allSettled(Array.from({ length: options.concurrency }, work));
+    const failure = workers.find((r) => r.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
     const [counts] = await sql`SELECT count(*) FILTER(WHERE state IN ('pending','running'))::int AS pending,count(*) FILTER(WHERE state='failed')::int AS failed FROM backfill_items WHERE run_id=${id}`;
     const next = counts!.failed ? "needs_attention" : counts!.pending ? "ready" : "complete";
     await sql`UPDATE backfill_runs SET state=${next},heartbeat_at=now() WHERE id=${id} AND state='running'`;
     const [last] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
-    return { state: last!.state, processed };
+    return { state: String(last!.state), processed, claimed };
   } finally {
     try { if (acquired) await lock`SELECT pg_advisory_unlock(hashtext(${'backfill:' + id}))`; }
     finally { lock.release(); }
   }
+}
+
+/** Visit each eligible batch at most once, sharing the item budget across the whole drain. */
+export async function drainBackfills(options: { concurrency: number; maxItems: number; maxRuns: number; signal?: AbortSignal }) {
+  if (![options.concurrency, options.maxItems, options.maxRuns].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 32) throw new Error("Supply positive maxItems, maxRuns and concurrency (1–32) from deployed capacity");
+  const candidates = await sql`SELECT id FROM backfill_runs WHERE state IN ('ready','waiting_models','running')
+    ORDER BY heartbeat_at ASC NULLS FIRST,created_at,id LIMIT ${options.maxRuns}`;
+  const runs: Array<{ id: string; state: string; processed: number; claimed: number }> = [];
+  let claimed = 0;
+  for (const row of candidates) {
+    if (claimed >= options.maxItems || options.signal?.aborted) break;
+    const result = await runBackfill(String(row.id), { ...options, maxItems: options.maxItems - claimed, skipLocked: true });
+    claimed += result.claimed;
+    runs.push({ id: String(row.id), ...result });
+  }
+  return { stopped: !!options.signal?.aborted, runs };
 }
