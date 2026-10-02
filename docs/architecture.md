@@ -78,7 +78,7 @@ flowchart LR
 
 - **一个公开读取层**：网页、RSS、API、MCP、站点地图、分享图读的都是 `packages/backend/src/publication/`，所以各个出口看到的内容一致。新增公开出口也从这里读。
 - **页面不调模型**：读者打开页面只读数据库里已经有的结果；模型只在 worker 的任务里调用。
-- **花钱的请求有回执**：[providers/receipts.ts](../packages/backend/src/providers/receipts.ts) 在发送前记录逻辑请求与 attempt，原始响应先保存再进入业务写入。已收到的结果可复用；超时等未知结果不会由调用方立即重发，恢复任务会在等待后自动放行一次，再失败则等管理员处理。因此它降低重复付费风险，不保证任何失败下都零重复付费。
+- **花钱的请求有回执**：[providers/receipts.ts](../packages/backend/src/providers/receipts.ts) 在发送前记录逻辑请求与 attempt，原始响应先保存再进入业务写入。已收到的结果可复用。Gateway 明确的整请求冷却拒绝进入有界退避，其他未知结果必须核账，不按时间自动放行；历史直连请求仍保留超过 30 分钟自动放行一次的规则。核账恢复将回执、对应任务和审计一起提交，保留旧 attempt、费用及原分析标识。操作见[生产运维](operations/production.md#gateway-未知回执核对)。
 - **预算熔断**：按服务对实际 attempts 检查每分钟、每小时、每天的请求次数上限，超限暂停；它不是按美元金额计算的预算。后台“设置 → 预算”维护这些配置。
 - **安全阀**：`COLLECT_ENABLED`、`MODEL_CALLS_ENABLED`、`FEISHU_CONTENT_PUSH_ENABLED`、`FEISHU_INTERNAL_ENABLED`、`INDEXNOW_SUBMIT_ENABLED` 只决定“发不发出去”，不决定走哪套逻辑。开发和测试时关掉。
 - **公开内容匿名**：管理员和访客看到的一样；读者的收藏、已读存在浏览器里。后台只允许管理员。

@@ -1,6 +1,7 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
 import { bindingRoutes, type BackfillBinding } from "../backfill/context.ts";
+import { GatewayNotDispatchedError } from "./receipts.ts";
 
 export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
@@ -44,8 +45,19 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
         signal: AbortSignal.timeout(2 * timeoutMs + 200_000),
       });
       if (!res.ok) {
-        await res.body?.cancel();
-        throw new Error(`Gateway HTTP ${res.status}; reconcile request ${requestId} before retrying`);
+        const json = await res.json().catch(() => null) as Record<string, unknown> | null;
+        const error = json?.error as Record<string, unknown> | undefined;
+        // Gateway emits these exact rejections only when the logical request has NO
+        // attempts. A single attempt's not_crossed says nothing about prior fallbacks.
+        const hasCompanion = json?.llm_gateway !== undefined || error?.llm_gateway !== undefined ||
+          [...res.headers.keys()].some((key) => key.startsWith("x-llm-gateway-"));
+        if (res.status === 422 && (error?.code === "route_cooldown" || error?.code === "no_route") && !hasCompanion &&
+            (error.logical_request_id === undefined || error.logical_request_id === requestId)) {
+          throw new GatewayNotDispatchedError(requestId, `Gateway ${error.code}: 未派发模型请求，等待任务退避重试；request ${requestId}`);
+        }
+        // Persist codes, not upstream messages: those can contain credentials or private URLs.
+        const code = typeof error?.code === "string" && /^[a-zA-Z0-9_]{1,80}$/.test(error.code) ? ` (${error.code})` : "";
+        throw new Error(`Gateway HTTP ${res.status}${code}; reconcile request ${requestId} before retrying`);
       }
       const json = await res.json() as Record<string, unknown>;
       // Compressed provider JSON is passed through: Gateway identity then lives

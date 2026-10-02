@@ -4,8 +4,8 @@
 // 2. Before calling, a placeholder row and an attempt row are persisted; budgets count attempts.
 // 3. The raw response is saved before any business write; recovery reuses a received response.
 // 4. A request whose outcome is unknown (timeout after sending, crash mid-flight) is not re-sent by the
-//    caller. ops.recover releases it once after 30 minutes (admin/runs.ts), so a lost answer costs at
-//    most one repeat; after that it waits for the admin.
+//    caller. Gateway requests require reconciliation; legacy direct-provider requests may be
+//    released once after 30 minutes by ops.recover (admin/runs.ts).
 import { sql, type Db } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 
@@ -37,6 +37,15 @@ export class ProviderRejectedError extends Error {
     super(message);
     this.status = status;
     this.retryable = retryable;
+  }
+}
+
+/** A whole Gateway logical request was rejected before any provider attempt. */
+export class GatewayNotDispatchedError extends ProviderRejectedError {
+  readonly requestId: string;
+  constructor(requestId: string, message: string) {
+    super(message, 422, true);
+    this.requestId = requestId;
   }
 }
 
@@ -155,14 +164,17 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
   try {
     outcome = await call();
   } catch (error) {
-    const status = !req.gatewayRequestId && error instanceof ProviderRejectedError ? "failed" : "unknown";
+    const rejected = req.gatewayRequestId
+      ? error instanceof GatewayNotDispatchedError && error.requestId === req.gatewayRequestId
+      : error instanceof ProviderRejectedError;
+    const status = rejected ? "failed" : "unknown";
     // "unknown": the request may have reached the provider (timeout, reset): do not re-send automatically.
     const message = (error instanceof ProviderRejectedError ? error.message : String(error)).slice(0, 2000);
     await sql.begin(async (tx) => {
       await tx`UPDATE receipts SET status = ${status}, error = ${message}, updated_at = now() WHERE id = ${receiptId}`;
       await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
     });
-    if (req.gatewayRequestId) throw new ReceiptUnknownError(receiptId, `Gateway request ${req.gatewayRequestId}: ${message}`);
+    if (req.gatewayRequestId && !rejected) throw new ReceiptUnknownError(receiptId, `Gateway request ${req.gatewayRequestId}: ${message}`);
     throw error;
   }
 

@@ -18,6 +18,7 @@
 | [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
 | [references/20261001-backfill-design.md](references/20261001-backfill-design.md) | 开发者：个人 Gateway 回填隔离与边界决定 |
 | [references/20261002-backfill-launch.md](references/20261002-backfill-launch.md) | 开发者：GLM 订阅候选、限定路由、持续回填决定与待验收边界 |
+| [references/20261002-receipt-recovery.md](references/20261002-receipt-recovery.md) | 开发者：Gateway 未派发判据、核账恢复边界与验证记录 |
 | [selection.md](selection.md) | 站点运营者：精选逻辑、样本准备与校准 |
 | [leaderboard.md](leaderboard.md) | 站点运营者：模型排行榜与 Codex 重置监控 |
 | [architecture.md](architecture.md) | 开发者：当前服务、数据流、算法阶段与代码入口 |

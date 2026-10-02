@@ -7,7 +7,7 @@ import { z } from "zod";
 import { config } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { chatJson } from "@aihot/backend/providers/llm";
-import { ReceiptUnknownError } from "@aihot/backend/providers/receipts";
+import { GatewayNotDispatchedError, ReceiptUnknownError } from "@aihot/backend/providers/receipts";
 import { autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
 import { backfillContext, type BackfillBindings } from "@aihot/backend/backfill/context";
 
@@ -37,6 +37,18 @@ const server = createServer(async (req, res) => {
     assert.equal(body.api_key, undefined);
     if (mode === "disconnect") { req.socket.destroy(); return; }
     if (mode === "http-error") { res.writeHead(503); res.end("upstream uncertain"); return; }
+    if (mode.startsWith("cooldown") || mode === "no-route" || mode === "attempt-not-crossed") {
+      res.writeHead(mode === "cooldown-wrong-status" ? 502 : 422, {
+        "content-type": "application/json", ...(mode === "cooldown-header" ? { "x-llm-gateway-attempt-id": "earlier-attempt" } : {}),
+      });
+      res.end(JSON.stringify({ error: {
+        code: mode === "attempt-not-crossed" ? "dispatch_constraint_rejected" : mode === "no-route" ? "no_route" : "route_cooldown",
+        ...(mode === "cooldown-mismatch" ? { logical_request_id: "wrong" } : { logical_request_id: id }),
+        ...(mode === "cooldown-companion" ? { llm_gateway: { attempt_id: "earlier-attempt" } } : {}),
+        ...(mode === "attempt-not-crossed" ? { dispatch_boundary: "not_crossed" } : {}),
+      } }));
+      return;
+    }
     const pinned = req.headers["x-llm-route"] !== undefined;
     if (pinned) { assert.equal(req.headers["x-llm-route"], binding.route); assert.equal(body.model, binding.model); }
     const companion = { projection_version: 1, logical_request_id: mode === "mismatch" ? "wrong" : id, attempt_id: "stub-attempt",
@@ -119,7 +131,7 @@ test("Gateway chat needs no provider key, persists identity before send, and reu
   assert.equal(row!.cost, null);
 });
 
-for (const failure of ["http-error", "disconnect", "missing", "mismatch", "bad-output", "gzip-missing", "gzip-mismatch"]) {
+for (const failure of ["http-error", "disconnect", "missing", "mismatch", "bad-output", "gzip-missing", "gzip-mismatch", "cooldown-wrong-status", "cooldown-mismatch", "cooldown-companion", "cooldown-header", "attempt-not-crossed"]) {
   test(`Gateway ${failure} is held, including after automatic recovery`, async () => {
     mode = failure;
     const subject = tag();
@@ -135,6 +147,22 @@ for (const failure of ["http-error", "disconnect", "missing", "mismatch", "bad-o
     assert.ok(row!.request_id);
   });
 }
+
+for (const rejection of ["cooldown", "no-route"]) test(`Gateway whole-request ${rejection} can retry with a NEW UUID and retains the failed attempt`, async () => {
+  mode = rejection;
+  const subject = tag(), before = hits;
+  await assert.rejects(ask(subject), GatewayNotDispatchedError);
+  const [first] = await sql`SELECT id, status, request_id FROM receipts WHERE subject = ${subject}`;
+  assert.equal(first!.status, "failed");
+  mode = "ok";
+  const result = await ask(subject);
+  assert.equal(result.receiptId, first!.id);
+  const attempts = await sql`SELECT status, request_id, cost FROM receipt_attempts WHERE receipt_id = ${result.receiptId} ORDER BY attempt`;
+  assert.deepEqual(attempts.map((a) => a.status), ["failed", "received"]);
+  assert.notEqual(attempts[0]!.request_id, attempts[1]!.request_id);
+  assert.equal(attempts[0]!.cost, null);
+  assert.equal(hits - before, 2);
+});
 
 test("compressed Gateway chat and embeddings use header identity and retain it in receipts", async () => {
   mode = "gzip";

@@ -78,6 +78,7 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
     return enqueue(QUEUES.group, { articleId, signalOnly: true }, { singletonKey: articleId, priority: r.historical ? PRIORITY.history : PRIORITY.liveSignal }, opts.db);
   }
   const tagged = !!opts.attemptTag;
+  await db`UPDATE articles SET processing_attempt_tag = ${opts.attemptTag ?? null} WHERE id = ${articleId}`;
   return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag: opts.attemptTag } : { articleId },
     { singletonKey: tagged ? `manual:analyze:${articleId}:${opts.attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
 }
@@ -127,7 +128,7 @@ export async function processArticle(articleId: string, opts: { attemptTag?: str
   } catch (error) {
     if (error instanceof AnalysisInterruptedError || shutdownSignal.signal.aborted) throw error;
     if (error instanceof ReceiptUnknownError) {
-      // The provider may have billed this request: stop; ops.recover releases it once and requeues the article.
+      // The provider may have billed this request: stop until the applicable reconciliation policy releases it.
       await sql`UPDATE articles SET processing_state = 'failed', processing_error = ${`receipt ${error.receiptId} outcome unknown`} WHERE id = ${articleId}`;
       return { state: "unknown-receipt" };
     }
@@ -171,7 +172,8 @@ export async function registerContentJobs(boss: PgBoss, concurrency = Number(pro
     try {
       const result = await processArticle(articleId, { attemptTag });
       if (result.state !== "unknown-receipt") {
-        await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL WHERE id = ${articleId}`;
+        await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL,
+                    processing_attempt_tag = NULL WHERE id = ${articleId} AND processing_attempt_tag IS NOT DISTINCT FROM ${attemptTag ?? null}`;
       }
       return result;
     } catch (error) {
@@ -212,13 +214,13 @@ export async function registerExtractionJobs(boss: PgBoss) {
  * a lost job, a retry that came due). Articles already queued or running are left alone.
  */
 export async function sweepUnprocessed(): Promise<{ enqueued: number }> {
-  const rows = await sql<{ id: string }[]>`
-    SELECT id FROM articles
+  const rows = await sql<{ id: string; processing_attempt_tag: string | null }[]>`
+    SELECT id, processing_attempt_tag FROM articles
     WHERE managed_backfill_id IS NULL AND processing_state = 'new' AND created_at < now() - interval '3 minutes'
       AND (processing_retry_at IS NULL OR processing_retry_at <= now())
       AND (processing_queued_at IS NULL OR processing_queued_at < now() - ${QUEUED_STALE}::interval)
     ORDER BY discovered_at DESC LIMIT 500`;
-  for (const r of rows) await queueProcessing(r.id);
+  for (const r of rows) await queueProcessing(r.id, { attemptTag: r.processing_attempt_tag ?? undefined });
   return { enqueued: rows.length };
 }
 

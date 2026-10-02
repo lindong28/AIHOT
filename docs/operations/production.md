@@ -10,7 +10,7 @@ DeepSeek 消费者使用 `deepseek-v4-flash-0731`，对应 dgx0022 上的 V4-Fla
 
 | 位置 | 用途 |
 | --- | --- |
-| 腾讯云 `/home/ubuntu/aihot/releases/backfill-bbbb789` | 当前回填发布源码（AIHOT `bbbb789`）；切站旧 release 保留，后续发布使用新的 release 目录 |
+| 腾讯云 `/home/ubuntu/aihot/releases/` | 各次发布源码；2026-10-02 回执修复与回填状态修复合并运行于 `backfill-content-filter-20261002-r2`，当前版本以 `readlink /home/ubuntu/aihot/current` 为准，旧 release 保留 |
 | 腾讯云 `/home/ubuntu/aihot/current` | 指向运行版本的符号链接，systemd 从这里启动 |
 | 腾讯云 `/home/ubuntu/aihot/shared/app.env`、`web.env` | 后端与 Web 运行配置；后端凭据文件权限为 0600，不入 Git、不打印内容 |
 | 腾讯云 `/home/ubuntu/aihot/shared/data` | 应用持久文件；PostgreSQL 数据由系统数据库服务独立管理 |
@@ -52,6 +52,34 @@ bash /home/ubuntu/aihot/current/deploy/production/service.sh status
 按需运行其中一条。`stop` 保留安装及开机启用状态；`uninstall` 停止并注销三个 systemd 服务，保留发布目录、凭据和 PostgreSQL 数据。修改 `app.env` 或 `web.env` 后，相应进程需重启才读取新值；源码更新走新 release 的 `install`，不能只拉代码而不构建和重启。
 
 ## 状态与故障定位
+
+### Gateway 未知回执核对
+
+`unknown` 表示结果或派发状态未确认，不表示已扣费。Gateway 精确 `422` 且无 attempt companion 的 `route_cooldown` / `no_route` 拒绝不再误入 unknown；后续调用通过原有任务退避和预算重试。HTTP 502、断流、缺失账本或不可用响应仍需核对，不能据此写成“未计费”。`no_route` 只说明本次没有派发，不表示模型已经恢复，仍须检查 Gateway 的部署状态。
+
+积压核对工具默认预览，仅对个人 Gateway 实账本证实零 attempt 的本地拒绝放行。以权限 0600 保存中间 JSON；stdout 供脚本、stderr 提供完整摘要。先在生产 release 目录导出身份（不含凭据和正文）：
+
+```bash
+umask 077
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/reconcile-gateway-receipts.ts --snapshot > /home/ubuntu/aihot/shared/receipt-snapshot.json
+```
+
+将 snapshot 复制到个人 Gateway 主机后，在本仓执行：
+
+```bash
+python3 scripts/export-gateway-receipts.py --snapshot .data/receipt-snapshot.json --ledger ~/.local/state/llm-gateway/audit.sqlite3 > .data/receipt-evidence.json
+```
+
+把 evidence 复制回生产共享目录，15 分钟内预览并应用（超时重新导出，不手改时间）：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/reconcile-gateway-receipts.ts --evidence /home/ubuntu/aihot/shared/receipt-evidence.json
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/reconcile-gateway-receipts.ts --evidence /home/ubuntu/aihot/shared/receipt-evidence.json --apply
+```
+
+这是具数据库权限的维护工具，输入必须来自可信个人 Gateway 账本，不能接受外部上传的证据。仅适用于 AIHOT 独占生成、没有被人工或其他调用方在 Gateway 重发的 UUID；Gateway 的本地拒绝状态本身不是永久终态。项目、模型、UUID、最新应用 attempt 和完整 Gateway attempt 集合均校验，重复应用已恢复的回执无效。费用和以前的 attempt 不会被清空或改成零。
+
+分析任务只恢复同版本的 failed 文章，保留管理员运行标识和各阶段复用；分组、综述分别排入自己的队列，监控识别等待原有 tick。受管 backfill、已处理文章、新版本文章和未支持用途不会被强塞进实时分析队列，输出 `recovery` 说明原因。释放数不等于新排队数，更不等于已发布数：应用后还要检查文章状态、队列及公开页面。其余未知回执仍保留在后台，需供应商账单或可用结果证据后再处理；不要批量点击“未计费”。
 
 腾讯云检查：
 
