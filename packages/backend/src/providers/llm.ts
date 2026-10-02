@@ -53,14 +53,14 @@ export const MODELS: Record<string, ModelSpec> = {
     extra: { thinking: { type: "enabled", clear_thinking: false }, reasoning_effort: "high", top_p: 0.95 }, jsonMode: true,
   },
   // DeepSeek Flash reasons by default; structured tasks switch it off unless the -think variant is used.
-  "deepseek-flash": {
-    key: "deepseek-flash", service: "deepseek", model: "deepseek-flash",
-    baseUrlEnv: "DEEPSEEK_BASE_URL", apiKeyEnv: "DEEPSEEK_API_KEY",
+  "deepseek-v4-flash-0731": {
+    key: "deepseek-v4-flash-0731", service: "deepseek", model: "deepseek-v4-flash-0731",
+    baseUrlEnv: "DEEPSEEK_V4_BASE_URL", apiKeyEnv: "DEEPSEEK_V4_API_KEY",
     extra: { thinking: { type: "disabled" } }, jsonMode: true,
   },
-  "deepseek-flash-think": {
-    key: "deepseek-flash-think", service: "deepseek", model: "deepseek-flash",
-    baseUrlEnv: "DEEPSEEK_BASE_URL", apiKeyEnv: "DEEPSEEK_API_KEY", jsonMode: true,
+  "deepseek-v4-flash-0731-think": {
+    key: "deepseek-v4-flash-0731-think", service: "deepseek", model: "deepseek-v4-flash-0731",
+    baseUrlEnv: "DEEPSEEK_V4_BASE_URL", apiKeyEnv: "DEEPSEEK_V4_API_KEY", jsonMode: true,
   },
   "qwen3.7-flash": {
     key: "qwen3.7-flash", service: "dashscope", model: "qwen3.7-flash",

@@ -34,7 +34,7 @@ node scripts/backfill.ts status
 | `prefilter`、`structure` | 同一个 Qwen3.8-Flash 同系列部署，沿用 `qwen3.8-flash` preset |
 | `score` | GLM5.3-Flash，沿用 `glm-5.3-flash-selection` preset，双评分 |
 | `understand` | GLM5.3-Flash，沿用 `glm-5.3-flash` preset |
-| `summarize` | DeepSeek-Flash，沿用 `deepseek-flash` preset |
+| `summarize` | 自托管 DeepSeek V4 Flash 0731，使用 `deepseek-v4-flash-0731` preset |
 
 `models.json` 是以这五个键组成的对象，每个值均为 `{"model":"部署后的逻辑ID","route":"部署后的路由ID","actualModel":"self_hosted/部署后的模型ID"}`。预筛和结构绑定须完全相同。配置无密钥，可以入 Git；本轮未伪造尚未部署的型号或路由文件。开始处理后不允许修改该批模型绑定。
 

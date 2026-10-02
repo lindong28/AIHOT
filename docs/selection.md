@@ -65,7 +65,7 @@ node --env-file=.env scripts/eval-selection.ts --gold .data/gold.jsonl --split d
 - 门槛从 40 到 90 每隔 2 分，各自会得到什么结果；
 - 判错的条目，完整报告写到 `.data/eval/`，同时导入后台 SelectBench。
 
-常用参数：`--models default,deepseek-flash` 同批比较几个模型，`--n 200` 最多抽多少条，`--split holdout` 只跑留出集。同样的输入和提示词再跑不会重复调用模型（有回执复用），只有改过的部分才会产生新调用。
+常用参数：`--models default,deepseek-v4-flash-0731` 同批比较几个模型，`--n 200` 最多抽多少条，`--split holdout` 只跑留出集。同样的输入和提示词再跑不会重复调用模型（有回执复用），只有改过的部分才会产生新调用。
 
 ### 3. 看错例，改标准，再跑
 

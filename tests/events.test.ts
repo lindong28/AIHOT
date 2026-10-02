@@ -40,9 +40,9 @@ const provider = await stub(async (_hit, req) => {
     : { query: "发布新模型", decisions: ids.map((id) => ({ id, relation, confidence: 0.95, note: "" })) };
   return { id: "stub", choices: [{ message: { content: JSON.stringify(answer) } }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } };
 });
-process.env.DEEPSEEK_BASE_URL = `${provider.url}/v1`;
-process.env.DEEPSEEK_API_KEY = "test-key";
-process.env.GROUP_REVIEW_MODEL = "deepseek-flash";
+process.env.DEEPSEEK_V4_BASE_URL = `${provider.url}/v1`;
+process.env.DEEPSEEK_V4_API_KEY = "test-key";
+process.env.GROUP_REVIEW_MODEL = "deepseek-v4-flash-0731";
 
 let storyId: number;
 let factId: number;

@@ -6,6 +6,8 @@
 
 ## 环境与持久数据
 
+DeepSeek 消费者使用 `deepseek-v4-flash-0731`，对应 dgx0022 上的 V4-Flash-0731；个人 Gateway 的 `deepseek-v4.1-flash` 是独立托管型号，不作为该 V4 名称的回退。旧 `deepseek-flash` 已撤除。迁移模型名时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。
+
 | 位置 | 用途 |
 | --- | --- |
 | 腾讯云 `/home/ubuntu/aihot/releases/cutover-20261001` | 本次发布源码；后续发布使用新的 release 目录 |
