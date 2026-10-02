@@ -1,6 +1,6 @@
 # 腾讯云生产运维
 
-面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。截至 2026-10-02 仍处准备阶段：腾讯云 API/Web 已运行，worker 已 enabled 但停止，`COLLECT_ENABLED=false`、`MODEL_CALLS_ENABLED=false`；公网仍是旧 RADAR。生产 Qwen 订阅使用与条款、隐私正文仍待用户确认。实时与历史两条模型链均经个人 Gateway，历史回填尚未启用；实时模型配置以 [app.env.example](../../deploy/production/app.env.example) 为准，回填另见[历史回填](backfill.md)。
+面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。截至 2026-10-02 仍处准备阶段：腾讯云 API/Web 已运行，worker 已 enabled 但停止，`COLLECT_ENABLED=false`、`MODEL_CALLS_ENABLED=false`；公网仍是旧 RADAR。条款与隐私正文已由用户确认并应用；生产 Qwen 使用方式仍待用户决定。实时与历史两条模型链均经个人 Gateway，历史回填尚未启用；实时模型配置以 [app.env.example](../../deploy/production/app.env.example) 为准，回填另见[历史回填](backfill.md)。
 
 ## 环境与持久数据
 

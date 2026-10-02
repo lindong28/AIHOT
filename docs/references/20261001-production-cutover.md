@@ -27,3 +27,7 @@ Mac Studio 的专用 launchd 隧道已将本地 Gateway 39011、代理 59527 反
 旧 Nginx 配置备份已建立于腾讯云 `/home/ubuntu/aihot/shared/news.conf.before-aihot`，`nginx -t` 成功，旧公网仍返回 200。独立无界面浏览器已从新站内部首页点击“全部 AI 动态”进入 `/all`，显示尚无内容；`/admin` 进入密码登录页。此读数不包含文章质量或连续性验证。
 
 尚待用户确认生产 Qwen 订阅使用范围与条款、隐私正文；`.data/cutover/review/site-pages.md` 是未发布草稿。AIHOT 维护者继续负责真实业务调用与回执、连续 worker 到公开内容的验证、Nginx 切换及外部告警接管；历史回填未启，等待用户提供模型名和部署资源。操作入口与回滚步骤见[生产运维](../operations/production.md)。
+
+## 2026-10-02 页面确认
+
+用户随后明确采用使用规则和隐私说明草案，正文已替换 `industry/pages/` 的模板。对 Qwen 用户要求解释套餐用途冲突，尚未选择线上资金路径；因此生产模型和公网切换仍待该决定。再次核对[百炼个人版说明](https://help.aliyun.com/zh/model-studio/token-plan-personal-overview)，“订阅前须知”仍排除自定义应用后端及非交互式批量调用。此前将延续订阅列为推荐不妥，已向用户更正；调用成功与经过 Gateway 均不改变其用途限制。
