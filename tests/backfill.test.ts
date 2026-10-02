@@ -18,7 +18,7 @@ import { chatJson } from "@aihot/backend/providers/llm";
 import { materialHash, validateManifest, type ManifestEntry } from "@aihot/backend/backfill/manifest";
 import { backfillOverview, importBackfill, configureBackfill, controlBackfill, runBackfill } from "@aihot/backend/backfill/runs";
 import { verifyDiscovery } from "@aihot/backend/backfill/gateway";
-import type { BackfillBindings } from "@aihot/backend/backfill/context";
+import { bindingRoutes, type BackfillBindings } from "@aihot/backend/backfill/context";
 
 const T = tag(), source = `bf-${T}`;
 const models: BackfillBindings = {
@@ -26,7 +26,7 @@ const models: BackfillBindings = {
   structure: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
   score: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
   understand: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
-  summarize: { model: "gpu-deepseek", route: "personal_gpu/deepseek/stream", actualModel: "self_hosted/deepseek" },
+  summarize: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
 };
 const requests: Array<{ model: string; route: string | undefined; stage: string; user: string }> = [];
 let pauseOnPrefilter: string | null = null, malformed = false, healthRevision = "test-revision";
@@ -39,7 +39,7 @@ const server = createServer(async (req,res) => {
   const system = String(body.messages[0]?.role === "system" ? body.messages[0].content : "");
   const user = JSON.stringify(body.messages.at(-1).content);
   const stage = system.includes("宽召回的AI相关性预筛") ? "prefilter" : system.includes("事件注意力评分器") ? "score" : system.includes("内容理解编辑") ? "understand" : system.includes("资料结构化助手") ? "structure" : "summarize";
-  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined,stage,user });
+  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user });
   if (stage === "prefilter" && pauseOnPrefilter) { const id=pauseOnPrefilter;pauseOnPrefilter=null;await controlBackfill(id,"pause","test"); }
   if (stage === "prefilter" && waiting) { entered?.open(undefined); await waiting.promise; }
   const answer = stage === "prefilter" ? { label:user.includes("OFFTOPIC") ? "BLOCK" : "PASS",reason:"fixture" }
@@ -48,10 +48,11 @@ const server = createServer(async (req,res) => {
     : stage === "understand" ? {itemType:"model_release",authorRole:"principal",tags:["模型发布"],editorialJudgment:"发布了可下载的新模型",titleZh:user.includes("IDENTITY_GUARD") ? "OpenAI 发布开放模型" : "实验室发布开放模型",summaryZh:user.includes("IDENTITY_GUARD") ? "OpenAI 发布可下载的新模型。" : "实验室发布可下载的新模型，并公布基准成绩与使用说明。"}
     : "title_zh: 模型更新\nsummary_zh: 实验室更新模型，并公布测试方法及使用说明。";
   const binding = Object.values(models).find(b=>b.model===body.model);
+  const route = binding && bindingRoutes(binding)[0];
   res.setHeader("content-type","application/json");res.end(JSON.stringify({
     choices:[{message:{content:malformed ? "bad" : binding ? typeof answer === "string" ? answer : JSON.stringify(answer) : '{"ok":true}'}}],
     usage:{prompt_tokens:20,completion_tokens:10},
-    llm_gateway:{projection_version:1,logical_request_id:req.headers["x-llm-request-id"],provider_id:binding ? "self-hosted" : "bailian",selected_route_id:binding?.route,actual_model:binding?.actualModel},
+    llm_gateway:{projection_version:1,logical_request_id:req.headers["x-llm-request-id"],provider_id:route?.provider ?? "bailian",selected_route_id:route?.route,actual_model:route?.actualModel,credential_profile_id:route?.credentialProfile},
   }));
 });
 await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -62,9 +63,9 @@ const directory=await mkdtemp(join(tmpdir(),"aihot-backfill-fixtures-"));
 const cli=join(directory,"gateway-discover");
 const discovery=(model:string)=>({projection_version:2,view_scope:"logical_model",requested_logical_model:model,status:"ready",
   project:{id:"aihot-test",billing_scope:"personal"},project_allowed_logical_model_ids:[model],registry:{file_revision:"test-revision",loaded_revision:"test-revision"},endpoint:`${baseUrl}/v1/chat/completions`,
-  routes:Object.values(models).filter(b=>b.model===model).map(b=>({id:b.route,logical_model:model,actual_model:b.actualModel,provider_id:"self-hosted",effectively_eligible:true,project_allowed:true,policy_allowed:true})),
+  routes:Object.values(models).filter(b=>b.model===model).flatMap(b=>bindingRoutes(b).map(r=>({id:r.route,logical_model:model,actual_model:r.actualModel,provider_id:r.provider,credential_profile_id:r.credentialProfile,funding_source:r.provider==="tencent-vod" ? "company_paid" : "personal_paid",effectively_eligible:true,project_allowed:true,policy_allowed:true}))),
 });
-await writeFile(cli,`#!${process.execPath}\nconst views=${JSON.stringify(Object.fromEntries(["gpu-qwen","gpu-glm","gpu-deepseek"].map(m=>[m,discovery(m)])))}; console.log(JSON.stringify(views[process.argv.at(-1)]));\n`,{mode:0o700});
+await writeFile(cli,`#!${process.execPath}\nconst views=${JSON.stringify(Object.fromEntries(["gpu-qwen","gpu-glm","deepseek-v4.1-flash"].map(m=>[m,discovery(m)])))}; console.log(JSON.stringify(views[process.argv.at(-1)]));\n`,{mode:0o700});
 process.env.LLM_GATEWAY_CLI=cli;
 before(async()=>{ await sql`INSERT INTO sources(id,name,kind,tier,participation_mode,enabled,site_fulltext) VALUES(${source},'Backfill fixture','rss','T1','editorial',false,false)`; });
 after(async()=>{ server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await stopBoss();await closeDb();await rm(directory,{recursive:true,force:true}); });
@@ -93,7 +94,7 @@ test("discovery rejects commercial, wrong-project and ineligible routes before i
     assert.throws(()=>verifyDiscovery({...view,...change},"gpu-qwen",models,"aihot-test",baseUrl));
   }
   for (const provider_id of ["deepseek", "bailian", undefined]) {
-    assert.throws(()=>verifyDiscovery({...view,routes:view.routes.map(r=>({...r,provider_id}))},"gpu-qwen",models,"aihot-test",baseUrl),/Backfill route identity or subscription changed/);
+    assert.throws(()=>verifyDiscovery({...view,routes:view.routes.map(r=>({...r,provider_id}))},"gpu-qwen",models,"aihot-test",baseUrl),/Backfill route identity or funding changed/);
   }
 });
 
@@ -106,7 +107,8 @@ test("native publication progresses by day, filters noise, preserves existing or
   const [result,live]=await Promise.all([runBackfill(id,{concurrency:2,maxItems:10}),chatJson({model:"qwen3.8-flash",purpose:"live_isolation",subject:T,promptVersion:"1",system:"live",user:"live",schema:z.object({ok:z.boolean()})})]);
   assert.equal(live.data.ok,true);assert.equal(result.state,"complete");
   const sent=requests.slice(start);assert.ok(sent.some(r=>r.model==="qwen3.8-flash"&&!r.route));assert.ok(sent.filter(r=>r.model.startsWith("gpu-")).every(r=>r.route?.startsWith("personal_gpu/")));
-  assert.deepEqual([...new Set(sent.filter(r=>r.model.startsWith("gpu-")).map(r=>r.stage))].sort(),["prefilter","score","structure","summarize","understand"]);
+  assert.deepEqual([...new Set(sent.filter(r=>r.route).map(r=>r.stage))].sort(),["prefilter","score","structure","summarize","understand"]);
+  assert.ok(sent.some(r=>r.model==="deepseek-v4.1-flash"&&r.route==="company_tencent_vod/deepseek-v4.1-flash/stream"));
   const rows=await sql`SELECT * FROM backfill_items WHERE run_id=${id}`;
   assert.deepEqual(rows.map(r=>r.state).sort(),["excluded","existing","filtered","published","published"]);
   assert.equal((await sql`SELECT body_text FROM articles WHERE id=${existing.articleId}`)[0]!.body_text,"Keep native original");
@@ -190,6 +192,6 @@ test("model bindings cannot change while discovery is in flight even after pause
   const running=runBackfill(id,{concurrency:1,maxItems:1});await healthEntered.promise;
   try {
     await controlBackfill(id,"pause","test");
-    await assert.rejects(()=>configureBackfill(id,{...models,summarize:{...models.summarize,model:"other-model"}}),/executor/);
+    await assert.rejects(()=>configureBackfill(id,{...models,score:{...models.score,model:"other-glm-model"}}),/executor/);
   } finally { healthWait.open(undefined);healthWait=null;healthEntered=null;await running; }
 });

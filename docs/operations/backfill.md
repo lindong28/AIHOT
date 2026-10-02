@@ -1,6 +1,8 @@
 # 历史原文回填
 
-供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。实时新闻继续使用原模型配置；历史批次通过同一个个人 llm-gateway 限制候选路由，GLM 允许自部署与已授权的两个订阅来源，Qwen/DeepSeek 仅允许自部署。
+供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。历史批次通过同一个个人 llm-gateway 限制候选路由，GLM 允许自部署与已授权的两个订阅来源，Qwen 仅允许自部署。2026-10-02 用户明确升级 DeepSeek 至 V4.1 Flash，并授权此次 backfill 使用腾讯 VOD 公司账户特例：摘要仅允许 `tencent-vod` provider 的 `company_tencent_vod`，不回退自托管或其它付费来源。
+
+V4.1 配置与校验代码已更新，运行时接入尚未完成：个人 Gateway 的 `aihot` personal 项目目前不具备 company_paid 腾讯账户资格，须由 Gateway 维护者落实该特例后才能通过预检。本次未变更生产环境或既有批次；旧 V4 绑定会被新版预检拒绝，开始执行后的绑定不可改写，后续 V4.1 回填须准备新批次。已有回执和历史验收读数保留原模型名。
 
 2026-10-02 上线快照：AIHOT `bbbb789` 已发布至生产 `backfill-bbbb789`，个人 Gateway `2d5d4aab549ae355339509469af60703d85f11d9` 已重装运行。启动批已导入，首篇完成处理并公开；生产 timer 与 Mac 监督已启动。以下读数不表示整批或全部历史已完成，具体覆盖与待办见下文。
 
@@ -62,13 +64,13 @@ node scripts/backfill.ts status
 | `prefilter`、`structure` | 同一个 Qwen3.8-Flash 同系列部署，沿用 `qwen3.8-flash` preset |
 | `score` | GLM5.3-Flash，沿用 `glm-5.3-flash-selection` preset，双评分 |
 | `understand` | GLM5.3-Flash，沿用 `glm-5.3-flash` preset |
-| `summarize` | 自托管 DeepSeek V4 Flash 0731，使用 `deepseek-v4-flash-0731` preset |
+| `summarize` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` preset；唯一候选为 `company_tencent_vod/deepseek-v4.1-flash/stream`，actual model 为 `openai/deepseek-v4.1-flash` |
 
 绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 
-预检核对 projection version 2、project 的 personal billing scope、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。每个角色至少有一个候选可用即可，不要求未部署的 GLM 自托管候选 ready。GLM 候选按 self-hosted → `personal_zai`（`zhipu`）→ `personal_ark`（`volcengine-ark`），订阅候选还必须为 `funding_source=personal_subscription`；Qwen/DeepSeek 不开放商业 API。
+预检核对 projection version 2、project 的 personal billing scope、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。每个角色至少有一个候选可用即可，不要求未部署的 GLM 自托管候选 ready。GLM 候选按 self-hosted → `personal_zai`（`zhipu`）→ `personal_ark`（`volcengine-ark`），订阅候选还必须为 `funding_source=personal_subscription`；Qwen 不开放商业 API。DeepSeek 摘要必须是 V4.1 Flash 的唯一腾讯候选，资金归属保持真实的 `company_paid`；不允许伪装为 personal，也不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
 
 ```bash
 node scripts/backfill.ts configure BATCH_ID deploy/production/backfill-models.json

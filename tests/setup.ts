@@ -19,9 +19,9 @@ process.env.LOG_LEVEL ??= "error";
 // pointed at a local stub by the test that needs it). The open-source default is one model for every
 // step, which tests/default-model.test.ts covers.
 const AIHOT_MODELS: Record<string, string> = {
-  PREFILTER_MODEL: "qwen3.7-flash", SCORE_MODEL: "glm-5.3-flash-selection", UNDERSTAND_MODEL: "glm-5.3-flash", SUMMARIZE_MODEL: "deepseek-v4-flash-0731",
-  STRUCTURE_MODEL: "qwen3.8-flash", GROUP_MODEL: "deepseek-v4-flash-0731", GROUP_REVIEW_MODEL: "mimo-v2.6-flash", DIGEST_MODEL: "deepseek-v4-flash-0731",
-  REPORT_MODEL: "deepseek-v4-flash-0731", TRANSLATE_MODEL: "deepseek-v4-flash-0731", MONITOR_MODEL: "deepseek-v4-flash-0731",
+  PREFILTER_MODEL: "qwen3.7-flash", SCORE_MODEL: "glm-5.3-flash-selection", UNDERSTAND_MODEL: "glm-5.3-flash", SUMMARIZE_MODEL: "deepseek-v4.1-flash",
+  STRUCTURE_MODEL: "qwen3.8-flash", GROUP_MODEL: "deepseek-v4.1-flash", GROUP_REVIEW_MODEL: "mimo-v2.6-flash", DIGEST_MODEL: "deepseek-v4.1-flash",
+  REPORT_MODEL: "deepseek-v4.1-flash", TRANSLATE_MODEL: "deepseek-v4.1-flash", MONITOR_MODEL: "deepseek-v4.1-flash",
 };
 for (const [name, model] of Object.entries(AIHOT_MODELS)) process.env[name] ??= model;
 

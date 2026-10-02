@@ -15,11 +15,11 @@ import { autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
 const usage = { prompt_tokens: 80, completion_tokens: 20, total_tokens: 100 };
 let answer: (hit: number) => string = () => '{"ok":true}';
 const provider = await stub((hit) => ({ id: `stub-${hit}`, choices: [{ message: { content: answer(hit) } }], usage }));
-process.env.DEEPSEEK_V4_BASE_URL = `${provider.url}/v1`;
-process.env.DEEPSEEK_V4_API_KEY = "test-key";
+process.env.DEEPSEEK_V41_BASE_URL = `${provider.url}/v1`;
+process.env.DEEPSEEK_V41_API_KEY = "test-key";
 
 const ask = (subject: string) =>
-  chatJson({ model: "deepseek-v4-flash-0731", purpose: "invariant_test", subject, promptVersion: "t1", system: "s", user: `input ${subject}`, schema: z.object({ ok: z.boolean() }) });
+  chatJson({ model: "deepseek-v4.1-flash", purpose: "invariant_test", subject, promptVersion: "t1", system: "s", user: `input ${subject}`, schema: z.object({ ok: z.boolean() }) });
 
 let savedBudget: { per_minute: number; per_hour: number; per_day: number } | undefined;
 before(async () => {

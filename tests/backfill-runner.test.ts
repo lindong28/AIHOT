@@ -8,7 +8,7 @@ import { config } from "@aihot/backend/config";
 import { stopBoss } from "@aihot/backend/jobs/queue";
 import { configureBackfill, controlBackfill, drainBackfills, importBackfill, runBackfill } from "@aihot/backend/backfill/runs";
 import { materialHash } from "@aihot/backend/backfill/manifest";
-import type { BackfillBindings } from "@aihot/backend/backfill/context";
+import { bindingRoutes, type BackfillBindings } from "@aihot/backend/backfill/context";
 
 const T = tag(), source = `runner-${T}`;
 const models: BackfillBindings = {
@@ -16,7 +16,7 @@ const models: BackfillBindings = {
   structure: { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualModel: "self_hosted/qwen" },
   score: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
   understand: { model: "gpu-glm", route: "personal_gpu/glm/stream", actualModel: "self_hosted/glm" },
-  summarize: { model: "gpu-deepseek", route: "personal_gpu/deepseek/stream", actualModel: "self_hosted/deepseek" },
+  summarize: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
 };
 let requestCount = 0;
 let entered: ReturnType<typeof gate> | undefined, release: ReturnType<typeof gate> | undefined;
@@ -30,7 +30,7 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify({ projection_version: 2, view_scope: "logical_model", requested_logical_model: model,
       status: "ready", project: { id: "aihot-runner-test", billing_scope: "personal" }, project_allowed_logical_model_ids: [model],
       loaded_registry_revision: "runner-fixture", file_registry_revision: "runner-fixture",
-      routes: Object.values(models).filter(b => b.model === model).map(b => ({ id: "route" in b ? b.route : "", actual_model: "actualModel" in b ? b.actualModel : "", provider_id: "self-hosted", project_allowed: true, policy_allowed: true, effectively_eligible: true })) })); return;
+      routes: Object.values(models).filter(b => b.model === model).flatMap(b => bindingRoutes(b).map(r => ({ id: r.route, actual_model: r.actualModel, provider_id: r.provider, credential_profile_id: r.credentialProfile, funding_source: r.provider === "tencent-vod" ? "company_paid" : "personal_paid", project_allowed: true, policy_allowed: true, effectively_eligible: true }))) })); return;
   }
   requestCount++;
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(Buffer.from(c));

@@ -31,8 +31,8 @@ const provider = await stub((_hit, req) => {
   const answer = { query: "收购", decisions: [{ id: "C1", relation: "SAME_OCCURRENCE", confidence: 0.95, note: "" }] };
   return { id: "stub", choices: [{ message: { content: JSON.stringify(answer) } }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } };
 });
-for (const name of ["DASHSCOPE_BASE_URL", "DEEPSEEK_V4_BASE_URL"]) process.env[name] = `${provider.url}/v1`;
-for (const name of ["DASHSCOPE_API_KEY", "DEEPSEEK_V4_API_KEY"]) process.env[name] = "test-key";
+for (const name of ["DASHSCOPE_BASE_URL", "DEEPSEEK_V41_BASE_URL"]) process.env[name] = `${provider.url}/v1`;
+for (const name of ["DASHSCOPE_API_KEY", "DEEPSEEK_V41_API_KEY"]) process.env[name] = "test-key";
 
 async function job(articleId: string) {
   const [j] = await sql<{ name: string; priority: number; data: { signalOnly?: boolean } }[]>`

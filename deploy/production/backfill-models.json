@@ -68,13 +68,13 @@
     ]
   },
   "summarize": {
-    "model": "deepseek-v4-flash-0731",
+    "model": "deepseek-v4.1-flash",
     "routes": [
       {
-        "route": "personal_self_hosted/deepseek-v4-flash-0731/stream",
-        "actualModel": "self_hosted/deepseek-v4-flash-0731",
-        "provider": "self-hosted",
-        "credentialProfile": "personal_self_hosted"
+        "route": "company_tencent_vod/deepseek-v4.1-flash/stream",
+        "actualModel": "openai/deepseek-v4.1-flash",
+        "provider": "tencent-vod",
+        "credentialProfile": "company_tencent_vod"
       }
     ]
   }

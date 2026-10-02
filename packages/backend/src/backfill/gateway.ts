@@ -13,6 +13,17 @@ export const bindingsSchema = z.object({ prefilter: binding, structure: binding,
   .superRefine((models, ctx) => {
     for (const [role, b] of Object.entries(models)) {
       const candidates = bindingRoutes(b);
+      if (role === "summarize") {
+        const r = candidates[0];
+        if (b.model !== "deepseek-v4.1-flash" || candidates.length !== 1 ||
+            r?.route !== "company_tencent_vod/deepseek-v4.1-flash/stream" ||
+            r.actualModel !== "openai/deepseek-v4.1-flash" || r.provider !== "tencent-vod" ||
+            r.credentialProfile !== "company_tencent_vod") {
+          ctx.addIssue({ code: "custom", message: "Backfill summaries require DeepSeek V4.1 Flash on company_tencent_vod only" });
+        }
+        continue;
+      }
+      if (b.model.startsWith("deepseek")) ctx.addIssue({ code: "custom", message: "DeepSeek is only authorized for backfill summaries on Tencent VOD" });
       if (new Set(candidates.map((r) => r.route)).size !== candidates.length) ctx.addIssue({ code: "custom", message: `Duplicate backfill route in ${role}` });
       for (const r of candidates) {
         const self = r.provider === BACKFILL_PROVIDER && r.actualModel.startsWith("self_hosted/");
@@ -24,6 +35,7 @@ export const bindingsSchema = z.object({ prefilter: binding, structure: binding,
   });
 
 export function verifyDiscovery(view: any, model: string, models: BackfillBindings, project: string, baseUrl: string): string {
+  bindingsSchema.parse(models);
   const revision = view.loaded_registry_revision ?? view.registry?.loaded_revision;
   const fileRevision = view.file_registry_revision ?? view.registry?.file_revision;
   if (view.projection_version !== 2 || view.view_scope !== "logical_model" || view.requested_logical_model !== model ||
@@ -37,7 +49,8 @@ export function verifyDiscovery(view: any, model: string, models: BackfillBindin
       const found = view.routes?.find((r: any) => r.id === candidate.route && r.actual_model === candidate.actualModel && r.provider_id === candidate.provider &&
         (!candidate.credentialProfile || r.credential_profile_id === candidate.credentialProfile));
       if (!found || found.project_allowed === false || found.policy_allowed === false ||
-          (candidate.provider !== BACKFILL_PROVIDER && found.funding_source !== "personal_subscription")) throw new Error(`Backfill route identity or subscription changed: ${candidate.route}`);
+          (candidate.provider !== BACKFILL_PROVIDER && found.funding_source !==
+            (candidate.provider === "tencent-vod" ? "company_paid" : "personal_subscription"))) throw new Error(`Backfill route identity or funding changed: ${candidate.route}`);
       eligible ||= found.effectively_eligible === true;
     }
     if (!eligible) throw new Error(`No eligible authorized backfill route for ${model}`);

@@ -28,7 +28,7 @@ function runTranslation() {
     finally { await closeDb(); process.disconnect(); }
   `;
   const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
-    cwd: process.cwd(), env: { ...process.env, MODEL_CALLS_ENABLED: 'true', TRANSLATE_MODEL: 'deepseek-v4-flash-0731', DEEPSEEK_V4_BASE_URL: `${provider.url}/v1`, DEEPSEEK_V4_API_KEY: 'test-key', AIHOT_CREDENTIALS_DIR: '/nonexistent-test-credentials' },
+    cwd: process.cwd(), env: { ...process.env, MODEL_CALLS_ENABLED: 'true', TRANSLATE_MODEL: 'deepseek-v4.1-flash', DEEPSEEK_V41_BASE_URL: `${provider.url}/v1`, DEEPSEEK_V41_API_KEY: 'test-key', AIHOT_CREDENTIALS_DIR: '/nonexistent-test-credentials' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   let result: any;

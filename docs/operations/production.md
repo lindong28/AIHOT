@@ -6,7 +6,9 @@
 
 ## 环境与持久数据
 
-DeepSeek 消费者使用 `deepseek-v4-flash-0731`，对应 dgx0022 上的 V4-Flash-0731；个人 Gateway 的 `deepseek-v4.1-flash` 是独立托管型号，不作为该 V4 名称的回退。旧 `deepseek-flash` 已撤除。迁移模型名时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。
+DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`，推理变体为 `deepseek-v4.1-flash-think`。摘要、归组、综述、报告、翻译与监控统一选择 V4.1；backfill 摘要另外固定腾讯 VOD，见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
+
+本次 V4.1 更新的交付范围为仓库配置与校验代码，尚未更新生产 `app.env`、数据库模型设置、运行进程或既有回填绑定。个人 Gateway 的 `aihot` 仍为 personal，而腾讯账户为 company_paid；应用放行该明确特例不代替 Gateway 的项目授权，授权未接通时 preflight 会阻止回填派发。
 
 | 位置 | 用途 |
 | --- | --- |
