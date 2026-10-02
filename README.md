@@ -1,14 +1,14 @@
 # AI Radar 开发基线
 
-本仓库以 AIHOT 开源框架为基础，结合既有 Python 版 AI Radar 的信源，迭代 AI Radar 网站。已加入公开来源与 X 账号配置，沿用 AIHOT 采集和内容处理链路。截至 2026-10-02，腾讯云的新 API、Web 和数据库已准备，旧 RADAR 采集已停，公网仍由旧站提供；新 worker、模型到公开发布的连续链路尚未验收。当前状态见[迁移清单](docs/migration.md)。`~/research/ai-radar` 是迁移参照，不是本仓的运行依赖。
+本仓库以 AIHOT 开源框架为基础，结合既有 Python 版 AI Radar 的信源，迭代 AI Radar 网站。已加入公开来源与 X 账号配置，沿用 AIHOT 采集和内容处理链路。2026-10-02，公网 `news.aiplanet.live` 已切到本仓代码，腾讯云 API、Web、worker 与数据库运行，已观察到自动采集、模型处理和公开内容更新；旧 RADAR 采集已停，旧 Web 与数据保留供回滚。当前状态和剩余迁移项见[迁移清单](docs/migration.md)。`~/research/ai-radar` 是迁移参照，不是本仓的运行依赖。
 
 从[文档总入口](docs/README.md)了解当前状态；两套系统在数据源、架构和算法上的差异见[AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md)，后续开发入口见[融合开发指南](docs/development.md)。
 
-以下项目介绍、第一人称开源说明、截图及性能数字保留自 AIHOT 上游；其中“我”指上游作者数字生命卡兹克，不代表本仓维护者的经历，也不表示本仓已部署或完成 Radar 融合。
+以下项目介绍、第一人称开源说明、截图及性能数字保留自 AIHOT 上游；其中“我”指上游作者数字生命卡兹克，不代表本仓维护者的经历。这些上游材料不作为本仓部署或 Radar 融合的验收依据。
 
 ## 服务
 
-腾讯云已部署 API（后端）、Web（公开站点）、worker（采集与处理）和 PostgreSQL；目前 API、Web 与数据库运行，worker 已安装但停止。Mac Studio 的专用 launchd 隧道提供个人 Gateway 与代理出口。部署更新、起停、状态检查和回滚见[生产运维](docs/operations/production.md)，本机与 Docker 入口见[部署](docs/deploy.md)。可选 Wechat2RSS 仍在原机运行，尚未迁完；各环境及原生运维入口见[服务清单](docs/operations/services.md)。
+腾讯云运行 API（后端）、Web（公开站点）、worker（采集与处理）和 PostgreSQL；生产采集与模型调用已启用。Mac Studio 的专用 launchd 隧道提供个人 Gateway 与代理出口。部署更新、起停、状态检查和回滚见[生产运维](docs/operations/production.md)，本机与 Docker 入口见[部署](docs/deploy.md)。可选 Wechat2RSS 仍在原机运行，尚未迁完；各环境及原生运维入口见[服务清单](docs/operations/services.md)。
 
 TODO（本仓，负责人：AIHOT 维护者）：接通新生产 worker、Gateway 隧道和公开站点的外部故障通知并验证投递；目前尚未验收无人值守告警，保留既有服务的告警安排。
 

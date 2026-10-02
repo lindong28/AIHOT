@@ -1,6 +1,8 @@
 # 腾讯云生产运维
 
-面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。截至 2026-10-02 仍处准备阶段：腾讯云 API/Web 已运行，worker 已 enabled 但停止，`COLLECT_ENABLED=false`、`MODEL_CALLS_ENABLED=false`；公网仍是旧 RADAR。条款与隐私正文已由用户确认并应用；生产 Qwen 使用方式仍待用户决定。实时与历史两条模型链均经个人 Gateway，历史回填尚未启用；实时模型配置以 [app.env.example](../../deploy/production/app.env.example) 为准，回填另见[历史回填](backfill.md)。
+面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
+
+实时与历史两条模型链均经个人 Gateway，历史回填尚未启动。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向 `personal_bailian_token_plan::qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)。
 
 ## 环境与持久数据
 
@@ -10,7 +12,7 @@
 | 腾讯云 `/home/ubuntu/aihot/current` | 指向运行版本的符号链接，systemd 从这里启动 |
 | 腾讯云 `/home/ubuntu/aihot/shared/app.env`、`web.env` | 后端与 Web 运行配置；后端凭据文件权限为 0600，不入 Git、不打印内容 |
 | 腾讯云 `/home/ubuntu/aihot/shared/data` | 应用持久文件；PostgreSQL 数据由系统数据库服务独立管理 |
-| 腾讯云 `127.0.0.1:3001`、`:3000` | 新 API、Web；Nginx 切换后代理到 Web |
+| 腾讯云 `127.0.0.1:3001`、`:3000` | 新 API、Web；公网 Nginx 已代理到 Web |
 | 腾讯云 `127.0.0.1:39031`、`:39032` | 专用隧道提供的个人 Gateway 与 HTTP 代理 |
 
 腾讯云已安装 Node.js 24.21.0、PostgreSQL 16.15，完成依赖、Web 构建、数据库迁移及来源 seed。代码包不包含 `.env`、`.data/` 或共享目录；更新源码不覆盖这些持久状态。Web 配置模板见 [web.env.example](../../deploy/production/web.env.example)。
@@ -27,14 +29,14 @@ bash deploy/production/prepare-release.sh
 
 它安装锁定依赖、构建 Web、应用增量迁移并 seed；不会更新 `current`、启动服务或切换公网。seed 不覆盖已有来源配置。数据库迁移不是随代码回滚而自动撤销的操作。
 
-生产模型使用范围和正式页面正文确认、真实链路验证安排就绪后，部署更新使用：
+发布准备完成后，部署更新使用：
 
 ```bash
 bash deploy/production/service.sh install
 bash deploy/production/service.sh status
 ```
 
-`install` 会再次准备发布、更新 `current`、安装 systemd 定义，并 enable/restart API、Web、worker **全部三个服务**；`start` 和 `restart` 也作用于全部三个。它们不是“只更新前台”的命令。准备阶段保持 worker 停止；若需在此阶段安装服务，应由实施者在关闭安全阀的前提下操作并停止 worker，不把一次全服务启动算作连续验收。worker 当前 enabled，主机重启时可被拉起；关闭的安全阀仍应保留到生产启用条件完成。
+`install` 会再次准备发布、更新 `current`、安装 systemd 定义，并 enable/restart API、Web、worker **全部三个服务**；`start` 和 `restart` 也作用于全部三个。它们不是“只更新前台”的命令。生产 worker 当前 enabled 且运行，主机重启时可被拉起；仅安装或启动成功不代表处理链路健康，还须检查新任务、回执和公开内容更新。开发、离线测试或尚未获准启用的新环境继续保持采集与模型安全阀关闭。
 
 日常操作入口：
 
@@ -58,11 +60,12 @@ curl --fail --max-time 15 http://127.0.0.1:39031/health
 curl --fail --max-time 15 http://127.0.0.1:3000/api/health
 cd /home/ubuntu/aihot/current
 node scripts/smoke.ts --base http://127.0.0.1:3000
+node scripts/smoke.ts --base https://news.aiplanet.live
 ```
 
-`status` 显示 systemd 状态，准备阶段 worker inactive 会使其返回非零；这不等于 API/Web 也停止。Gateway health 不证明模型授权或上游可用，Web/内部 smoke 不证明公网已切换或有新内容发布。模型榜无发布轮次时，三个相关入口的 503 是跳过项，不能记为榜单可用。
+`status` 显示 systemd 状态，任一服务 inactive 会使其返回非零，应逐个查看 unit。Gateway health 不证明模型授权或上游可用，Web/内部 smoke 不证明公网路由或内容更新。2026-10-02 切站后的公网 smoke 覆盖 19 个页面、14 个机器出口和 1 次 MCP 握手，均通过，模型榜无跳过项。日后模型榜无发布轮次时，脚本会跳过三个相关入口的 503，不能把这种结果记为榜单可用。
 
-本次原生采集仅覆盖 RSS、Web、JSON、X 各一个来源，每源 8 条；32 条是原始入库量，公开内容仍为空。生产启用后应从真实采集、处理、公开页面/RSS/API 及 Gateway 回执核对同一批内容，再观察 worker 持续更新。
+切站时已从公网首页和文章详情读到中文标题、摘要与推荐理由；Gateway 账本取得 Qwen、GLM、DeepSeek 与 embedding 成功调用。worker 已观察到四轮 `sources.schedule` 成功及新增文章，不代表长期稳定性验收。来源健康快照中 RSS、Web、JSON 均为 ok，X 仍有账号为 unknown；SocialData 沿用每分钟 10、每小时 100、每日 1,000 的请求预算，触及预算后退避 15 分钟，未提高额度。具体数量、时间与验收证据见[生产切换记录](../references/20261001-production-cutover.md)。排查更新停滞时同时核对来源健康、预算、任务及公开内容，不只看进程。
 
 服务日志在 journald，可用 `journalctl -u aihot-worker.service -n 100 --no-pager`，API/Web 换相应 unit；向外提供日志前先去除凭据和私有 URL。后台“运行”页查看任务与未知回执；未知模型结果先核对 Gateway 账本再恢复，不因进程重启自动重复请求。
 
@@ -86,9 +89,9 @@ python3 deploy/production/gateway-tunnel.py uninstall
 
 ## 公网切换与回滚
 
-此节是待执行操作；当前未替换 Nginx。目标配置是 `/etc/nginx/sites-available/news.conf`，由 `/etc/nginx/sites-enabled/news.conf` 链接；HTTP 配置 `news-http.conf` 和现有证书保持。先完成生产模型使用及正式正文确认，并取得真实内容发布读数。
+公网已切到新站。当前配置是 `/etc/nginx/sites-available/news.conf`，由 `/etc/nginx/sites-enabled/news.conf` 链接；HTTP 配置 `news-http.conf` 和现有证书保持。切换时 `nginx -t` 成功后执行 reload，并从公网健康接口、首页、详情和 smoke 核对了新站。
 
-旧 Nginx 配置备份已建立，配置检查已通过，旧公网仍返回 200。在**腾讯云**从新发布目录运行；已有备份不覆盖：
+旧 Nginx 配置备份已建立。以下保留应用本仓 Nginx 配置的操作入口；在**腾讯云**从新发布目录运行，已有备份不覆盖：
 
 ```bash
 set -e
@@ -109,7 +112,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-再核对公网确实回到旧站。此回滚只恢复公开路由，保留新库和所有回执，不自动回退数据库 schema 或恢复旧采集。旧上游文件 `/home/ubuntu/ai-radar/data/nginx/ai-radar-active-upstream.conf` 仍保留，准备阶段指向 8001；旧 8000/8001 Web 仍在，切站确认前不删除。若需回退新站代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，而不是恢复旧数据库覆盖新产生的数据。
+再核对公网确实回到旧站。此回滚只恢复公开路由，保留新库和所有回执，不自动回退数据库 schema 或恢复旧采集。旧上游文件 `/home/ubuntu/ai-radar/data/nginx/ai-radar-active-upstream.conf` 仍保留，切站前指向 8001；旧 8000/8001 Web 与数据库保留供回滚，本次未删除。若需回退新站代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，而不是恢复旧数据库覆盖新产生的数据。
 
 ## 旧链路保留与恢复边界
 
