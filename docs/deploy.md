@@ -80,6 +80,8 @@ docker compose logs -f --tail 100 api worker web
 
 本站在发出请求前将 UUID 写入 `receipts.request_id` 与 `receipt_attempts.request_id`，作为 `X-LLM-Request-ID` 发送，并校验响应的 `llm_gateway` 身份；压缩 JSON 则校验 Gateway identity headers，并一同保存到回执响应中。Gateway 负责网络重试与供应商切换；本站不自动重发 Gateway 的未知结果。请求超时、连接中断、HTTP 错误、响应身份不匹配或业务结果不可用时，回执保持 `unknown`，处理暂停。按回执 ID 查询请求身份，再到 Gateway 的 ledger 核对该请求及其 attempts，确认结果后通过既有后台恢复入口处理；不得只因等待时间已过就放行重试。
 
+连接尚未建立的 `ECONNREFUSED`、`EAI_AGAIN`、`UND_ERR_CONNECT_TIMEOUT` 允许本站最多尝试三次，间隔 250/500 ms，始终保留原 UUID、body 与同一总超时；禁止自动跟随重定向，以免先发送成功再遇到连接错误。其它 `fetch failed` 不盲目重发，回执错误会保留安全原因码（如 `ECONNRESET`、`UND_ERR_SOCKET`）；原因不明标记 `UNKNOWN`，不记录可能含凭据的底层消息。连接重试耗尽也继续按 unknown 核账。Gateway 的 `ledger_unavailable` 503 表示其审计存储失败，不证明上游没有执行。
+
 ```sql
 SELECT id, status, request_id, usage, error
 FROM receipts WHERE id = '<后台显示的回执 ID>';

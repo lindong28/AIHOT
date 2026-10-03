@@ -1,7 +1,23 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { bindingRoutes, type BackfillBinding } from "../backfill/context.ts";
 import { GatewayNotDispatchedError } from "./receipts.ts";
+
+const CONNECT_RETRY_CODES = new Set(["ECONNREFUSED", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
+const NETWORK_CODES = new Set([...CONNECT_RETRY_CODES, "ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "EPIPE",
+  "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID"]);
+
+function networkCodes(error: unknown, depth = 0): string[] {
+  if (!error || typeof error !== "object" || depth > 3) return ["UNKNOWN"];
+  if (error instanceof AggregateError) {
+    return error.errors.length ? error.errors.flatMap((e) => networkCodes(e, depth + 1)) : ["UNKNOWN"];
+  }
+  const { code, cause, name } = error as { code?: unknown; cause?: unknown; name?: string };
+  if (typeof code === "string" && NETWORK_CODES.has(code)) return [code];
+  if (cause) return networkCodes(cause, depth + 1);
+  return [name === "TimeoutError" || name === "AbortError" ? "CALLER_DEADLINE" : "UNKNOWN"];
+}
 
 export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
@@ -33,17 +49,32 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
     identity,
     summary: { ...identity, ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
     async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>): Promise<Record<string, unknown>> {
-      // One send only. This deadline reserves for recovery windows, not a completion
-      // guarantee: expiry remains unknown. Gateway owns transport retry and fallback.
-      const res = await fetch(`${baseUrl}/v1/${endpoint}`, {
+      // Only proven pre-connect failures may be retried here. Gateway owns all
+      // provider retries; a socket reset or HTTP error may already have incurred cost.
+      const init: RequestInit = {
         method: "POST",
+        redirect: "error",
         headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode,
           ...(pin?.route ? { "X-LLM-Route": pin.route } : {}),
           ...(pin?.registryRevision ? { "X-LLM-Allowed-Routes": JSON.stringify(routes.map((r) => r.route)), "X-LLM-Registry-Revision": pin.registryRevision } : {}),
         },
         body: JSON.stringify({ ...body, model, timeout: timeoutMs / 1000 }),
         signal: AbortSignal.timeout(2 * timeoutMs + 200_000),
-      });
+      };
+      let res: Response;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          res = await fetch(`${baseUrl}/v1/${endpoint}`, init);
+          break;
+        } catch (error) {
+          const codes = networkCodes(error);
+          if (attempt < 2 && !init.signal!.aborted && codes.every((code) => CONNECT_RETRY_CODES.has(code))) {
+            await delay(250 * (attempt + 1));
+            if (!init.signal!.aborted) continue;
+          }
+          throw new Error(`Gateway network failure (${[...new Set(codes)].join(",")}); reconcile request ${requestId} before retrying`);
+        }
+      }
       if (!res.ok) {
         const json = await res.json().catch(() => null) as Record<string, unknown> | null;
         const error = json?.error as Record<string, unknown> | undefined;
