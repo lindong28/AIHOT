@@ -70,7 +70,7 @@ Mac 继续使用 `live.aiplanet.aihot-backfill-probe` 和既有通知去重键�
 
 本次仅在 Mac 的 `~/Library/LaunchAgents/live.lindong.llm-gateway.plist` 增加 `SoftResourceLimits.NumberOfFiles=4096`，经现有 Gateway `stop.sh → start.sh` 重载；launchctl 已回读 soft maxfiles 4096。管理器重新取得锁，自托管 Qwen 路由恢复 eligible，腾讯云原 `aihot-backfill.timer` 自动接续。20:22 的真实读数为已处理 3,008 条、处理中 9 条、执行异常 86 条；模型、参数、64 并发和回填预算未改。两条旧 crossed/in_flight 账目由 Gateway 原有启动恢复记为 interrupted_unknown、费用 unknown，未重发；恢复后新增两条 item 的 unknown-receipt 异常仍隔离核账。这些是恢复快照，不是全量完成或持续容量保证。
 
-Gateway 安装器目前会重写该 plist，重新安装会丢失此次覆盖，见 [Gateway 配置持久化待办](../issues/general.md#issue-gateway-20261003-fd64gateway-安装覆盖文件句柄上限)。本次未修改 Gateway 安装器或 GPU 部署。回退备份、异常日志和原始账本快照保存在主 checkout `.data/backfill-full-run-20261002/gateway-fd-recovery-20261003/`。
+后续已按用户要求持久化安装配置：共享 Gateway 安装器支持 `LLM_GATEWAY_LAUNCHD_NOFILE`，个人 `ai-agent-config/llm-gateway/install.sh` 固定传入 4096，每次完整安装重新写入。两仓代码须同步更新；直接运行共享安装器时须显式传入该参数，否则采用系统默认。隔离个人入口连续两次安装生成 4096，独立 launchd 进程也实际读取到 4096；本次代码更新未重装生产 Gateway 或改动 GPU 部署。修复记录见 [Gateway 配置持久化](../issues/archive/closed.md#issue-gateway-20261003-fd64gateway-安装覆盖文件句柄上限)。回退备份、异常日志和原始账本快照仍在主 checkout `.data/backfill-full-run-20261002/gateway-fd-recovery-20261003/`，安装验证在 `.data/gateway-nofile-20261003/`。
 
 ### 旧独立准备入口（仅诊断与迁移前使用）
 

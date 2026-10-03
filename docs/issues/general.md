@@ -1,11 +1,5 @@
 # 未解决问题
 
-## ISSUE-GATEWAY-20261003-fd64：Gateway 安装覆盖文件句柄上限
-
-- 状态：open；负责人：个人 Gateway 部署维护者；本轮完成运行态恢复，安装器修改属于 Gateway 维护范围，尚未实施。
-- 现场：2026-10-03 自托管 Qwen 的模型管理线程因 `Too many open files` 退出，阻塞全量回填；Mac launchd 默认 maxfiles 256，服务原无覆盖。当前服务 plist 已设置 soft NumberOfFiles 4096 并重启，路由及新闻终态增量已恢复，详见 [回填运维](../operations/backfill.md#qwen-路由不可用的现场恢复)。
-- 未完成项：共享 `llm-gateway/install.sh` 生成的 Darwin plist 没有资源上限设置，重新安装会覆盖现场修复。后续在 Gateway 所属部署配置与安装入口持久化此值；保持其它消费者、模型、额度与未知回执语义不变。4096 的长期容量尚未验证。
-
 ## ISSUE-MODEL-20261003-7a21：将上游未显式指定的模型参数记录到配置
 
 - 状态：open；负责人：AIHOT 维护者；按用户 2026-10-03 指示留待后续处理。
