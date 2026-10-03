@@ -64,6 +64,14 @@ node scripts/backfill.ts resume BATCH_ID
 
 Mac 继续使用 `live.aiplanet.aihot-backfill-probe` 和既有通知去重键。存在统一 run 后按 `totals.failed` 提示执行异常，即使该 run 仍在推进 pending；旧 preparation 告警退役明确表示切换统计入口，不表示旧异常已解决。
 
+### Qwen 路由不可用的现场恢复
+
+2026-10-03 19:58（+08）个人 Gateway 日志出现 `Too many open files` 和 SQLite `unable to open database file`，随后 `gateway-model-manager` 线程退出。Qwen 部署记录仍为 running，但管理锁已释放，discovery 将获准的自托管路由标为 `deployment_unknown`；统一回填因此停在 `waiting_models`，已处理 2,955 条、执行异常 84 条。逻辑模型有其它可用路由不等于回填可用，不能擅自更换已批准的 provider。
+
+本次仅在 Mac 的 `~/Library/LaunchAgents/live.lindong.llm-gateway.plist` 增加 `SoftResourceLimits.NumberOfFiles=4096`，经现有 Gateway `stop.sh → start.sh` 重载；launchctl 已回读 soft maxfiles 4096。管理器重新取得锁，自托管 Qwen 路由恢复 eligible，腾讯云原 `aihot-backfill.timer` 自动接续。20:22 的真实读数为已处理 3,008 条、处理中 9 条、执行异常 86 条；模型、参数、64 并发和回填预算未改。两条旧 crossed/in_flight 账目由 Gateway 原有启动恢复记为 interrupted_unknown、费用 unknown，未重发；恢复后新增两条 item 的 unknown-receipt 异常仍隔离核账。这些是恢复快照，不是全量完成或持续容量保证。
+
+Gateway 安装器目前会重写该 plist，重新安装会丢失此次覆盖，见 [Gateway 配置持久化待办](../issues/general.md#issue-gateway-20261003-fd64gateway-安装覆盖文件句柄上限)。本次未修改 Gateway 安装器或 GPU 部署。回退备份、异常日志和原始账本快照保存在主 checkout `.data/backfill-full-run-20261002/gateway-fd-recovery-20261003/`。
+
 ### 旧独立准备入口（仅诊断与迁移前使用）
 
 2026-10-03 用户批准全量准备先使用已有原始文字做 Qwen 初筛。运行入口如下，参数依次为冻结输入、五角色绑定、结果目录、并发、每轮最多条数、从首个待处理项开始的领取秒数：
