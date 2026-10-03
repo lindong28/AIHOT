@@ -15,7 +15,7 @@ export const GatewayEvidenceSchema = z.object({
 });
 export type GatewayEvidence = z.infer<typeof GatewayEvidenceSchema>;
 
-interface Receipt {
+export interface Receipt {
   id: number; service: string; model: string | null; purpose: string; subject: string | null;
   logical_key: string; status: string; attempts: number; request_id: string | null;
   request: { gateway?: { logicalRequestId?: string; project?: string; model?: string } };
@@ -38,7 +38,7 @@ function analysisTag(r: Receipt): { attemptTag?: string } | null {
   return root ? { attemptTag: root } : {};
 }
 
-async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; recovery: string }> {
+export async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; recovery: string; jobId?: string }> {
   const skip = (recovery: string) => ({ requeued: false, recovery });
   if (r.service === "backfill") return skip("managed_backfill_runner");
   if (ANALYSIS.has(r.purpose)) {
@@ -50,7 +50,7 @@ async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; rec
       WHERE id = ${match[1]!} AND revision = ${Number(match[2])} AND processing_state = 'failed' AND managed_backfill_id IS NULL RETURNING id`;
     if (!a) return skip("article_not_failed_or_revision_changed_or_managed");
     const job = await queueProcessing(match[1]!, { step: "analyze", ...tag, db });
-    return { requeued: !!job, recovery: job ? "analysis_queued" : "analysis_queue_already_present" };
+    return { requeued: !!job, recovery: job ? "analysis_queued" : "analysis_queue_already_present", ...(job ? { jobId: job } : {}) };
   }
   if (["group_article", "group_review", "group_signal"].includes(r.purpose)) {
     const match = /^article:([^:@]+)(?::fact:\d+)?$/.exec(r.subject ?? "");
@@ -60,7 +60,9 @@ async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; rec
     const [a] = await db`SELECT id FROM articles WHERE id = ${match[1]!} AND managed_backfill_id IS NULL FOR UPDATE`;
     if (!a) return skip("article_managed_or_missing");
     const job = await enqueue(QUEUES.group, { articleId: match[1], ...(r.purpose === "group_signal" ? { signalOnly: true } : {}) }, { singletonKey: match[1] }, db);
-    return { requeued: !!job, recovery: job ? "group_queued" : "group_queue_already_present" };
+    const [existing] = job ? [] : await db`SELECT id FROM pgboss.job WHERE name=${QUEUES.group} AND singleton_key=${match[1]!}
+      AND state IN ('created','retry','active') ORDER BY created_on DESC LIMIT 1`;
+    return { requeued: !!job, recovery: job ? "group_queued" : "group_queue_already_present", jobId: job ?? existing?.id };
   }
   if (r.purpose === "story_digest") {
     const match = /^story:(\d+)@\d+$/.exec(r.subject ?? "");
@@ -69,7 +71,9 @@ async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; rec
     const [story] = await db`SELECT id FROM stories WHERE id = ${id} AND merged_into IS NULL FOR UPDATE`;
     if (!story) return skip("story_merged_or_missing");
     const job = await enqueue(QUEUES.digest, { storyId: id }, { singletonKey: `story:${id}` }, db);
-    return { requeued: !!job, recovery: job ? "digest_queued" : "digest_queue_already_present" };
+    const [existing] = job ? [] : await db`SELECT id FROM pgboss.job WHERE name=${QUEUES.digest} AND singleton_key=${`story:${id}`}
+      AND state IN ('created','retry','active') ORDER BY created_on DESC LIMIT 1`;
+    return { requeued: !!job, recovery: job ? "digest_queued" : "digest_queue_already_present", jobId: job ?? existing?.id };
   }
   if (r.purpose === "monitor.recognize") return skip("monitor_next_tick");
   return skip("unsupported_purpose");

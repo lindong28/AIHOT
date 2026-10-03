@@ -111,6 +111,8 @@ sudo -n -u postgres psql -X -d aihot -v ON_ERROR_STOP=1 -P pager=off < scripts/s
 
 服务日志在 journald，可用 `journalctl -u aihot-worker.service -n 100 --no-pager`，API/Web 换相应 unit；向外提供日志前先去除凭据和私有 URL。后台“运行”页查看任务与未知回执；未知模型结果先核对 Gateway 账本再恢复，不因进程重启自动重复请求。
 
+所有者明确接受可能再次计费后，可以用[统一回执恢复脚本](receipt-recovery.md)冻结旧异常并受控重放，业务成功后自动结案。它保留原费用未知状态，不能替代供应商核账；同一批次续跑不会自动放行后来新产生的失败。
+
 外部故障通知的责任与待办见[根 README 服务章节](../../README.md#服务)。当前 systemd 重启、后台状态和日志不能替代外部通知；原有服务告警继续保留。
 
 ## 个人 Gateway 与代理隧道

@@ -212,6 +212,18 @@ test('old unknown cache resumes only after its exact receipt is reconciled, with
   const received=await cachedPrefilter(v,models);assert.equal(received!.label,response.label);assert.equal(received!.reused,true);assert.equal(received!.receiptCompleted,false);
   await completeReceipt(sql,response.receiptId);assert.equal((await cachedPrefilter(v,models))!.receiptCompleted,true);assert.equal(calls,before);
 });
+test('explicit paid replay authorization bypasses an old error cache only for its captured attempt',async()=>{
+  const v=version('authorized-replay'),ready=await preflightBackfill(models),ctx={runId:'cache-replay',models:ready.models,beforeCall:async()=>{}};
+  const response=await backfillContext.run(ctx,()=>runPrefilter(preparationArticle(v.prefilter!.row),{}));
+  const save=await oldCache();await save(v,{state:'error',label:null,errorKind:'receipt_unknown',receiptId:response.receiptId,receiptCompleted:null});
+  await sql`UPDATE receipts SET status='failed',response=NULL WHERE id=${response.receiptId}`;
+  await assert.rejects(()=>cachedPrefilter(v,models),/no-dispatch evidence/);
+  await sql`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,state,note,original_status)
+    VALUES (${response.receiptId},1,${tag()},'fixture','{"kind":"backfill","items":[]}','queued','authorized possible paid replay','unknown')`;
+  const before=calls;assert.equal(await cachedPrefilter(v,models),null);assert.equal(calls,before);
+  await sql`UPDATE receipts SET attempts=2 WHERE id=${response.receiptId}`;
+  await assert.rejects(()=>cachedPrefilter(v,models),/no-dispatch evidence/);
+});
 test('six real X NUL samples reach material_ready and article without a completeness call',async()=>{
   const samples=JSON.parse(await readFile(new URL('./fixtures/backfill-nul-material.json',import.meta.url),'utf8'));
   const ready=await preflightBackfill(models);

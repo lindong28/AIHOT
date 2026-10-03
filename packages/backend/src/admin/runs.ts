@@ -34,10 +34,13 @@ export async function runsOverview() {
       WHERE enabled AND kind NOT IN ('mp_account', 'external')
         AND (health = 'failing' OR next_fetch_at < now() - interval '30 minutes' OR last_ok_at < now() - make_interval(mins => greatest(interval_minutes * 6, 360)))
       ORDER BY health = 'failing' DESC, next_fetch_at LIMIT 60`,
-    sql<{ status: string; n: number }[]>`SELECT status, count(*)::int AS n FROM receipts WHERE created_at > now() - interval '7 days' GROUP BY 1`,
+    sql<{ status: string; n: number }[]>`SELECT CASE WHEN EXISTS (SELECT 1 FROM receipt_recoveries x
+      WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered') THEN 'recovered' ELSE r.status END AS status,
+      count(*)::int AS n FROM receipts r WHERE created_at > now() - interval '7 days' GROUP BY 1`,
     sql`
-      SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at FROM receipts
-      WHERE status = 'unknown' OR (status = 'failed' AND updated_at > now() - interval '3 days') OR (status = 'pending' AND updated_at < now() - interval '15 minutes')
+      SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at FROM receipts r
+      WHERE (status = 'unknown' OR (status = 'failed' AND updated_at > now() - interval '3 days') OR (status = 'pending' AND updated_at < now() - interval '15 minutes'))
+        AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')
       ORDER BY status = 'unknown' DESC, updated_at DESC LIMIT 40`,
     sql`
       SELECT id, target_key, subject_kind, subject_id, status, attempts, left(response, 240) AS response, created_at, updated_at FROM deliveries

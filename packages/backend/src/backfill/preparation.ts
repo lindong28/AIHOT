@@ -64,6 +64,11 @@ export async function cachedPrefilter(v: HistoryVersion, models: BackfillBinding
   if (receipt.status === 'unknown') throw new ReceiptUnknownError(receipt.id, "Old preparation receipt requires reconciliation");
   if (receipt.status === 'pending') throw new ReceiptBusyError("Old preparation receipt is still in flight");
   if (r.state === "error" && receipt.status === 'failed') {
+    // Explicit operator-authorized replay is distinct from proof of no dispatch. It grants
+    // one attempt only; a later failed attempt cannot reuse this authorization.
+    const [replay] = await sql`SELECT 1 FROM receipt_recoveries WHERE receipt_id=${receipt.id}
+      AND original_attempt=${receipt.attempts} AND state='queued'`;
+    if (replay) return null;
     // Only explicit whole-request zero-attempt ledger proof permits retrying an old error.
     const auditPath = process.env.BACKFILL_NOT_DISPATCHED_AUDIT;
     const audit = auditPath ? await json(auditPath) : null;
