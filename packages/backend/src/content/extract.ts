@@ -21,7 +21,7 @@ export interface ExtractedBody {
 
 const MIN_BODY_CHARS = 200;
 
-export function readable(html: string, url: string): ExtractedBody | null {
+export function readable(html: string, url: string, minimumChars = MIN_BODY_CHARS): ExtractedBody | null {
   const { document } = parseHTML(html);
   try {
     const base = document.createElement("base");
@@ -30,11 +30,11 @@ export function readable(html: string, url: string): ExtractedBody | null {
   } catch {
     // no head
   }
-  const article = new Readability(document as unknown as ConstructorParameters<typeof Readability>[0], { charThreshold: MIN_BODY_CHARS, keepClasses: false }).parse();
+  const article = new Readability(document as unknown as ConstructorParameters<typeof Readability>[0], { charThreshold: minimumChars, keepClasses: false }).parse();
   if (!article?.content) return null;
   const clean = trimTrailingChrome(sanitizeBody(article.content, url));
   const text = stripTags(clean);
-  if (text.length < MIN_BODY_CHARS) return null;
+  if (!text.trim() || text.length < minimumChars) return null;
   const images: ExtractedBody["images"] = [];
   for (const m of clean.matchAll(/<img\b[^>]*\bsrc="([^"]+)"[^>]*>/gi)) {
     const w = /\bwidth="(\d+)"/.exec(m[0]);

@@ -31,6 +31,41 @@ node scripts/backfill.ts status
 
 ## 全量准备：先初筛，再补原文
 
+### 统一历史清单与自动执行
+
+全量链路采用已有 `backfill_runs/items`，`scope=history` 的一个 run 覆盖固定日期与规范新闻身份。每条 item 保留全部原始版本、原始归档文件/行号/hash、固定 UTC 归属日和准备结果；原文完整性通过之前不创建 article。多个版本的 BLOCK 独立保存，只有全部版本均为已结算 BLOCK 才归正常过滤。无效 URL 保留原始 key 和分母；有可筛文字时仍先初筛，已结算 BLOCK 可正常过滤，否则保留 URL 异常。
+
+在内存充足的本机离线冻结原始输入，再把冻结文件传到生产。原始目录包含 `prepared-v2`、`full-prefilter-input`、`full-x`、`full-non-x`、`import-ready-v1` 及来源映射；本命令不联网、不调用模型、不写数据库：
+
+```bash
+node --max-old-space-size=6144 scripts/backfill-freeze-history.ts ARCHIVE_ROOT OUTPUT_DIR 2026-04-20 2026-09-30
+node scripts/backfill.ts import-history OUTPUT_DIR/candidates.jsonl 2026-04-20 2026-09-30 '全量历史回填'
+node scripts/backfill.ts configure BATCH_ID deploy/production/backfill-models.json
+node scripts/backfill.ts resume BATCH_ID
+```
+
+`manifest.json` 记录输入/输出 hash、版本数、新闻数、异常数和逐日分母。每个身份按最早原始版本 UTC 日冻结，全部版本日期继续保留；更换入库正文不改变该日。相同冻结文件及日期范围重复导入复用同一 run。导入流式读取 JSONL，不把全量正文载入生产进程内存。准备 payload 在 JSONB 的 `dataJson` 字符串中保存 JSON 编码，读取时才解码，以保留实际归档 HTML 中 PostgreSQL 不接受的 NUL；原始内容和冻结 hash 不变。来源必须已登记；历史缺源按归档来源禁用登记，不启用新的实时订阅。
+
+2026-10-03 本机冻结读数：170,160 版本归属 166,577 条新闻，195 个身份跨日，1 个无效 URL（仍保留在清单和进度中）。这是本次输入快照，不是已处理条数。实施目标与尚未完成的生产验收见 [统一回填 plan](../../plans/20261003-unified-history-backfill/plan.md)。
+
+| 执行环境变量 | 用途 |
+|---|---|
+| `BACKFILL_ORIGINAL_CACHE` | 必填，原始响应持久缓存根；使用 `responses/<url-sha256>.json` 和响应 gzip，兼容旧抓取缓存 |
+| `BACKFILL_PREFILTER_CACHE` | 可选，生产正在使用的旧预筛目录；严格核 key、inputHash、manifest、prompt、模型与环境身份；不可用本机旧副本覆盖 |
+| `BACKFILL_NOT_DISPATCHED_AUDIT` | 可选，旧错误回执的逐 attempt 权威 Gateway 证据 JSON；只有完整 logical local_rejected 和零 Gateway attempts 的记录才允许恢复旧 model_error |
+
+统一执行器先复用已有文章与精确 hash 批准材料，再消费旧预筛结果或执行新初筛；非 X 缺少完整来源证据时补取原网页，并将 HTTP、页面文字、metadata、JSON-LD 与提取正文送入独立 `verify_history_material` 判断。X 的核心文字自足须由实际提供的文字和上下文确定主体及含义；链接地址或媒体条目的存在不能补足必要内容，仅作补充的链接/配图不影响文字已经自足的判定，短文不因长度拒绝。判定理由说明核心陈述所依赖的主体或指代及支撑原文，无法确定必要的主体或上下文时说明缺口；完整文章可以包含匿名陈述，complete 须由理由中已给出的实际证据支持。完整性调用使用已绑定 DeepSeek 理解角色、固定 prompt 版本/temperature/token 上限；输入稳定序列化，避免 JSONB 键顺序改变回执身份。业务判断与回执结算同事务保存，已保存判断恢复时不重新抽样。HTTP/提取/模型故障以及 incomplete/unverified 均保留执行异常，不能伪装正常过滤。
+
+旧预筛回执按实际请求 logical key 校验（prompt、正文输入、模型参数和 Gateway 身份）；不同原始 key 的相同请求可以共享回执，不能用第一个 subject 拒绝后续版本。旧缓存虽仍记 unknown，但相同回执经核账成为 received/completed 后，直接解析已存响应再事务结算，不重发。实际仍 unknown 的回执继续阻断。X 的冗余 legacy bodyHtml 若含 NUL，在完整性核验前省略该可选字段，并把表示调整写入核验上下文；bodyText、xPost、引用和媒体原样保留，原 HTML 仍保存在 preparation。判定 hash 绑定调整后的原生材料，判定后不再改材料。
+
+在冻结 run 已导入、模型绑定完成后，生产将 [`backfill-unified.conf`](../../deploy/production/backfill-unified.conf) 安装为 `aihot-backfill.service.d/zz-unified.conf` 并刷新 systemd。它清除旧独立预筛池和固定 September 30 入队的 `ExecStartPost`，仍由原 timer 调用同一个有界 drain。不要让旧预筛执行池和统一执行器同时消费模型预算。开始实际调用前仍需真实小批材料边界与回执验证；代码和离线测试不证明模型判断质量或全量获取率。
+
+后台优先显示统一 run：总数等于已处理、待处理、处理中、执行异常之和；已处理仅包含 published/filtered/existing。原文准备通过和进入评分都不提高完成率。某天全部 item 到正常终态才计完成天数。旧批准批次折叠显示，不能与全量分母相加。单项异常不阻断其余 pending；全部待办耗尽仍有异常才进入 `needs_attention`。预算、忙回执或明确未派发暂缺可等待下轮，unknown 必须核账后才能继续。
+
+Mac 继续使用 `live.aiplanet.aihot-backfill-probe` 和既有通知去重键。存在统一 run 后按 `totals.failed` 提示执行异常，即使该 run 仍在推进 pending；旧 preparation 告警退役明确表示切换统计入口，不表示旧异常已解决。
+
+### 旧独立准备入口（仅诊断与迁移前使用）
+
 2026-10-03 用户批准全量准备先使用已有原始文字做 Qwen 初筛。运行入口如下，参数依次为冻结输入、五角色绑定、结果目录、并发、每轮最多条数、从首个待处理项开始的领取秒数：
 
 ```bash
@@ -98,7 +133,7 @@ node scripts/backfill.ts resume BATCH_ID
 MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_ITEMS
 ```
 
-将三个大写参数替换为真实批次 ID、容量并发和本次最多处理条数。`resume` 只改变状态，需运行执行命令；命令到达条数上限、队列耗尽或暂停后退出，进度留在数据库。单条失败保留错误并继续本次限额；本次结束后仍有失败则进入 `needs_attention`。
+将三个大写参数替换为真实批次 ID、容量并发和本次最多处理条数。`resume` 只改变状态，需运行执行命令；命令到达条数上限、队列耗尽或暂停后退出，进度留在数据库。单条失败保留错误并继续本次限额；仍有 pending 时保持 `ready` 接续，待办耗尽且仍有失败才进入 `needs_attention`。
 
 本轮部署主线程实测：Qwen 在 DGX0026 使用 4 GPU，DeepSeek 在 DGX0022 使用 8 GPU，二者 vLLM `--max-num-seqs=16`、`--max-model-len=32768`，并与线上共享。首篇逐条验收后，生产回填已采用容量并发 8，给实时处理留余量。此前“同篇五角色”表述修正为同篇完整原生链路、已结算回执与公开结果：原生理解与摘要是互斥写作分支，本轮未改模型、门槛或发布标准。实际角色覆盖见上文，不把首篇 5 次调用写成五角色。以上是部署容量与实际启动状态，不是已测吞吐承诺。
 

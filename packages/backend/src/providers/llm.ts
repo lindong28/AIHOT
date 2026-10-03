@@ -153,6 +153,11 @@ function isConnectFailure(error: unknown): boolean {
   return ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET_BEFORE_SEND", "CERT_HAS_EXPIRED"].includes(code ?? "");
 }
 
+export function parseChatResponse<S extends z.ZodType>(opts: Pick<ChatJsonOptions<S>, "schema" | "parse">, response: unknown): z.infer<S> {
+  const content = (response as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
+  return opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
+}
+
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
   const preset = MODELS[opts.model];
   if (!preset) throw new Error(`Unknown model ${opts.model}`);
@@ -234,10 +239,9 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
   );
 
   const response = receipt.response as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }>; usage?: Record<string, unknown> };
-  const content = response.choices?.[0]?.message?.content ?? "";
   let parsed: z.infer<S>;
   try {
-    parsed = opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
+    parsed = parseChatResponse(opts, response);
   } catch (error) {
     // Gateway outputs require ledger reconciliation before another paid attempt.
     await rejectReceivedResponse(receipt.receiptId, `unusable output: ${String(error).slice(0, 500)}`, !!gateway);

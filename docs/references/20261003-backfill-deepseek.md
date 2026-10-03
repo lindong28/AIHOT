@@ -13,3 +13,5 @@
 2026-10-02 22:56 UTC，在腾讯云待发布目录、独立库 `aihot_deepseek_switch_live_ci` 运行原生 `runAnalysis`：1 篇 GPT-4 文本样例，无图、无引用，预筛与结构各 1 次自托管 Qwen，评分 2 次和理解 1 次腾讯 DeepSeek。按 request ID 关联 Gateway 得到 5 次 success；三次 DeepSeek 均为 `company_paid`，两次评分为 93、89，理解返回并通过原生解析。评分请求实际为 5024 tokens、temperature 0.2；理解为 16384 tokens。未写文章业务结果，隔离库回执停在 `received`，不把它们计作正式回填完成。证据在主 checkout `.data/backfill-full-run-20261002/deepseek-role-probe.json` 与 `deepseek-role-ledger.json`，不入 Git。该样例只证明此文本输入上的调用和解析兼容，不证明评分质量等价、图像理解或长期稳定性。
 
 本机 Node 26.8.1、独立空 PostgreSQL 测试库和本地模拟模型：后端现有 207 项测试通过，覆盖回填五角色、拒绝非法路由、未知回执、暂停与并发绑定等；另有 typecheck、Web 构建及 11 项 Web 测试通过。独立审查未发现阻塞项。
+
+2026-10-03 15:08～15:11 +08，统一全量回填首次执行 64 条新闻，33 条到正常终态、31 条异常。55 次评分请求中 9 次返回 `finish_reason=length`、正文为空、5024 个输出 token 全为 reasoning；逐 request ID 关联 Gateway 均为已派发的 `OutputTruncatedError`，不是未派发的路由错误。该读数说明上面的单文本探针不能代表实际全量运行，5024 上限存在已观测的截断失败。统一 run 已暂停领取，原请求、usage 与未知费用保留，不自动重放。评分预算修复及恢复仍待裁决，不能把本记录的旧参数当作已验证适用于全量。证据位于主 checkout `.data/backfill-full-run-20261002/unified-first-run-ledger.json`；统一范围与完成口径见 [plan](../../plans/20261003-unified-history-backfill/plan.md)。

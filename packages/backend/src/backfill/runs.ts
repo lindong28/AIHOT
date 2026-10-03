@@ -7,6 +7,10 @@ import { publishArticle } from "../publication/publish.ts";
 import { backfillContext, BackfillPaused } from "./context.ts";
 import { bindingsSchema, preflightBackfill } from "./gateway.ts";
 import { entryIdentity, validateManifest, type ManifestEntry } from "./manifest.ts";
+import { prepareHistoryItem, preparationIdentity, retryablePreparationError } from "./preparation.ts";
+import { BudgetExceededError } from "../providers/receipts.ts";
+import { stableJson } from "../lib/ids.ts";
+import { loadPreparation, storePreparation } from "./history-input.ts";
 
 export async function importBackfill(input: { label: string; startDay: string; endDay: string; entries: unknown[] }) {
   if (!input.label.trim()) throw new Error("A batch label is required");
@@ -39,7 +43,7 @@ export async function configureBackfill(id: string, input: unknown) {
     if (!r) throw new Error("Backfill batch not found");
     const [used] = await tx`SELECT 1 FROM backfill_items WHERE run_id=${id} AND attempts>0 LIMIT 1`;
     if (used || !["paused", "waiting_models"].includes(r.state)) throw new Error("Model bindings are immutable after execution starts; use a new batch");
-    await tx`UPDATE backfill_runs SET models=${tx.json(models)},error=NULL WHERE id=${id}`;
+    await tx`UPDATE backfill_runs SET models=${tx.json(models)},preparation_identity=${r.scope === 'history' ? tx.json(preparationIdentity(models) as never) : null},error=NULL WHERE id=${id}`;
   });
 }
 
@@ -51,7 +55,16 @@ export async function controlBackfill(id: string, action: "pause" | "resume" | "
     if (action !== "pause" && r.state === "running") throw new Error("Pause the active executor before resuming or retrying");
     if (action === "retry") {
       // Same article/prompt/model identity: received receipts are reused; unknown ones remain blocked.
-      await tx`UPDATE backfill_items SET state='pending',reason=NULL,updated_at=now() WHERE run_id=${id} AND state='failed'`;
+      const failed = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='failed' AND day IS NOT NULL`;
+      for (const i of failed) {
+        const [row] = await tx`SELECT preparation FROM backfill_items WHERE run_id=${id} AND identity_key=${i.identity_key}`;
+        if (row?.preparation) {
+          const preparation = loadPreparation(row.preparation);
+          for (const result of Object.values(preparation.results)) delete result.error;
+          await tx`UPDATE backfill_items SET preparation=${tx.json(storePreparation(preparation))} WHERE run_id=${id} AND identity_key=${i.identity_key}`;
+        }
+      }
+      await tx`UPDATE backfill_items SET state='pending',reason=NULL,retry_after=NULL,updated_at=now() WHERE run_id=${id} AND state='failed' AND day IS NOT NULL`;
     }
     if (r.state !== "complete" || action === "retry") {
       await tx`UPDATE backfill_runs SET state=${action === "pause" ? "paused" : "ready"},error=NULL WHERE id=${id}`;
@@ -69,19 +82,30 @@ export async function backfillOverview() {
     count(*) FILTER(WHERE state='filtered')::int AS filtered,
     count(*) FILTER(WHERE state='existing')::int AS existing,
     count(*) FILTER(WHERE state='failed')::int AS failed,
+    count(*) FILTER(WHERE state='pending')::int AS pending,
     count(*) FILTER(WHERE state='running')::int AS running
     FROM backfill_items WHERE state<>'excluded' GROUP BY run_id,day ORDER BY day`;
   const excluded = await sql`SELECT run_id,reason,count(*)::int AS n FROM backfill_items WHERE state='excluded' GROUP BY run_id,reason`;
-  const active = await sql`SELECT run_id,article_id,day::text AS day,stage,model,state,reason,updated_at FROM backfill_items WHERE state IN ('running','failed') ORDER BY updated_at DESC LIMIT 100`;
-  return { checkedAt: new Date().toISOString(), runs: runs.map((r) => ({ ...r,
-    days: days.filter((d) => d.run_id === r.id), excluded: excluded.filter((d) => d.run_id === r.id), active: active.filter((d) => d.run_id === r.id),
-  })) };
+  const activeRows = await sql`SELECT i.run_id,i.identity_key,i.article_id,i.day::text AS day,i.stage,i.model,i.state,i.reason,i.updated_at,
+    i.material->>'url' AS url,i.preparation->>'dataJson' AS preparation_json
+    FROM backfill_items i WHERE state IN ('running','failed') ORDER BY updated_at DESC LIMIT 100`;
+  const active = activeRows.map(({ preparation_json, ...i }) => {
+    const v = preparation_json ? loadPreparation({ dataJson: preparation_json }).versions[0] : null;
+    return { ...i, run_id: String(i.run_id), url: i.url ?? v?.material?.url ?? null, provenance: v?.provenance ?? null };
+  });
+  return { checkedAt: new Date().toISOString(), runs: runs.map((r) => {
+    const own = days.filter(d => d.run_id === r.id);
+    const totals = Object.fromEntries(['total','done','published','filtered','existing','pending','running','failed'].map(k => [k, own.reduce((n,d) => n + Number(d[k]), 0)]));
+    return { ...r, id: String(r.id), scope: String(r.scope), totals, days: own, excluded: excluded.filter((d) => d.run_id === r.id), active: active.filter((d) => d.run_id === r.id) };
+  }) };
 }
 
 async function articleFor(runId: string, key: string) {
   return sql.begin(async (tx) => {
     const [i] = await tx`SELECT * FROM backfill_items WHERE run_id=${runId} AND identity_key=${key} FOR UPDATE`;
     if (!i) throw new Error("Backfill item not found");
+    const prepared = i.preparation ? loadPreparation(i.preparation) : null;
+    if (prepared && (!prepared.selected || prepared.selected.hash !== i.content_hash)) throw new Error("Historical material has not passed completeness verification");
     if (i.article_id) return String(i.article_id);
     const m = i.material as ManifestEntry["material"];
     const result = await upsertMaterial({ ...m, publishedAt: new Date(m.publishedAt), bodyStatus: "ok", via: "import", insertOnly: true,
@@ -112,7 +136,10 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
     if (!run) throw new Error("Backfill batch not found");
     if (!["ready", "waiting_models", "running"].includes(run.state) || options.signal?.aborted) return { state: String(run.state), processed: 0, claimed: 0 };
     let ready: Awaited<ReturnType<typeof preflightBackfill>>;
-    try { ready = await preflightBackfill(run.models); }
+    try {
+      if (run.scope === 'history' && stableJson(run.preparation_identity) !== stableJson(preparationIdentity(run.models))) throw new Error("Frozen preparation prompt/model identity changed; inspect before continuing");
+      ready = await preflightBackfill(run.models);
+    }
     catch (e) {
       await sql`UPDATE backfill_runs SET state='waiting_models',heartbeat_at=now(),error=${String(e).slice(0,500)} WHERE id=${id} AND state IN ('ready','waiting_models','running')`;
       const [last] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
@@ -128,7 +155,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
         const item = await sql.begin(async (tx) => {
           const [r] = await tx`SELECT state FROM backfill_runs WHERE id=${id} FOR UPDATE`;
           if (r?.state !== "running" || options.signal?.aborted) return null;
-          const [i] = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='pending' ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED`;
+          const [i] = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='pending' AND (retry_after IS NULL OR retry_after<=now()) ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED`;
           if (!i || options.signal?.aborted) return null;
           await tx`UPDATE backfill_items SET state='running',attempts=attempts+1,updated_at=now() WHERE run_id=${id} AND identity_key=${i.identity_key}`;
           return i;
@@ -137,20 +164,26 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
         claimed++;
         const key = String(item.identity_key);
         try {
-          await ready.check();
-          const articleId = await articleFor(id, key);
-          if (!articleId) { processed++; continue; }
-          const beforeCall = async (stage: string, model: string) => {
+          const beforeStage = async (stage: string, model: string) => {
             if (options.signal?.aborted) throw new BackfillPaused("Executor stopping; settled receipts will be reused");
             await ready.check();
             if (options.signal?.aborted) throw new BackfillPaused("Executor stopping; settled receipts will be reused");
             const [r] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
             if (r?.state !== "running") throw new BackfillPaused("Backfill paused; settled receipts will be reused");
+            await sql`UPDATE backfill_items SET stage=${stage},model=${model},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
+            await sql`UPDATE backfill_runs SET heartbeat_at=now() WHERE id=${id}`;
+          };
+          await beforeStage('preparation', '');
+          const prepared = await backfillContext.run({ runId: id, models: ready.models, beforeCall: beforeStage }, () => prepareHistoryItem(id, key, run.models));
+          if (prepared === 'terminal') { processed++; continue; }
+          await beforeStage('import', '');
+          const articleId = await articleFor(id, key);
+          if (!articleId) { processed++; continue; }
+          const beforeCall = async (stage: string, model: string) => {
+            await beforeStage(stage, model);
             const [i] = await sql`SELECT 1 FROM backfill_items i JOIN articles a ON a.id=i.article_id
               WHERE i.run_id=${id} AND i.identity_key=${key} AND a.managed_backfill_id=${id} AND a.revision=i.article_revision AND a.content_hash=i.article_hash`;
             if (!i) throw new Error("Reviewed article revision changed; inspect before retrying");
-            await sql`UPDATE backfill_items SET stage=${stage},model=${model},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
-            await sql`UPDATE backfill_runs SET heartbeat_at=now() WHERE id=${id}`;
           };
           await beforeCall("analyze", "");
           const [a] = await sql`SELECT processing_state FROM articles WHERE id=${articleId}`;
@@ -172,7 +205,10 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
           await sql`UPDATE backfill_items SET state=${p?.visibility === "public" && p.eligible ? "published" : "filtered"},stage='finished',reason=${state === "unknown" ? "analysis_unknown" : null},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
           processed++;
         } catch (e) {
-          await sql`UPDATE backfill_items SET state=${e instanceof BackfillPaused ? "pending" : "failed"},reason=${String(e).slice(0,500)},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
+          const retry = retryablePreparationError(e);
+          const retryAt = retry && !(e instanceof BackfillPaused) ? new Date(Date.now() + (e instanceof BudgetExceededError ? e.retryAfterSeconds : 60) * 1000) : null;
+          await sql`UPDATE backfill_items SET state=${retry ? "pending" : "failed"},retry_after=${retryAt},reason=${String(e).slice(0,500)},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
+          if (e instanceof BackfillPaused) return;
         }
       }
     }
@@ -181,7 +217,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
     const failure = workers.find((r) => r.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
     const [counts] = await sql`SELECT count(*) FILTER(WHERE state IN ('pending','running'))::int AS pending,count(*) FILTER(WHERE state='failed')::int AS failed FROM backfill_items WHERE run_id=${id}`;
-    const next = counts!.failed ? "needs_attention" : counts!.pending ? "ready" : "complete";
+    const next = counts!.pending ? "ready" : counts!.failed ? "needs_attention" : "complete";
     await sql`UPDATE backfill_runs SET state=${next},heartbeat_at=now() WHERE id=${id} AND state='running'`;
     const [last] = await sql`SELECT state FROM backfill_runs WHERE id=${id}`;
     return { state: String(last!.state), processed, claimed };

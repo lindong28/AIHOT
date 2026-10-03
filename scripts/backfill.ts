@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { closeDb } from "@aihot/backend/db";
 import { stopBoss } from "@aihot/backend/jobs/queue";
 import { backfillOverview, configureBackfill, controlBackfill, drainBackfills, importBackfill, runBackfill } from "@aihot/backend/backfill/runs";
+import { importHistory } from "@aihot/backend/backfill/history-input";
 
 const [command, ...args] = process.argv.slice(2);
 const shutdown = new AbortController();
@@ -11,7 +12,11 @@ process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
 let deadline: ReturnType<typeof setTimeout> | undefined;
 try {
-  if (command === "import" && args.length === 4) {
+  if (command === "import-history" && args.length === 4) {
+    const [file, startDay, endDay, label] = args as [string,string,string,string];
+    const r = await importHistory({ file, startDay, endDay, label });
+    console.log(`全量历史清单${r.reused ? '已存在' : '已导入，默认暂停'}：${r.id}。统一进度见 /admin/backfill；尚未调用模型或批准原文。`);
+  } else if (command === "import" && args.length === 4) {
     const [file, startDay, endDay, label] = args as [string, string, string, string];
     const entries = (await readFile(file, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     const r = await importBackfill({ entries, startDay, endDay, label });
@@ -52,7 +57,7 @@ try {
       }
     }
   } else {
-    console.error("用法：node scripts/backfill.ts import <native.jsonl> <起日> <止日> <名称> | configure <批次ID> <models.json> | pause/resume/retry <批次ID> | run <批次ID> <容量并发> <本次最多条数> | drain [<容量并发> <整轮最多条数> <最多批次>] | status [--json]\ndrain 需显式配置 BACKFILL_DRAIN_SECONDS；省略参数时从 BACKFILL_CONCURRENCY/MAX_ITEMS/MAX_RUNS 读取。本次未导入、未调用模型。");
+    console.error("用法：node scripts/backfill.ts import/import-history <输入.jsonl> <起日> <止日> <名称> | configure <批次ID> <models.json> | pause/resume/retry <批次ID> | run <批次ID> <容量并发> <本次最多条数> | drain [<容量并发> <整轮最多条数> <最多批次>] | status [--json]\ndrain 需显式配置 BACKFILL_DRAIN_SECONDS；省略参数时从 BACKFILL_CONCURRENCY/MAX_ITEMS/MAX_RUNS 读取。全量历史执行还需 BACKFILL_ORIGINAL_CACHE，可指定 BACKFILL_PREFILTER_CACHE 与 BACKFILL_NOT_DISPATCHED_AUDIT。本次未导入、未调用模型。");
     process.exitCode = 2;
   }
 } catch (e) {

@@ -24,10 +24,11 @@ def problems(report, units):
     timer = units.get('aihot-backfill.timer', {})
     runner = units.get('aihot-backfill.service', {})
     if timer.get('LoadState') != 'loaded' or timer.get('ActiveState') != 'active':
-        found['scheduler'] = '历史回填定时器未运行，已批准批次可能无法自动接续。请检查 backfill-service.sh status。'
+        found['scheduler'] = '历史回填定时器未运行，待办可能无法自动接续。请检查 backfill-service.sh status。'
     if runner.get('LoadState') != 'loaded' or runner.get('ActiveState') == 'failed' or runner.get('Result') not in ('success', ''):
         found['runner'] = '历史回填执行器异常，进度可能停止。请检查 journalctl -u aihot-backfill.service；先核对回执再恢复。'
-    preparation = report.get('preparation')
+    unified = any(run.get('scope') == 'history' for run in report['runs'])
+    preparation = None if unified else report.get('preparation')
     if preparation is not None:
         errors = preparation.get('unresolvedErrors')
         if type(errors) is not int or errors < 0:
@@ -35,7 +36,14 @@ def problems(report, units):
         if errors:
             found['preparation'] = '历史回填原文初筛有未解决的执行错误，相关材料尚未完成。请核对 prefilter-v1/summary.json、逐条结果及模型回执；不要直接重放未知请求。'
     for run in report['runs']:
-        if run['state'] == 'needs_attention':
+        failed = 0
+        if run.get('scope') == 'history':
+            failed = run.get('totals', {}).get('failed')
+            if type(failed) is not int or failed < 0:
+                raise ValueError('统一回填异常计数缺失或无效，健康未核实。')
+        if failed and run['state'] in ('ready', 'running'):
+            found['batch:' + run['id']] = '历史回填有执行异常；其余待办仍可自动领取，异常条目保留。请在 /admin/backfill 检查原因与回执，不要重放未知请求。'
+        elif run['state'] == 'needs_attention':
             found['batch:' + run['id']] = f"历史批次 {run['id']} 需要人工核账；不会自动重试。请在 /admin/backfill 检查失败条目与回执。"
         elif run['state'] == 'waiting_models':
             found['batch:' + run['id']] = f"历史批次 {run['id']} 正在等待已批准的模型路由，尚不能继续。请在 /admin/backfill 检查绑定与 Gateway 就绪状态。"
@@ -84,9 +92,10 @@ def main():
     state_file = Path.home() / '.local/state/aihot/backfill-probe.json'
     previous = json.loads(state_file.read_text()) if state_file.exists() else {}
     runs = {run['id']: run['state'] for run in report['runs']}
+    unified = any(run.get('scope') == 'history' for run in report['runs'])
     # A missing batch is loss of observation, not evidence of recovery.
     for identity in previous:
-        if identity == 'preparation' and report.get('preparation') is None:
+        if identity == 'preparation' and report.get('preparation') is None and not unified:
             current[identity] = '历史回填原文初筛状态已无法读取；恢复未核实。请检查 prefilter-v1/summary.json 与执行器，勿据此重放未知请求。'
         if identity.startswith('batch:') and identity[6:] not in runs:
             current[identity] = f'历史批次 {identity[6:]} 已无法从状态接口观察；恢复未核实。请检查 /admin/backfill 的批次记录。'
@@ -97,7 +106,10 @@ def main():
     for identity in previous.keys() - current.keys():
         key = f'aihot-backfill:{args.host}:{identity}'
         paused = identity.startswith('batch:') and runs.get(identity[6:]) == 'paused'
-        message = '批次已暂停，本条告警退役；不代表处理完成。' if paused else '本次状态读取确认原异常已解除；不代表全部回填完成。'
+        if identity == 'preparation' and unified:
+            message = '初筛已纳入统一回填任务，旧初筛告警退役；不代表旧异常已解决。后续状态见 /admin/backfill。'
+        else:
+            message = '批次已暂停，本条告警退役；不代表处理完成。' if paused else '本次状态读取确认原异常已解除；不代表全部回填完成。'
         notify(binary, ['--alert', '--dedup-key', key, f'【AI Radar 回填 · 知会】{identity}：{message} 无需立即处置。'])
         notify(binary, ['--dedup-clear', key])
     state_file.parent.mkdir(parents=True, exist_ok=True)

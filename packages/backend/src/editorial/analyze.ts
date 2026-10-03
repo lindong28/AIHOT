@@ -192,11 +192,8 @@ function checkAnalysisRunning() {
 const subjectOf = (a: AnalyzeInputArticle) => `article:${a.id}@${a.revision}`;
 const tagged = (attemptTag: string | undefined, step: string) => [attemptTag, step].filter(Boolean).join(":") || undefined;
 
-export async function runPrefilter(a: AnalyzeInputArticle, opts: StepOpts): Promise<AnalysisRun["prefilter"]> {
-  const model = await modelFor("prefilter");
-  checkAnalysisRunning();
-  const res = await chatJson({
-    model,
+export function prefilterRequest(a: AnalyzeInputArticle) {
+  return {
     purpose: "prefilter_article",
     subject: subjectOf(a),
     promptVersion: PROMPT_VERSIONS.prefilter,
@@ -205,8 +202,13 @@ export async function runPrefilter(a: AnalyzeInputArticle, opts: StepOpts): Prom
     schema: PrefilterSchema,
     temperature: 0,
     maxTokens: 512,
-    attemptTag: opts.attemptTag,
-  });
+  };
+}
+
+export async function runPrefilter(a: AnalyzeInputArticle, opts: StepOpts): Promise<AnalysisRun["prefilter"]> {
+  const model = await modelFor("prefilter");
+  checkAnalysisRunning();
+  const res = await chatJson({ model, ...prefilterRequest(a), attemptTag: opts.attemptTag });
   // A BLOCK without material to back it counts as UNKNOWN (which goes on).
   const label = res.data.label === "BLOCK" && missingEvidence(a) ? "UNKNOWN" : res.data.label;
   return { label, reason: res.data.reason, model: res.model, receiptId: res.receiptId, reused: res.reused };
