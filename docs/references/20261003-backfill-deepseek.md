@@ -1,5 +1,7 @@
 # 回填评分与理解改用 DeepSeek（2026-10-03）
 
+状态：下列首次切换记录保留作历史证据。用户后续明确只批准模型替换、未批准参数改变；5024/120s/0.2 与理解关闭思考已被要求修复，现行行为见 [模型配置](model-configuration.md)。评分恢复上游显式参数，理解恢复 enabled/low；不采用曾提出但未应用的16384评分上限。
+
 用户明确要求：“将 backfill 阶段需要用 GLM-5.3-Flash 的地方，都修改配置为用 DeepSeek-V4.1-Flash 完成”。本决定经一轮 L1 独立审查，替代 [2026-10-02 启动决定](20261002-backfill-launch.md)的 GLM 订阅路由，以及后来仅摘要使用腾讯 VOD 的范围；其它历史隔离、原文审核、预算和回执要求继续有效。
 
 评分使用已有 `deepseek-v4.1-flash-think` preset；理解和摘要共用非思考 `deepseek-v4.1-flash` preset。三个角色均绑定唯一 `company_tencent_vod/deepseek-v4.1-flash/stream`，实际模型 `openai/deepseek-v4.1-flash`，账户资金归属 `company_paid`。预筛和结构继续自托管 Qwen；实时模型配置保持原值。请求仍走个人 Gateway 的 `aihot` 双归属项目，无新增供应商凭据。

@@ -16,6 +16,8 @@
 | [references/20261002-socialdata-recovery.md](references/20261002-socialdata-recovery.md) | 开发者：SocialData 增量分页、预算恢复及验证记录 |
 | [operations/wechat2rss.md](operations/wechat2rss.md) | 维护者：Wechat2RSS 数据迁移、部署与原生 RSS 接入 |
 | [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
+| [references/model-configuration.md](references/model-configuration.md) | 维护者：在线/回填模型、上游参数基线与实际配置查看入口 |
+| [issues/general.md](issues/general.md) | 维护者：上游未显式参数的后续配置化与 embedding 缺省分支差异 |
 | [references/20261003-backfill-prefilter.md](references/20261003-backfill-prefilter.md) | 开发者：全量原文前初筛、冻结输入、回执恢复与准备计数边界 |
 | [references/20261001-backfill-design.md](references/20261001-backfill-design.md) | 开发者：个人 Gateway 回填隔离与边界决定 |
 | [references/20261002-backfill-launch.md](references/20261002-backfill-launch.md) | 开发者：GLM 订阅候选、限定路由、持续回填决定与待验收边界 |

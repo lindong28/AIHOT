@@ -1,6 +1,6 @@
 # 历史原文回填
 
-供迁移维护者将审核后的历史原文交给 AIHOT 当前算法处理，并查看逐日进度。历史批次通过同一个个人 llm-gateway 限制候选路由。2026-10-03 用户明确将回填中的 GLM 全部替换为 DeepSeek V4.1 Flash：评分、内容理解和摘要仅允许 `tencent-vod` provider 的 `company_tencent_vod`，按公司付费归属，不回退自托管或其它付费来源；预筛与结构仍只用自托管 Qwen。
+供迁移维护者将归档历史原文交给 AIHOT 当前算法处理，并查看逐日进度。当前全量入口见“统一历史清单与自动执行”；下文手工审核导入与独立预筛入口保留用于旧批次，不是全量链路的必经步骤。历史批次通过同一个个人 llm-gateway 限制候选路由。2026-10-03 用户明确将回填中的 GLM 全部替换为 DeepSeek V4.1 Flash：评分、内容理解和摘要仅允许 `tencent-vod` provider 的 `company_tencent_vod`，按公司付费归属，不回退自托管或其它付费来源；预筛与结构仍只用自托管 Qwen。
 
 个人 Gateway 的 `aihot` 已登记 personal/company 双归属，腾讯账户仍为 `company_paid`。新绑定按当前策略预检；旧 GLM/V4 绑定不能启动新调用，开始执行后的绑定不可改写。已完成批次及回执保留原模型名，不重算；后续批次使用新配置。切换决定和验证边界见[模型替换记录](../references/20261003-backfill-deepseek.md)。以下旧批次的 GLM、自托管 DeepSeek 读数均为历史快照，不表示当前配置。
 
@@ -33,7 +33,7 @@ node scripts/backfill.ts status
 
 ### 统一历史清单与自动执行
 
-全量链路采用已有 `backfill_runs/items`，`scope=history` 的一个 run 覆盖固定日期与规范新闻身份。每条 item 保留全部原始版本、原始归档文件/行号/hash、固定 UTC 归属日和准备结果；原文完整性通过之前不创建 article。多个版本的 BLOCK 独立保存，只有全部版本均为已结算 BLOCK 才归正常过滤。无效 URL 保留原始 key 和分母；有可筛文字时仍先初筛，已结算 BLOCK 可正常过滤，否则保留 URL 异常。
+全量链路采用已有 `backfill_runs/items`，`scope=history` 的一个 run 覆盖固定日期与规范新闻身份。每条 item 保留全部原始版本、原始归档文件/行号/hash、固定 UTC 归属日和准备结果；选定归档正文或成功补取之前不创建 article。多个版本的 BLOCK 独立保存，只有全部版本均为已结算 BLOCK 才归正常过滤。无效 URL 保留原始 key 和分母；有可筛文字时仍先初筛，已结算 BLOCK 可正常过滤，否则保留 URL 异常。
 
 在内存充足的本机离线冻结原始输入，再把冻结文件传到生产。原始目录包含 `prepared-v2`、`full-prefilter-input`、`full-x`、`full-non-x`、`import-ready-v1` 及来源映射；本命令不联网、不调用模型、不写数据库：
 
@@ -54,9 +54,9 @@ node scripts/backfill.ts resume BATCH_ID
 | `BACKFILL_PREFILTER_CACHE` | 可选，生产正在使用的旧预筛目录；严格核 key、inputHash、manifest、prompt、模型与环境身份；不可用本机旧副本覆盖 |
 | `BACKFILL_NOT_DISPATCHED_AUDIT` | 可选，旧错误回执的逐 attempt 权威 Gateway 证据 JSON；只有完整 logical local_rejected 和零 Gateway attempts 的记录才允许恢复旧 model_error |
 
-统一执行器先复用已有文章与精确 hash 批准材料，再消费旧预筛结果或执行新初筛；非 X 缺少完整来源证据时补取原网页，并将 HTTP、页面文字、metadata、JSON-LD 与提取正文送入独立 `verify_history_material` 判断。X 的核心文字自足须由实际提供的文字和上下文确定主体及含义；链接地址或媒体条目的存在不能补足必要内容，仅作补充的链接/配图不影响文字已经自足的判定，短文不因长度拒绝。判定理由说明核心陈述所依赖的主体或指代及支撑原文，无法确定必要的主体或上下文时说明缺口；完整文章可以包含匿名陈述，complete 须由理由中已给出的实际证据支持。完整性调用使用已绑定 DeepSeek 理解角色、固定 prompt 版本/temperature/token 上限；输入稳定序列化，避免 JSONB 键顺序改变回执身份。业务判断与回执结算同事务保存，已保存判断恢复时不重新抽样。HTTP/提取/模型故障以及 incomplete/unverified 均保留执行异常，不能伪装正常过滤。
+统一执行器先复用已有文章与精确 hash 批准材料，再消费旧预筛结果或执行新初筛。按用户 2026-10-03 修订，原文完整性由 agent 抽样，不新增逐条 `verify_history_material` AI 核验：已有正文直接复用，缺正文或只有标题/URL 占位时才补取网页。HTTP/提取/模型故障仍保留执行异常，不能伪装正常过滤。旧完整性判断和付费回执保留为历史记录，不再发出该用途的调用；材料 evidence 明确是归档复用或网页提取，不声明逐条完整性已审核。
 
-旧预筛回执按实际请求 logical key 校验（prompt、正文输入、模型参数和 Gateway 身份）；不同原始 key 的相同请求可以共享回执，不能用第一个 subject 拒绝后续版本。旧缓存虽仍记 unknown，但相同回执经核账成为 received/completed 后，直接解析已存响应再事务结算，不重发。实际仍 unknown 的回执继续阻断。X 的冗余 legacy bodyHtml 若含 NUL，在完整性核验前省略该可选字段，并把表示调整写入核验上下文；bodyText、xPost、引用和媒体原样保留，原 HTML 仍保存在 preparation。判定 hash 绑定调整后的原生材料，判定后不再改材料。
+旧预筛回执按实际请求 logical key 校验（prompt、正文输入、模型参数和 Gateway 身份）；不同原始 key 的相同请求可以共享回执，不能用第一个 subject 拒绝后续版本。旧缓存虽仍记 unknown，但相同回执经核账成为 received/completed 后，直接解析已存响应再事务结算，不重发。实际仍 unknown 的回执继续阻断。X 的冗余 legacy bodyHtml 若含 NUL，准备原生材料时省略该可选字段；bodyText、xPost、引用和媒体原样保留，原 HTML 仍保存在 preparation。content_hash 绑定最终使用的原生材料。
 
 在冻结 run 已导入、模型绑定完成后，生产将 [`backfill-unified.conf`](../../deploy/production/backfill-unified.conf) 安装为 `aihot-backfill.service.d/zz-unified.conf` 并刷新 systemd。它清除旧独立预筛池和固定 September 30 入队的 `ExecStartPost`，仍由原 timer 调用同一个有界 drain。不要让旧预筛执行池和统一执行器同时消费模型预算。开始实际调用前仍需真实小批材料边界与回执验证；代码和离线测试不证明模型判断质量或全量获取率。
 
@@ -117,11 +117,11 @@ node scripts/backfill-fetch-originals.ts PREPARATION_DIR INVENTORY.jsonl FETCH_Q
 | 角色键 | 模型与参数来源 |
 |---|---|
 | `prefilter`、`structure` | 同一个 Qwen3.8-Flash 同系列部署，沿用 `qwen3.8-flash` preset |
-| `score` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash-think` preset，双评分；请求上限 5024 tokens、120 秒，temperature 0.2 |
-| `understand` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` 非思考 preset |
+| `score` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash-selection` preset，双评分；65536 tokens、180 秒、temperature 1；thinking enabled/clear_thinking=false、effort high、top_p 0.95 |
+| `understand` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash-low` preset；thinking enabled、effort low；16384 tokens、180 秒、temperature 0.2 |
 | `summarize` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` preset；唯一候选为 `company_tencent_vod/deepseek-v4.1-flash/stream`，actual model 为 `openai/deepseek-v4.1-flash` |
 
-绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；理解和摘要共享非思考 preset，绑定也须相同。开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。
+绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；理解和摘要沿用相同 DeepSeek 路由绑定，但各自的思考参数不同。开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。各阶段完整参数与查看入口见 [模型配置](../references/model-configuration.md)。
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 

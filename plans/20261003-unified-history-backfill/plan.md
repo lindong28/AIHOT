@@ -20,7 +20,15 @@
 
 先初筛再补原文；已有可用本地原文优先复用，缺少时补取。只有标题、截断摘要或缺失关键引用的材料不得冒充完整原文。短而自足的文本不因长度被拒绝；来源返回 401/403 不能直接判断内容不相关。保持原文 hash 与审核证据绑定、已有文章不覆盖、实时处理隔离及历史内容不增加当前事件热度。
 
-模型沿用已批准策略：Qwen3.8 Flash（实际 Flash-Next）完成初筛和结构化；DeepSeek-V4.1-Flash 完成评分、理解和摘要，评分使用 think 逻辑模型。所有请求继续经过 Gateway、回执和 backfill 预算。未知派发结果不能静默重发，确认未派发的瞬时错误可恢复，不让个别异常挡住剩余队列。
+模型沿用已批准策略：Qwen3.8 Flash（实际 Flash-Next）完成初筛和结构化；DeepSeek-V4.1-Flash 完成评分、理解和摘要。模型替换不授权改变参数：评分沿用上游 temperature=1、max_tokens=65536、timeout=180s、thinking enabled/clear_thinking=false、reasoning_effort=high、top_p=0.95；理解沿用 enabled/low、0.2/16384/180s；摘要仍 disabled、0.2/2048/120s。所有请求继续经过 Gateway、回执和 backfill 预算。未知派发结果不能静默重发，确认未派发的瞬时错误可恢复，不让个别异常挡住剩余队列。
+
+### 2026-10-03 用户修订（优先于下文原实施决定）
+
+用户明确要求复用线上代码、只做工程接线，不做评分效果调优；原文完整性由 agent 抽样查看，发现拿不到原文等明显工程问题再处理。取消逐条 `verify_history_material` LLM 核验及其完整性门槛，已有正文直接复用，只有无正文/仅标题或 URL 占位时补取；不把复用声明成逐条完整性已审核。保存既有原文、判断和付费回执作为历史记录，不新发该用途的调用。
+
+用户确认 Qwen3.7→Qwen3.8、原 groupReview MiMo→GLM、backfill GLM→DeepSeek 均曾批准；随后明确将在线 groupReview 改为 DeepSeek-V4.1-Flash，以保留 MiMo 的关闭思考、temperature=0、有效 max_tokens=512、120s 行为。评分 5024/120s/0.2 与理解关闭思考没有获得批准，必须修复。16384 评分候选从未应用，现取消。上游未显式指定的参数登记 issue，未来按用户要求再配置化，不在此轮自行补默认值。
+
+本轮本地实现由主线程负责（task-routing R4，继承当前模型/effort）；模型及显式参数由用户固定，局部实现 L0，通过真实请求体断言验证，commit 可回退。生产运行沿用既有 A2/V1 及回执恢复 V2 边界，在独立实现审查通过后部署。既有 backfill 告警继续以同一 run 的执行异常为入口，无新告警身份；原文取不到仍保留异常。完整配置及未指定项见 [模型配置](../../docs/references/model-configuration.md)。
 
 ## 当前事实与复用入口
 
@@ -54,7 +62,7 @@
 
 交付位置是本地 main 和生产 `news.aiplanet.live/admin/backfill`；本 session 负责实现、测试、本地整合及已授权回填运行。Git push 未获授权，不执行。文档同步到 `docs/operations/backfill.md` 并链接本记录；原始数据、凭据不提交。
 
-## 最小实现决定（L1，独立审查放行）
+## 原实施决定（历史记录；原文核验部分已由上述用户修订替代）
 
 在“扩展已有 backfill_runs/items”与“新建 campaign/第二套数据库工作流”之间，采用前者：全量原始输入一次性按规范身份分组入同一个 run，items 的 preparation 保存全部原始版本与准备结果，仍由现有 systemd timer 的 drain 领取。每条记录依次执行初筛、原文补取/核验、既有分析发布；准备阶段结果也进入同一条目的持久状态，原文核验通过前不得调用 articleFor 写文章。旧初筛目录按精确 key/inputHash/prompt/model 身份复用，新的初筛和后续步骤由统一执行器负责，不再并行启动另一个初筛执行池。
 

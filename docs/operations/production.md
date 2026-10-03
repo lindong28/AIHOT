@@ -6,7 +6,7 @@
 
 ## 环境与持久数据
 
-DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`，推理变体为 `deepseek-v4.1-flash-think`。摘要、归组、综述、报告、翻译与监控统一选择 V4.1；backfill 评分、理解与摘要另外固定腾讯 VOD，见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
+DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`。摘要、归组、归组复核、综述、报告、翻译与监控选择非思考 V4.1；backfill 评分使用 `-selection`、理解使用 `-low`，明确保留上游 GLM 各角色参数，三种回填 DeepSeek 角色固定腾讯 VOD。完整参数见 [模型配置](../references/model-configuration.md)，执行见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
 
 V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库模型设置、运行进程或既有回填绑定。Gateway 项目需显式登记 personal/company 双归属，腾讯账户保持 company_paid；应用预检核对双归属和唯一腾讯路由。启动回填前必须以运行中的 Gateway 完成预检与真实模型验证，不能把源文件已修改视为生产已加载。
 

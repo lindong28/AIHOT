@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 export const BACKFILL_PROVIDER = "self-hosted";
 export const BACKFILL_PRESETS = {
-  prefilter: "qwen3.8-flash", structure: "qwen3.8-flash", score: "deepseek-v4.1-flash-think",
-  understand: "deepseek-v4.1-flash", summarize: "deepseek-v4.1-flash",
+  prefilter: "qwen3.8-flash", structure: "qwen3.8-flash", score: "deepseek-v4.1-flash-selection",
+  understand: "deepseek-v4.1-flash-low", summarize: "deepseek-v4.1-flash",
 } as const;
 export type BackfillRole = keyof typeof BACKFILL_PRESETS;
 export interface BackfillRoute { route: string; actualModel: string; provider: string; credentialProfile?: string }

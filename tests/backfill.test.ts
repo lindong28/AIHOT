@@ -28,7 +28,7 @@ const models: BackfillBindings = {
   understand: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
   summarize: { model: "deepseek-v4.1-flash", routes: [{ route: "company_tencent_vod/deepseek-v4.1-flash/stream", actualModel: "openai/deepseek-v4.1-flash", provider: "tencent-vod", credentialProfile: "company_tencent_vod" }] },
 };
-const requests: Array<{ model: string; route: string | undefined; stage: string; user: string; thinking: unknown; maxTokens: number }> = [];
+const requests: Array<{ model: string; route: string | undefined; stage: string; user: string; thinking: unknown; maxTokens: number; temperature: number; timeout: number; reasoningEffort?: string; topP?: number }> = [];
 let pauseOnPrefilter: string | null = null, malformed = false, healthRevision = "test-revision";
 let waiting: ReturnType<typeof gate> | null = null, entered: ReturnType<typeof gate> | null = null;
 let healthWait: ReturnType<typeof gate> | null = null, healthEntered: ReturnType<typeof gate> | null = null;
@@ -39,7 +39,7 @@ const server = createServer(async (req,res) => {
   const system = String(body.messages[0]?.role === "system" ? body.messages[0].content : "");
   const user = JSON.stringify(body.messages.at(-1).content);
   const stage = system.includes("宽召回的AI相关性预筛") ? "prefilter" : system.includes("事件注意力评分器") ? "score" : system.includes("内容理解编辑") ? "understand" : system.includes("资料结构化助手") ? "structure" : "summarize";
-  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user,thinking:body.thinking,maxTokens:body.max_tokens });
+  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user,thinking:body.thinking,maxTokens:body.max_tokens,temperature:body.temperature,timeout:body.timeout,reasoningEffort:body.reasoning_effort,topP:body.top_p });
   if (stage === "prefilter" && pauseOnPrefilter) { const id=pauseOnPrefilter;pauseOnPrefilter=null;await controlBackfill(id,"pause","test"); }
   if (stage === "prefilter" && waiting) { entered?.open(undefined); await waiting.promise; }
   const answer = stage === "prefilter" ? { label:user.includes("OFFTOPIC") ? "BLOCK" : "PASS",reason:"fixture" }
@@ -114,8 +114,16 @@ test("native publication progresses by day, filters noise, preserves existing or
     assert.ok(calls.length > 0, `${stage} was called`);
     assert.ok(calls.every(r => r.model === "deepseek-v4.1-flash" && r.route === "company_tencent_vod/deepseek-v4.1-flash/stream"));
     for (const call of calls) {
-      assert.deepEqual(call.thinking, stage === "score" ? undefined : { type: "disabled" });
-      if (stage === "score") assert.equal(call.maxTokens, 5024);
+      if (stage === "score") {
+        assert.deepEqual(call.thinking, { type: "enabled", clear_thinking: false });
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort, call.topP], [1, 65536, 180, "high", 0.95]);
+      } else if (stage === "understand") {
+        assert.deepEqual(call.thinking, { type: "enabled" });
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort], [0.2, 16384, 180, "low"]);
+      } else {
+        assert.deepEqual(call.thinking, { type: "disabled" });
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout], [0.2, 2048, 120]);
+      }
     }
   }
   const rows=await sql`SELECT * FROM backfill_items WHERE run_id=${id}`;

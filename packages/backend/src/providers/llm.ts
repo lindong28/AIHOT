@@ -62,6 +62,17 @@ export const MODELS: Record<string, ModelSpec> = {
     key: "deepseek-v4.1-flash-think", service: "deepseek", model: "deepseek-v4.1-flash",
     baseUrlEnv: "DEEPSEEK_V41_BASE_URL", apiKeyEnv: "DEEPSEEK_V41_API_KEY", jsonMode: true,
   },
+  // Model replacements retain the original GLM role's explicit controls.
+  "deepseek-v4.1-flash-selection": {
+    key: "deepseek-v4.1-flash-selection", service: "deepseek", model: "deepseek-v4.1-flash",
+    baseUrlEnv: "DEEPSEEK_V41_BASE_URL", apiKeyEnv: "DEEPSEEK_V41_API_KEY",
+    extra: { thinking: { type: "enabled", clear_thinking: false }, reasoning_effort: "high", top_p: 0.95 }, jsonMode: true,
+  },
+  "deepseek-v4.1-flash-low": {
+    key: "deepseek-v4.1-flash-low", service: "deepseek", model: "deepseek-v4.1-flash",
+    baseUrlEnv: "DEEPSEEK_V41_BASE_URL", apiKeyEnv: "DEEPSEEK_V41_API_KEY",
+    extra: { thinking: { type: "enabled" }, reasoning_effort: "low" }, jsonMode: true,
+  },
   "qwen3.7-flash": {
     key: "qwen3.7-flash", service: "dashscope", model: "qwen3.7-flash",
     baseUrlEnv: "DASHSCOPE_BASE_URL", apiKeyEnv: "DASHSCOPE_API_KEY",

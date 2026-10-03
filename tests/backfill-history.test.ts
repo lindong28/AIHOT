@@ -11,11 +11,11 @@ import { config } from '@aihot/backend/config';
 import { stopBoss } from '@aihot/backend/jobs/queue';
 import { sha256, stableJson } from '@aihot/backend/lib/ids';
 import { backfillContext, type BackfillBindings } from '@aihot/backend/backfill/context';
-import { importHistory, loadPreparation, validateCandidate, type HistoryCandidate, type HistoryVersion } from '@aihot/backend/backfill/history-input';
+import { importHistory, loadPreparation, storePreparation, validateCandidate, type HistoryCandidate, type HistoryVersion } from '@aihot/backend/backfill/history-input';
 import { materialHash } from '@aihot/backend/backfill/manifest';
 import { backfillOverview, configureBackfill, controlBackfill, runBackfill } from '@aihot/backend/backfill/runs';
 import { preflightBackfill } from '@aihot/backend/backfill/gateway';
-import { cachedPrefilter, fetchHistoryOriginal, historyJudgementInput, judgeHistoryMaterial, prepareHistoryItem, QUALITY_IDENTITY, originalPageContext } from '@aihot/backend/backfill/preparation';
+import { cachedPrefilter, historyMaterial, prepareHistoryItem, originalPageContext } from '@aihot/backend/backfill/preparation';
 import { PROMPT_VERSIONS, prefilterRequest, runPrefilter } from '@aihot/backend/editorial/analyze';
 import { preparationArticle } from '@aihot/backend/backfill/preparation-prefilter';
 import { completeReceipt } from '@aihot/backend/providers/receipts';
@@ -24,7 +24,7 @@ const T = tag(), source = `history-${T}`, root = await mkdtemp(join(tmpdir(),'ai
 const qwen = { model: 'qwen3.8-flash', routes: [{ route: 'personal_self_hosted/qwen3.8-flash-next/stream', actualModel: 'self_hosted/qwen3.8-flash-next', provider: 'self-hosted', credentialProfile: 'personal_self_hosted' }] };
 const deep = { model: 'deepseek-v4.1-flash', routes: [{ route: 'company_tencent_vod/deepseek-v4.1-flash/stream', actualModel: 'openai/deepseek-v4.1-flash', provider: 'tencent-vod', credentialProfile: 'company_tencent_vod' }] };
 const models: BackfillBindings = { prefilter:qwen,structure:qwen,score:deep,understand:deep,summarize:deep };
-let calls = 0, qualityCalls = 0, qualityMode: 'complete'|'incomplete'|'unverified'|'unknown'|'undispatched' = 'complete';
+let calls = 0, qualityCalls = 0, prefilterMode: 'complete'|'unknown'|'undispatched' = 'complete';
 let forcePrefilterPass = false;
 const server = createServer(async (req,res) => {
   res.setHeader('content-type','application/json');
@@ -42,10 +42,10 @@ const server = createServer(async (req,res) => {
   let response:unknown;
   if (typeof user === 'object' && user.materialHash) {
     qualityCalls++;
-    if (qualityMode==='unknown') {res.statusCode=502;res.end(JSON.stringify({error:{code:'provider_stream_error'}}));return;}
-    if (qualityMode==='undispatched') {res.statusCode=422;res.end(JSON.stringify({error:{code:'route_cooldown',logical_request_id:req.headers['x-llm-request-id']}}));return;}
-    response={state:qualityMode,reason:'Synthetic fixture judgement; no real model quality claim'};
+    res.statusCode=500;res.end(JSON.stringify({error:'Unexpected per-item material judgement'}));return;
   } else response={label:forcePrefilterPass || String(user).includes('【来源】Archived fixture') && !String(user).includes('【标题】Fixture BLOCK_FIXTURE') && !String(user).includes('【标题】Fixture invalid-BLOCK_FIXTURE')?'PASS':'BLOCK',reason:'Synthetic prefilter decision'};
+  if (prefilterMode==='unknown') {res.statusCode=502;res.end(JSON.stringify({error:{code:'provider_stream_error'}}));return;}
+  if (prefilterMode==='undispatched') {res.statusCode=422;res.end(JSON.stringify({error:{code:'route_cooldown',logical_request_id:req.headers['x-llm-request-id']}}));return;}
   res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(response)}}],usage:{prompt_tokens:10,completion_tokens:10},
     llm_gateway:{projection_version:1,logical_request_id:req.headers['x-llm-request-id'],provider_id:r.provider,selected_route_id:r.route,actual_model:r.actualModel,credential_profile_id:r.credentialProfile}}));
 });
@@ -55,7 +55,7 @@ Object.assign(process.env,{LLM_GATEWAY_URL:base,LLM_GATEWAY_PROJECT:'history-tes
 delete process.env.LLM_GATEWAY_CLI;
 config.modelCallsEnabled=true; // Only the loopback Gateway stub is configured.
 before(async()=>{await sql`INSERT INTO sources(id,name,kind,tier,enabled) VALUES(${source},'Native fixture','rss','T1',false)`;await mkdir(join(root,'responses'));});
-beforeEach(async()=>{qualityMode='complete';forcePrefilterPass=false;delete process.env.BACKFILL_PREFILTER_CACHE;delete process.env.BACKFILL_NOT_DISPATCHED_AUDIT;await sql`UPDATE backfill_runs SET state='paused' WHERE state<>'complete'`;});
+beforeEach(async()=>{prefilterMode='complete';forcePrefilterPass=false;delete process.env.BACKFILL_PREFILTER_CACHE;delete process.env.BACKFILL_NOT_DISPATCHED_AUDIT;await sql`UPDATE backfill_runs SET state='paused' WHERE state<>'complete'`;});
 after(async()=>{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await stopBoss();await closeDb();});
 
 function version(suffix:string, day='2026-05-01'):HistoryVersion {
@@ -67,6 +67,7 @@ function candidate(...versions:HistoryVersion[]):HistoryCandidate {
   return {identityKey:'url:'+versions[0]!.material!.url,day:versions.map(v=>v.day!).sort()[0]!,dayBasis:'earliest_version_utc',error:null,versions};
 }
 async function original(v:HistoryVersion,status=200) {
+  v.material!.bodyText = v.material!.title; // No archived body, so this fixture must fetch.
   const html='<html><head><script type="application/ld+json">{"@type":"NewsArticle","isAccessibleForFree":true}</script></head><body><article><h1>Fixture</h1><p>A complete short release. Version two fixes the stated bug.</p></article></body></html>';
   const stem=sha256(v.targetUrls[0]!),rawPath=`responses/${stem}.response.gz`;
   await writeFile(join(root,rawPath),gzipSync(html));
@@ -103,9 +104,10 @@ test('two drains automatically prepare, analyze and finish new items with short 
   const rows=await sql`SELECT i.state,i.preparation,a.managed_backfill_id FROM backfill_items i JOIN articles a ON a.id=i.article_id WHERE run_id=${r.id}`;
   assert.equal(rows.length,2);assert.ok(rows.every(x=>x.state==='filtered'&&x.managed_backfill_id===r.id&&loadPreparation(x.preparation).selected));
   for(const row of rows) for(const result of Object.values(loadPreparation(row.preparation).results) as any[]) {
-    assert.equal((await sql`SELECT status FROM receipts WHERE id=${result.quality.receiptId}`)[0]!.status,'completed');
-    assert.equal(result.quality.promptVersion,QUALITY_IDENTITY.promptVersion);
+    assert.equal((await sql`SELECT status FROM receipts WHERE id=${result.prefilter.receiptId}`)[0]!.status,'completed');
+    assert.equal(result.quality,undefined);
   }
+  assert.equal(qualityCalls,0);
 });
 test('archived HTML with NUL round-trips unchanged through import and settled preparation',async()=>{
   // Actual bodyHtml from raw key 981a370d34f9904b:834acd92d6aa0b7b (x:2064154387879186760).
@@ -115,11 +117,21 @@ test('archived HTML with NUL round-trips unchanged through import and settled pr
   await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);
   assert.equal(saved.state,'filtered');assert.equal(saved.article_id,null);assert.equal(saved.preparation.versions[0].material.bodyHtml,html);
 });
-test('incomplete/unverified material never creates an article and fixed judgement is not sampled again',async()=>{
-  for(const mode of ['incomplete','unverified'] as const) {
-    qualityMode=mode;const v=version(mode);await original(v);const r=await batch([candidate(v)]);const before=qualityCalls;
-    await runBackfill(r.id,{concurrency:1,maxItems:1});assert.equal((await item(r.id)).state,'failed');assert.equal((await item(r.id)).article_id,null);
-    await controlBackfill(r.id,'retry','test');await runBackfill(r.id,{concurrency:1,maxItems:1});assert.equal(qualityCalls,before+1);
+test('archived original bypasses both fetching and the removed completeness model',async()=>{
+  const v=version('archived');v.material!.bodyText='A complete short release. Version two fixes the stated bug.';
+  const r=await batch([candidate(v)]);await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);
+  assert.ok(saved.article_id);assert.equal(saved.material.bodyText,v.material!.bodyText);
+  assert.equal(saved.preparation.results[v.key].fetched,undefined);assert.equal(saved.preparation.results[v.key].quality,undefined);
+  assert.equal(qualityCalls,0);
+});
+test('archived body takes priority over old empty or removed-page extraction',async()=>{
+  for (const text of ['', 'This content is no longer available.']) {
+    const v=version('old-fetch-'+tag()),r=await batch([candidate(v)]),p=(await item(r.id)).preparation;
+    p.results[v.key]={fetched:{status:200,extracted:{text}}};
+    await sql`UPDATE backfill_items SET preparation=${sql.json(storePreparation(p))} WHERE run_id=${r.id}`;
+    await runBackfill(r.id,{concurrency:1,maxItems:1});
+    const saved=await item(r.id);assert.equal(saved.material.bodyText,v.material!.bodyText);assert.equal(saved.state,'filtered');
+    assert.equal(saved.preparation.results[v.key].fetched.extracted.text,text);assert.equal(qualityCalls,0);
   }
 });
 test('HTTP failure stays exceptional while other pending items continue across drains',async()=>{
@@ -130,9 +142,9 @@ test('HTTP failure stays exceptional while other pending items continue across d
   const totals=(await backfillOverview()).runs.find(x=>x.id===r.id)!.totals;assert.equal(totals.total,2);assert.equal(totals.done,1);assert.equal(totals.failed,1);
 });
 test('unknown paid result is not automatically redispatched, even on explicit retry',async()=>{
-  qualityMode='unknown';const v=version('unknown');await original(v);const r=await batch([candidate(v)]),before=calls;
+  prefilterMode='unknown';const v=version('unknown');await original(v);const r=await batch([candidate(v)]),before=calls;
   await runBackfill(r.id,{concurrency:1,maxItems:1});const failed=await item(r.id);assert.equal(failed.state,'failed');assert.match(failed.preparation.results[v.key].error,/receipt_unknown/);
-  await controlBackfill(r.id,'retry','test');await runBackfill(r.id,{concurrency:1,maxItems:1});assert.equal(calls,before+2);assert.equal((await item(r.id)).article_id,null);
+  await controlBackfill(r.id,'retry','test');await runBackfill(r.id,{concurrency:1,maxItems:1});assert.equal(calls,before+1);assert.equal((await item(r.id)).article_id,null);
 });
 test('approved exact material bypasses preparation calls and existing identity is not overwritten',async()=>{
   const v=version('approved');v.approved={state:'complete',evidence:'Exact synthetic fixture approval',contentHash:materialHash(v.material!)};
@@ -143,10 +155,10 @@ test('approved exact material bypasses preparation calls and existing identity i
   assert.equal((await sql`SELECT body_text FROM articles WHERE id=${originalRow.article_id}`)[0]!.body_text,a.body_text);
 });
 test('confirmed no-dispatch waits without repeatedly reclaiming the same item in one drain',async()=>{
-  qualityMode='undispatched';const v=version('undispatched');await original(v);const r=await batch([candidate(v)]),before=qualityCalls;
-  const result=await runBackfill(r.id,{concurrency:1,maxItems:10});assert.equal(result.claimed,1);assert.equal(result.state,'ready');assert.equal(qualityCalls,before+1);
+  prefilterMode='undispatched';const v=version('undispatched');await original(v);const r=await batch([candidate(v)]),before=calls;
+  const result=await runBackfill(r.id,{concurrency:1,maxItems:10});assert.equal(result.claimed,1);assert.equal(result.state,'ready');assert.equal(calls,before+1);
   const waiting=await item(r.id);assert.equal(waiting.state,'pending');assert.ok(waiting.retry_after.getTime()>Date.now());
-  qualityMode='complete';await sql`UPDATE backfill_items SET retry_after=now() WHERE run_id=${r.id}`;
+  prefilterMode='complete';await sql`UPDATE backfill_items SET retry_after=now() WHERE run_id=${r.id}`;
   assert.equal((await runBackfill(r.id,{concurrency:1,maxItems:1})).state,'complete');
 });
 test('BLOCK on one version does not exclude another version; invalid URL can only terminate by settled BLOCK',async()=>{
@@ -156,14 +168,13 @@ test('BLOCK on one version does not exclude another version; invalid URL can onl
   const c:HistoryCandidate={identityKey:'invalid:'+inv.key,day:inv.day,dayBasis:'earliest_version_utc',error:'invalid_original_url',versions:[inv]};
   const invalid=await batch([c]);await runBackfill(invalid.id,{concurrency:1,maxItems:1});assert.equal((await item(invalid.id)).state,'filtered');assert.equal((await item(invalid.id)).article_id,null);
 });
-test('received material judgement survives crash before preparation save without a second paid call',async()=>{
+test('received prefilter survives crash before preparation save without a second paid call',async()=>{
   const v=version('crash');await original(v);const r=await batch([candidate(v)]),ready=await preflightBackfill(models);
-  const f=await fetchHistoryOriginal(v.targetUrls[0]!),input=historyJudgementInput(v,f);
   const ctx={runId:r.id,models:ready.models,beforeCall:async()=>{}};
-  const judged=await backfillContext.run(ctx,()=>judgeHistoryMaterial(input.material,input.context));
-  assert.equal((await sql`SELECT status FROM receipts WHERE id=${judged.receiptId}`)[0]!.status,'received');const before=qualityCalls;
+  const judged=await backfillContext.run(ctx,()=>runPrefilter(preparationArticle(v.prefilter!.row),{}));
+  assert.equal((await sql`SELECT status FROM receipts WHERE id=${judged.receiptId}`)[0]!.status,'received');const before=calls;
   await backfillContext.run(ctx,()=>prepareHistoryItem(r.id,candidate(v).identityKey,models));
-  assert.equal(qualityCalls,before);assert.equal((await item(r.id)).preparation.selected.hash,judged.contentHash);
+  assert.equal(calls,before);assert.ok((await item(r.id)).preparation.selected.hash);
   assert.equal((await sql`SELECT status FROM receipts WHERE id=${judged.receiptId}`)[0]!.status,'completed');
 });
 test('old cache rejects wrong input identity and model errors lacking zero-attempt proof',async()=>{
@@ -174,10 +185,10 @@ test('old cache rejects wrong input identity and model errors lacking zero-attem
   await writeFile(file,JSON.stringify(result));await assert.rejects(()=>cachedPrefilter(v,models),/input identity/);
   await writeFile(file,JSON.stringify({...result,inputHash:v.prefilter!.inputHash}));await assert.rejects(()=>cachedPrefilter(v,models),/no-dispatch evidence/);
 });
-test('production judgement input keeps paywall metadata and source response, including short text',()=>{
+test('fetched material retains its source response and short text',()=>{
   const html='<html><head><meta property="og:title" content="Report"><script type="application/ld+json">{"isAccessibleForFree":false}</script></head><body><p>A short self-contained lead.</p></body></html>';
   const context=originalPageContext(html);assert.match(context.structuredData.join(''),/isAccessibleForFree/);
-  const v=version('paywall'),input=historyJudgementInput(v,{status:200,sourceUrl:v.targetUrls[0],finalUrl:v.targetUrls[0],extracted:{text:'Lead.',html:'<p>Lead.</p>',via:'readability',images:[]},...context});
+  const v=version('paywall'),input=historyMaterial(v,{status:200,sourceUrl:v.targetUrls[0],finalUrl:v.targetUrls[0],extracted:{text:'Lead.',html:'<p>Lead.</p>',via:'readability',images:[]},...context});
   assert.equal(input.material.bodyText,'Lead.');assert.equal((input.context as any).status,200);assert.match(JSON.stringify(input.context),/isAccessibleForFree/);
 });
 test('different raw keys share a settled prefilter receipt only for the identical actual request',async()=>{
@@ -201,7 +212,7 @@ test('old unknown cache resumes only after its exact receipt is reconciled, with
   const received=await cachedPrefilter(v,models);assert.equal(received!.label,response.label);assert.equal(received!.reused,true);assert.equal(received!.receiptCompleted,false);
   await completeReceipt(sql,response.receiptId);assert.equal((await cachedPrefilter(v,models))!.receiptCompleted,true);assert.equal(calls,before);
 });
-test('six real X NUL samples reach material_ready and article without changing judged native material',async()=>{
+test('six real X NUL samples reach material_ready and article without a completeness call',async()=>{
   const samples=JSON.parse(await readFile(new URL('./fixtures/backfill-nul-material.json',import.meta.url),'utf8'));
   const ready=await preflightBackfill(models);
   for(const [index,sample] of samples.entries()) {
@@ -214,11 +225,11 @@ test('six real X NUL samples reach material_ready and article without changing j
     v.prefilter!.inputHash=sha256(JSON.stringify(v.prefilter!.row));
     const c={...candidate(v),identityKey:'x:'+tweetId},r=await batch([c],'2026-06-09','2026-06-10');
     forcePrefilterPass=true;
-    const input=historyJudgementInput(v);assert.equal(input.material.bodyHtml,undefined);assert.deepEqual(input.material.xPost,v.material!.xPost);assert.equal(input.material.bodyText,sample.material.bodyText);
+    const input=historyMaterial(v);assert.equal(input.material.bodyHtml,undefined);assert.deepEqual(input.material.xPost,v.material!.xPost);assert.equal(input.material.bodyText,sample.material.bodyText);
     await backfillContext.run({runId:r.id,models:ready.models,beforeCall:async()=>{}},()=>prepareHistoryItem(r.id,c.identityKey,models));
     forcePrefilterPass=false;
     const prepared=await item(r.id);assert.equal(prepared.stage,'material_ready');assert.equal(prepared.content_hash,materialHash(input.material));assert.deepEqual(prepared.material,input.material);
-    assert.equal(prepared.preparation.results[v.key].quality.contentHash,prepared.content_hash);
+    assert.equal(prepared.preparation.results[v.key].quality,undefined);assert.equal(qualityCalls,0);
     assert.equal(prepared.preparation.versions[0].material.bodyHtml,sample.material.bodyHtml);
     await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);assert.ok(saved.article_id);assert.equal(saved.content_hash,prepared.content_hash);
     const [article]=await sql`SELECT body_text,body_html,x_post FROM articles WHERE id=${saved.article_id}`;

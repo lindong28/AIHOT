@@ -25,7 +25,7 @@ export default function Backfill({ loaderData }: Route.ComponentProps) {
     const timer = setInterval(() => { if (document.visibilityState === "visible" && refresh.state === "idle") refresh.revalidate(); }, 20000);
     return () => clearInterval(timer);
   }, [refresh]);
-  return <AdminPage title="历史回填" subtitle={<>全量历史共用一套进度：初筛、补原文、核验和发布自动接续。每 20 秒刷新 · {bj(data.checkedAt)}</>}>
+  return <AdminPage title="历史回填" subtitle={<>全量历史共用一套进度：初筛、按需补原文、评分和发布自动接续。每 20 秒刷新 · {bj(data.checkedAt)}</>}>
     <p className="mb-5 text-sm text-ink-3">暂停会等待在途请求结算。续跑复用已完成的模型回执；结果未知的调用须先在“运行”页面核对。这里的操作不启动执行器、不撤回已发布内容。</p>
     {!data.runs.length && <Empty>还没有回填批次。模型部署前可先转换、审核原始材料；候选数量不代表合格数量。</Empty>}
     {[...data.runs.filter(b => b.scope === 'history'), ...data.runs.filter(b => b.scope !== 'history')].map((b) => {
