@@ -109,6 +109,22 @@ test('two drains automatically prepare, analyze and finish new items with short 
   }
   assert.equal(qualityCalls,0);
 });
+test('queued recovery is claimed before ordinary history within the same drain capacity',async()=>{
+  const early=candidate(version('BLOCK_FIXTURE-early','2026-05-01'));
+  const late=candidate(version('BLOCK_FIXTURE-late','2026-05-02'));
+  const r=await batch([early,late]);
+  const [receipt]=await sql`INSERT INTO receipts(logical_key,service,purpose,status,attempts) VALUES(${tag()},'backfill','prefilter_article','failed',1) RETURNING id`;
+  const target={kind:'backfill',items:[{runId:r.id,key:late.identityKey}]};
+  await sql`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,state,note,original_status)
+    VALUES(${receipt!.id},1,${tag()},${JSON.stringify(target)},${sql.json(target)},'queued','test recovery','unknown')`;
+  const first=await runBackfill(r.id,{concurrency:2,maxItems:1});
+  assert.equal(first.claimed,1);
+  assert.equal((await item(r.id,late.identityKey)).state,'filtered');
+  assert.equal((await item(r.id,early.identityKey)).state,'pending');
+  const second=await runBackfill(r.id,{concurrency:2,maxItems:1});
+  assert.equal(second.claimed,1);
+  assert.equal((await item(r.id,early.identityKey)).state,'filtered');
+});
 test('archived HTML with NUL round-trips unchanged through import and settled preparation',async()=>{
   // Actual bodyHtml from raw key 981a370d34f9904b:834acd92d6aa0b7b (x:2064154387879186760).
   const html='<p>昨晚苹果 WWDC 唯一的亮点就是这个灵动岛的新 Siri AI 了。<br />\n<br />\n而且本地端侧模型居然只支持 17Pro 这一款设备，当然欧洲和中国还是不可用。'+'\u0000'.repeat(24)+'</p>\n<a href="https://nitter.net/op7418/status/2064154387879186760#m">\n<br />Video<br />\n  <img src="https://nitter.net/pic/amplify_video_thumb%2F2064057253259554816%2Fimg%2FI7rNWKarBNZ7A1Nt.jpg" />\n</a>';

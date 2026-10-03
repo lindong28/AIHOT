@@ -48,6 +48,8 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 回填锁被占用时，保留 planned，等原 executor 自然结束后再试；不暂停或抢占当前回填。preparation 回执通过冻结版本 key 或保存的回执 ID 找回原 item，旧 error 缓存仅对这次捕获的 attempt 允许一次重试。原 manifest、缓存输入与请求身份检查继续生效。
 
+2026-10-04 独立决策审查通过：原 runner 每轮持有同一批次锁后，先读取已 queued 的恢复目标，优先领取其中可运行的 pending item，再回到原日期顺序。仅修改领取顺序，原并发、每轮上限、预算和暂停机制不变；普通积压会后移，不能称为零影响。这个优先级用于避免四个晚日期恢复目标占住名额、等待前方整个库存；planned、blocked 和其他 run 不获得优先级。回退时恢复普通领取顺序，保留所有回执及业务结果。
+
 同一新闻沿用原 article_id，历史导入沿用唯一 identity_key，publication 按 article_id 更新，因此恢复不会重新导入一份新闻。过滤掉的内容属于正常终态，不要求为其生成公开新闻。
 
 已恢复的旧异常从后台待核对表中移除，并在汇总中计为 `recovered`。这层显示只覆盖已结案的原 attempt；同一个 receipt 后来出现新失败仍会展示。它不会把旧调用伪装成模型成功，也不会把 unknown 费用改成零。没有业务结果、目标不存在或身份改变时，不强行结案。

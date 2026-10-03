@@ -148,6 +148,11 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
     // Acquiring the session lock proves the former executor is gone; reuse settled receipts.
     await sql`UPDATE backfill_items SET state='pending' WHERE run_id=${id} AND state='running'`;
     await sql`UPDATE backfill_runs SET state='running',heartbeat_at=now(),error=NULL WHERE id=${id} AND state<>'paused'`;
+    // Recovery admission takes the same run lock, so this set is fixed for this drain.
+    const recoveryRows = await sql<{ key: string }[]>`SELECT DISTINCT item->>'key' AS key
+      FROM receipt_recoveries x CROSS JOIN LATERAL jsonb_array_elements(x.target->'items') item
+      WHERE x.state='queued' AND x.target->>'kind'='backfill' AND item->>'runId'=${id}`;
+    const recoveryKeys = recoveryRows.map(r => r.key);
     let reserved = 0, claimed = 0, processed = 0;
     async function work() {
       while (reserved < options.maxItems && !options.signal?.aborted) {
@@ -155,7 +160,10 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
         const item = await sql.begin(async (tx) => {
           const [r] = await tx`SELECT state FROM backfill_runs WHERE id=${id} FOR UPDATE`;
           if (r?.state !== "running" || options.signal?.aborted) return null;
-          const [i] = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='pending' AND (retry_after IS NULL OR retry_after<=now()) ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED`;
+          let [i] = recoveryKeys.length ? await tx`SELECT identity_key FROM backfill_items
+            WHERE run_id=${id} AND identity_key=ANY(${recoveryKeys}::text[]) AND state='pending'
+              AND (retry_after IS NULL OR retry_after<=now()) ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED` : [];
+          if (!i) [i] = await tx`SELECT identity_key FROM backfill_items WHERE run_id=${id} AND state='pending' AND (retry_after IS NULL OR retry_after<=now()) ORDER BY day,identity_key LIMIT 1 FOR UPDATE SKIP LOCKED`;
           if (!i || options.signal?.aborted) return null;
           await tx`UPDATE backfill_items SET state='running',attempts=attempts+1,updated_at=now() WHERE run_id=${id} AND identity_key=${i.identity_key}`;
           return i;
