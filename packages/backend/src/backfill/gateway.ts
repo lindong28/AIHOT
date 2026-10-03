@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { BACKFILL_PRESETS, BACKFILL_PROVIDER, bindingRoutes, type BackfillBindings, type BackfillRole } from "./context.ts";
+import { BACKFILL_PRESETS, BACKFILL_PROVIDER, BAILIAN_QWEN_FALLBACK, bindingRoutes, bindingIdentityRoutes, type BackfillBindings, type BackfillRole } from "./context.ts";
 
 const route = z.object({ route: z.string().min(1), actualModel: z.string().min(1), provider: z.string().min(1), credentialProfile: z.string().min(1) }).strict();
 const binding = z.union([
   z.object({ model: z.string().min(1), route: z.string().min(1), actualModel: z.string().startsWith("self_hosted/") }).strict(),
-  z.object({ model: z.string().min(1), routes: z.array(route).min(1).max(16) }).strict(),
+  z.object({ model: z.string().min(1), routes: z.array(route).min(1).max(16), fallbackRoutes: z.array(route).length(1).optional() }).strict(),
 ]);
 export const bindingsSchema = z.object({ prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding }).strict()
   .refine((v) => JSON.stringify(v.prefilter) === JSON.stringify(v.structure), "Prefilter and structure share the Qwen preset and must use the same binding")
@@ -16,7 +16,7 @@ export const bindingsSchema = z.object({ prefilter: binding, structure: binding,
       const candidates = bindingRoutes(b);
       if (["score", "understand", "summarize"].includes(role)) {
         const r = candidates[0];
-        if (b.model !== "deepseek-v4.1-flash" || candidates.length !== 1 ||
+        if (b.model !== "deepseek-v4.1-flash" || ("fallbackRoutes" in b && b.fallbackRoutes) || candidates.length !== 1 ||
             r?.route !== "company_tencent_vod/deepseek-v4.1-flash/stream" ||
             r.actualModel !== "openai/deepseek-v4.1-flash" || r.provider !== "tencent-vod" ||
             r.credentialProfile !== "company_tencent_vod") {
@@ -26,9 +26,15 @@ export const bindingsSchema = z.object({ prefilter: binding, structure: binding,
       }
       if (b.model.startsWith("deepseek")) ctx.addIssue({ code: "custom", message: "DeepSeek is not authorized for backfill prefilter or structure" });
       if (new Set(candidates.map((r) => r.route)).size !== candidates.length) ctx.addIssue({ code: "custom", message: `Duplicate backfill route in ${role}` });
-      for (const r of candidates) {
+      for (const r of bindingIdentityRoutes(b)) {
         const self = r.provider === BACKFILL_PROVIDER && r.actualModel.startsWith("self_hosted/");
         if (!self) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
+      }
+      if ("fallbackRoutes" in b && b.fallbackRoutes) {
+        const r = b.fallbackRoutes[0]!;
+        if (b.model !== "qwen3.8-flash" || Object.entries(BAILIAN_QWEN_FALLBACK).some(([k, v]) => r[k as keyof typeof r] !== v)) {
+          ctx.addIssue({ code: "custom", message: "Qwen fallback requires the approved personal Bailian Token Plan route" });
+        }
       }
     }
   });

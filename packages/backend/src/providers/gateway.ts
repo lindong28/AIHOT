@@ -1,7 +1,7 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { bindingRoutes, type BackfillBinding } from "../backfill/context.ts";
+import { bindingRoutes, bindingIdentityRoutes, type BackfillBinding } from "../backfill/context.ts";
 import { GatewayNotDispatchedError } from "./receipts.ts";
 
 const CONNECT_RETRY_CODES = new Set(["ECONNREFUSED", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
@@ -43,11 +43,11 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
   if (pin?.routes && !pin.registryRevision) throw new Error("Backfill fallback requires a verified Gateway registry revision");
   // The registry revision constrains this dispatch, not the semantic request:
   // unrelated registry edits must not bypass an unknown or settled receipt.
-  const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { routes } : {}) };
+  const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { routes: bindingIdentityRoutes(pin) } : {}) };
   return {
     requestId,
     identity,
-    summary: { ...identity, ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
+    summary: { ...identity, ...(pin ? { routes } : {}), ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
     async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>): Promise<Record<string, unknown>> {
       // Only proven pre-connect failures may be retried here. Gateway owns all
       // provider retries; a socket reset or HTTP error may already have incurred cost.

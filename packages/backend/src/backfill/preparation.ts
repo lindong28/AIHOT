@@ -14,7 +14,7 @@ import { PROMPT_VERSIONS, prefilterRequest, runPrefilter } from "../editorial/an
 import { missingEvidence, MAX_BODY_CHARS } from "../editorial/writing.ts";
 import { materialHash, manifestEntry, type ManifestEntry } from "./manifest.ts";
 import { preparationArticle, durableJson, type PreparationResult } from "./preparation-prefilter.ts";
-import { BACKFILL_PRESETS, backfillContext, BackfillPaused, bindingRoutes, type BackfillBindings } from "./context.ts";
+import { BACKFILL_PRESETS, backfillContext, BackfillPaused, bindingIdentityRoutes, bindingsIdentity, type BackfillBindings } from "./context.ts";
 import { loadPreparation, storePreparation, type HistoryVersion, type PreparationState } from "./history-input.ts";
 
 export function preparationIdentity(_models: BackfillBindings) {
@@ -39,7 +39,7 @@ export async function cachedPrefilter(v: HistoryVersion, models: BackfillBinding
   const directory = process.env.BACKFILL_PREFILTER_CACHE;
   if (!directory || !v.prefilter) return null;
   const m = await json(join(directory, "manifest.json"));
-  if (!m || m.promptVersion !== PROMPT_VERSIONS.prefilter || stableJson(m.models) !== stableJson(models) ||
+  if (!m || m.promptVersion !== PROMPT_VERSIONS.prefilter || !m.models || stableJson(bindingsIdentity(m.models)) !== stableJson(bindingsIdentity(models)) ||
       m.environment?.database !== sha256(config.databaseUrl) || m.environment?.gateway !== (process.env.LLM_GATEWAY_URL ?? null) ||
       m.environment?.project !== (process.env.LLM_GATEWAY_PROJECT ?? null) || m.environment?.mode !== (process.env.LLM_GATEWAY_MODE ?? "stream")) throw new Error("Old preparation cache model/prompt/environment identity mismatch");
   const r = await json(join(directory, "results", sha256(v.key) + ".json")) as PreparationResult | null;
@@ -54,7 +54,7 @@ export async function cachedPrefilter(v: HistoryVersion, models: BackfillBinding
       temperature: request.temperature, maxTokens: request.maxTokens, extra: MODELS[BACKFILL_PRESETS.prefilter]!.extra ?? null,
       gateway: { baseUrl: new URL(process.env.LLM_GATEWAY_URL).toString().replace(/\/+$/, '').replace(/\/v1$/, ''),
         project: process.env.LLM_GATEWAY_PROJECT?.trim(), mode: process.env.LLM_GATEWAY_MODE ?? 'stream', model: models.prefilter.model,
-        timeoutMs: 120_000, routes: bindingRoutes(models.prefilter) } } });
+        timeoutMs: 120_000, routes: bindingIdentityRoutes(models.prefilter) } } });
   const [receipt] = r.receiptId === null
     ? await sql`SELECT * FROM receipts WHERE logical_key=${logicalKey}`
     : await sql`SELECT * FROM receipts WHERE id=${r.receiptId}`;

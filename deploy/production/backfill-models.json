@@ -8,6 +8,14 @@
         "provider": "self-hosted",
         "credentialProfile": "personal_self_hosted"
       }
+    ],
+    "fallbackRoutes": [
+      {
+        "route": "personal_bailian_token_plan/qwen3.8-flash/stream",
+        "actualModel": "openai/qwen3.8-flash",
+        "provider": "bailian-token-plan",
+        "credentialProfile": "personal_bailian_token_plan"
+      }
     ]
   },
   "structure": {
@@ -18,6 +26,14 @@
         "actualModel": "self_hosted/qwen3.8-flash-next",
         "provider": "self-hosted",
         "credentialProfile": "personal_self_hosted"
+      }
+    ],
+    "fallbackRoutes": [
+      {
+        "route": "personal_bailian_token_plan/qwen3.8-flash/stream",
+        "actualModel": "openai/qwen3.8-flash",
+        "provider": "bailian-token-plan",
+        "credentialProfile": "personal_bailian_token_plan"
       }
     ]
   },

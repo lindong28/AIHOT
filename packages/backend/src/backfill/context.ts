@@ -7,16 +7,28 @@ export const BACKFILL_PRESETS = {
 } as const;
 export type BackfillRole = keyof typeof BACKFILL_PRESETS;
 export interface BackfillRoute { route: string; actualModel: string; provider: string; credentialProfile?: string }
+export const BAILIAN_QWEN_FALLBACK = {
+  route: "personal_bailian_token_plan/qwen3.8-flash/stream", actualModel: "openai/qwen3.8-flash",
+  provider: "bailian-token-plan", credentialProfile: "personal_bailian_token_plan",
+};
 export interface BackfillBinding {
   model: string;
   // Old single-route manifests remain readable; new batches can restrict automatic fallback.
   route?: string;
   actualModel?: string;
   routes?: BackfillRoute[];
+  fallbackRoutes?: BackfillRoute[];
   registryRevision?: string;
 }
-export function bindingRoutes(binding: BackfillBinding): BackfillRoute[] {
+// Recovery policy can expand without changing the identity of a paid request.
+export function bindingIdentityRoutes(binding: BackfillBinding): BackfillRoute[] {
   return binding.routes ?? [{ route: binding.route!, actualModel: binding.actualModel!, provider: BACKFILL_PROVIDER }];
+}
+export function bindingRoutes(binding: BackfillBinding): BackfillRoute[] {
+  return [...bindingIdentityRoutes(binding), ...(binding.fallbackRoutes ?? [])];
+}
+export function bindingsIdentity(models: BackfillBindings) {
+  return Object.fromEntries(Object.entries(models).map(([role, { fallbackRoutes, ...binding }]) => [role, binding]));
 }
 export type BackfillBindings = Record<BackfillRole, BackfillBinding>;
 export interface BackfillContext {

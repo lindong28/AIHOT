@@ -129,11 +129,13 @@ node scripts/backfill-fetch-originals.ts PREPARATION_DIR INVENTORY.jsonl FETCH_Q
 | `understand` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash-low` preset；thinking enabled、effort low；16384 tokens、180 秒、temperature 0.2 |
 | `summarize` | DeepSeek V4.1 Flash，使用 `deepseek-v4.1-flash` preset；唯一候选为 `company_tencent_vod/deepseek-v4.1-flash/stream`，actual model 为 `openai/deepseek-v4.1-flash` |
 
-绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；理解和摘要沿用相同 DeepSeek 路由绑定，但各自的思考参数不同。开始处理后不允许修改该批模型绑定。旧的单条 self-hosted 绑定仍可读取。各阶段完整参数与查看入口见 [模型配置](../references/model-configuration.md)。
+绑定是以这五个键组成的对象，新格式每个值为 `{"model":"逻辑ID","routes":[{"route":"路由ID","actualModel":"实际模型ID","provider":"provider ID","credentialProfile":"profile ID"}]}`。预筛和结构绑定须完全相同；理解和摘要沿用相同 DeepSeek 路由绑定，但各自的思考参数不同。开始处理后不允许修改该批主模型绑定。Qwen 可另用 `fallbackRoutes` 加入已授权的个人百炼订阅；该字段改变派发候选，不参与回执 logical key，旧 unknown/pending 仍阻断，received/completed 仍复用。旧的单条 self-hosted 绑定仍可读取。各阶段完整参数与查看入口见 [模型配置](../references/model-configuration.md)。
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 
-预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯角色另外要求包含 company。主 Gateway 的 `aihot` 登记 `billing_scope=["personal","company"]`，各账户保留实际资金归属。每个角色至少有一个候选可用；Qwen 不开放商业 API。评分、理解和摘要必须使用 V4.1 Flash 的唯一腾讯候选，资金归属为 `company_paid`；不接受 Gateway 报告项目不允许、政策不允许或候选不可用。
+预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯角色另外要求包含 company。主 Gateway 的 `aihot` 登记 `billing_scope=["personal","company"]`，各账户保留实际资金归属。每个角色至少有一个候选可用；Qwen 主路线为自托管，备用仅允许 `personal_bailian_token_plan/qwen3.8-flash/stream`、provider `bailian-token-plan`、actual model `openai/qwen3.8-flash`、profile `personal_bailian_token_plan`，资金归属必须是 `personal_subscription`。DashScope 按量账户不在回填授权内。评分、理解和摘要必须使用 V4.1 Flash 的唯一腾讯候选，资金归属为 `company_paid`；不接受 Gateway 报告项目不允许、政策不允许或全部候选不可用。
+
+为已经执行的 Qwen 批次启用订阅备用：先 `node scripts/backfill.ts pause BATCH_ID`，等执行器结算并退出，再运行 `node scripts/backfill-bailian-fallback.ts BATCH_ID`，最后 `node scripts/backfill.ts resume BATCH_ID`。启用操作须取得批次 advisory lock 并确认 paused，只修改两个 Qwen 角色的 `fallbackRoutes`，不修改条目、回执、主绑定或准备身份；不自动重试失败条目，也不调用模型。运行时仍做 discovery 和 funding 核验，并把完整候选集合发送给 Gateway；实际优先级与冷却由 Gateway 管理。模板已包含该备用路线。旧准备缓存忽略新增备用策略进行模型身份比较，仍检查原 manifest hash 和原回执 key。
 
 ```bash
 node scripts/backfill.ts configure BATCH_ID deploy/production/backfill-models.json

@@ -31,7 +31,7 @@ DeepSeek 原上游使用未钉版本的 `deepseek-flash`；当前 Gateway 使用
 - `/admin/backfill` 的“回填模型与批次信息”：该 run 的五角色模型和限定路由，权威数据为 `backfill_runs.models`。
 - 生产 `/home/ubuntu/aihot/shared/app.env`：真实环境配置；仓库 `deploy/production/app.env.example` 只是模板，不包含凭据。`GROUP_REVIEW_MODEL=deepseek-v4.1-flash`。
 - `packages/backend/src/providers/llm.ts`：preset 的 thinking、effort、top_p、JSON 行为及 wrapper 默认；`editorial/analyze.ts`：初筛、评分、理解、摘要和结构调用参数；其他阶段在 `events/`、`reports/compose.ts`、`editorial/translate.ts`、`monitor/recognize.ts`。
-- `packages/backend/src/backfill/context.ts`：回填 preset；`deploy/production/backfill-models.json` 为路由模板。当前回填 Qwen 仅 self-hosted，DeepSeek 仅 Tencent VOD，公司付费。
+- `packages/backend/src/backfill/context.ts`：回填 preset；`deploy/production/backfill-models.json` 为路由模板。回填 Qwen 主路线为 self-hosted，`fallbackRoutes` 仅允许个人百炼 Token Plan 订阅；既有批次须经暂停和受锁启用，见[回填操作](../operations/backfill.md)。DeepSeek 仅 Tencent VOD，公司付费。
 - 数据库 `receipts.request`：实际 temperature、maxTokens、Gateway timeout；`receipts.response.llm_gateway`：实际 provider、route、model。历史记录保留原参数，不批量改写。
 
 目前后台不显示完整请求参数；需结合这些代码/配置及实际回执查看。逐条原文完整性 LLM 调用已从修复后的执行路径删除，完整性按用户要求由 agent 抽样，缺原文等工程错误仍单独处理。
