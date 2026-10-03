@@ -69,6 +69,15 @@ export async function checkGatewayRevision(baseUrl: string, revision: string): P
 
 /** Discovery is read-only. No model check, deployment or cloud fallback is performed here. */
 export async function preflightBackfill(input: unknown): Promise<{ models: BackfillBindings; check: () => Promise<void> }> {
+  return preflightRoles(input, Object.keys(BACKFILL_PRESETS) as BackfillRole[]);
+}
+
+/** Preparation only dispatches the prefilter; unused DeepSeek readiness must not block it. */
+export async function preflightPreparationPrefilter(input: unknown): Promise<{ models: BackfillBindings; check: () => Promise<void> }> {
+  return preflightRoles(input, ["prefilter"]);
+}
+
+async function preflightRoles(input: unknown, roles: BackfillRole[]): Promise<{ models: BackfillBindings; check: () => Promise<void> }> {
   if (!input) throw new Error("尚未绑定回填模型，请先配置五个角色的授权路由");
   const models = bindingsSchema.parse(input);
   const project = process.env.LLM_GATEWAY_PROJECT;
@@ -78,7 +87,8 @@ export async function preflightBackfill(input: unknown): Promise<{ models: Backf
   if (!["http:", "https:"].includes(u.protocol) || u.username || u.password || u.search || u.hash) throw new Error("Invalid Gateway URL");
   const baseUrl = u.toString().replace(/\/+$/, "").replace(/\/v1$/, "");
   const revisions = new Set<string>();
-  for (const model of new Set((Object.keys(BACKFILL_PRESETS) as BackfillRole[]).map((r) => models[r].model))) {
+  const checkedModels = new Set(roles.map((r) => models[r].model));
+  for (const model of checkedModels) {
     let view: unknown;
     if (process.env.LLM_GATEWAY_CLI) {
       const { stdout } = await promisify(execFile)(process.env.LLM_GATEWAY_CLI,
@@ -94,6 +104,6 @@ export async function preflightBackfill(input: unknown): Promise<{ models: Backf
   if (revisions.size !== 1) throw new Error("Gateway changed during preflight");
   const check = () => checkGatewayRevision(baseUrl, [...revisions][0]!);
   await check();
-  const verified: BackfillBindings = Object.fromEntries(Object.entries(models).map(([role, b]) => [role, { ...b, registryRevision: [...revisions][0]! }])) as BackfillBindings;
+  const verified: BackfillBindings = Object.fromEntries(Object.entries(models).map(([role, b]) => [role, checkedModels.has(b.model) ? { ...b, registryRevision: [...revisions][0]! } : b])) as BackfillBindings;
   return { models: verified, check };
 }

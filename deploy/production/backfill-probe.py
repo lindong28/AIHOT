@@ -4,11 +4,16 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
+PREPARATION = '/home/ubuntu/aihot/shared/history-full-20261002/prefilter-v1/summary.json'
+PREPARATION_READ = ("import json,pathlib; p=pathlib.Path(" + repr(PREPARATION) + "); "
+                    "print('PREPARATION_JSON='+json.dumps(json.loads(p.read_text()) if p.exists() else None))")
 REMOTE = ("cd /home/ubuntu/aihot/current && "
           "/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/app.env scripts/backfill.ts status --json && "
+          "python3 -c " + shlex.quote(PREPARATION_READ) + " && "
           "systemctl show aihot-backfill.timer aihot-backfill.service "
           "-p Id -p LoadState -p ActiveState -p SubState -p Result")
 
@@ -22,6 +27,13 @@ def problems(report, units):
         found['scheduler'] = '历史回填定时器未运行，已批准批次可能无法自动接续。请检查 backfill-service.sh status。'
     if runner.get('LoadState') != 'loaded' or runner.get('ActiveState') == 'failed' or runner.get('Result') not in ('success', ''):
         found['runner'] = '历史回填执行器异常，进度可能停止。请检查 journalctl -u aihot-backfill.service；先核对回执再恢复。'
+    preparation = report.get('preparation')
+    if preparation is not None:
+        errors = preparation.get('unresolvedErrors')
+        if type(errors) is not int or errors < 0:
+            raise ValueError('准备阶段错误计数无效，健康未核实。')
+        if errors:
+            found['preparation'] = '历史回填原文初筛有未解决的执行错误，相关材料尚未完成。请核对 prefilter-v1/summary.json、逐条结果及模型回执；不要直接重放未知请求。'
     for run in report['runs']:
         if run['state'] == 'needs_attention':
             found['batch:' + run['id']] = f"历史批次 {run['id']} 需要人工核账；不会自动重试。请在 /admin/backfill 检查失败条目与回执。"
@@ -41,6 +53,12 @@ def read_status(host):
     report = json.loads(first)
     if not isinstance(report.get('runs'), list):
         raise ValueError('回填状态缺少 runs，生产健康未核实。')
+    preparation_line, _, remainder = remainder.partition('\n')
+    if not preparation_line.startswith('PREPARATION_JSON='):
+        raise ValueError('原文初筛状态读取缺失，健康未核实。')
+    report['preparation'] = json.loads(preparation_line.removeprefix('PREPARATION_JSON='))
+    if report['preparation'] is not None and not isinstance(report['preparation'], dict):
+        raise ValueError('原文初筛状态格式无效，健康未核实。')
     units = {}
     for block in remainder.strip().split('\n\n'):
         fields = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
@@ -68,6 +86,8 @@ def main():
     runs = {run['id']: run['state'] for run in report['runs']}
     # A missing batch is loss of observation, not evidence of recovery.
     for identity in previous:
+        if identity == 'preparation' and report.get('preparation') is None:
+            current[identity] = '历史回填原文初筛状态已无法读取；恢复未核实。请检查 prefilter-v1/summary.json 与执行器，勿据此重放未知请求。'
         if identity.startswith('batch:') and identity[6:] not in runs:
             current[identity] = f'历史批次 {identity[6:]} 已无法从状态接口观察；恢复未核实。请检查 /admin/backfill 的批次记录。'
     binary = Path.home() / '.local/bin/im-notify'

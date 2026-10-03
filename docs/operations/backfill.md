@@ -29,6 +29,26 @@ node scripts/backfill.ts status
 
 日期仅示例，必须取转换后的合格连续区间，且距当前超过 48 小时。导入返回批次 ID，初态暂停、尚未调用模型。总条数与日期在创建时冻结；同一清单重复导入返回原批次。
 
+## 全量准备：先初筛，再补原文
+
+2026-10-03 用户批准全量准备先使用已有原始文字做 Qwen 初筛。运行入口如下，参数依次为冻结输入、五角色绑定、结果目录、并发、每轮最多条数、从首个待处理项开始的领取秒数：
+
+```bash
+node scripts/backfill-prefilter.ts INPUT.jsonl deploy/production/backfill-models.json OUTPUT_DIR 8 400 90 --json
+```
+
+此命令会调用模型，须使用已授权的回填环境和 `MODEL_CALLS_ENABLED=true`；离线转换与测试保持原安全阀约束。仅标题直接进入待补原文，不调用模型。只有 BLOCK 被筛除；PASS/UNKNOWN 仍需补原文及完整性审核，不能直接导入。累计状态在 `OUTPUT_DIR/summary.json`，逐版本结果在 `results/`，执行错误保留且不自动重发未知回执；准备计数不代表原生导入或发布进度。
+
+可选生产接入文件为 [`backfill-preparation.conf`](../../deploy/production/backfill-preparation.conf)，应先准备其中固定路径的输入，再安装到 `aihot-backfill.service.d/zz-preparation.conf` 并 daemon-reload；它保留已有 ExecStartPost，以串行方式接在 native drain 和已有入队操作后。该配置把服务启动上限调整为 50 分钟、停止等待调整为 10 分钟。是否已安装须以目标主机的 systemctl 配置为准；代码中的配置文件不证明已经运行。设计、数据分母与恢复边界见[全量准备记录](../references/20261003-backfill-prefilter.md)。
+
+公共网页补取使用本机入口，读取准备阶段的冻结输入和不断增加的结果，以及已核对的原文目标库存：
+
+```bash
+node scripts/backfill-fetch-originals.ts PREPARATION_DIR INVENTORY.jsonl FETCH_QUEUE.jsonl .data/original-responses 400 90
+```
+
+只抓取已结算的 `needs_original` 且库存中有单一明确抓取目标的非 X 条目，按 URL 复用缓存。每批最多 8 个并行请求，网络阶段每个请求共用 20 秒、6 MiB 和 5 次重定向限制；输入扫描、提取和落盘另计。输出保存压缩原始响应、来源／最终 URL、时间、hash 与提取内容，全部为 `unconfirmed`；`items.jsonl` 保留 X 材料、待选目标、待核正文与执行错误等下一步事项。它不做完整性批准或原生导入，错误缓存不自动重试；异常遗留 `fetch.lock` 时须先确认原进程状态，不能直接夺锁。
+
 ## 当前批准的启动批
 
 本轮迁移主线程逐篇审核首三天 54 个候选，批准 44 条完整原文，另 10 条因上下文未明保留 `unverified`。批准范围为 2026-08-17 至 2026-08-19（UTC），每日分别 9、16、19 条；这是连续三天的启动批，不是全历史完成。

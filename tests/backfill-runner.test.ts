@@ -133,6 +133,14 @@ for state in ['ready','running','paused','complete']:
  assert m.problems({'runs':[{'id':'batch','state':state}]},units)=={}
 for state in ['needs_attention','waiting_models']:
  assert 'batch:batch' in m.problems({'runs':[{'id':'batch','state':state}]},units)
+assert m.problems({'runs':[], 'preparation':{'unresolvedErrors':0,'status':'waiting_budget'}},units)=={}
+assert 'preparation' in m.problems({'runs':[], 'preparation':{'unresolvedErrors':1}},units)
+try:
+ m.problems({'runs':[], 'preparation':{'unresolvedErrors':'0'}},units)
+except ValueError:
+ pass
+else:
+ raise AssertionError('invalid preparation status accepted')
 units['aihot-backfill.service']['Result']='timeout'
 assert 'runner' in m.problems({'runs':[]},units)
 units['aihot-backfill.timer']['ActiveState']='inactive'
@@ -149,6 +157,9 @@ with tempfile.TemporaryDirectory() as home, patch.object(m.Path,'home',return_va
  report['runs']=[{'id':'batch','state':'paused'}];m.main();assert sent[-1][0]=='--dedup-clear';assert '告警退役' in sent[-2][-1]
  report['runs']=[{'id':'batch','state':'waiting_models'}];m.main()
  report['runs']=[{'id':'batch','state':'ready'}];m.main();assert sent[-1][0]=='--dedup-clear';assert '原异常已解除' in sent[-2][-1]
+ report['preparation']={'unresolvedErrors':1};m.main();assert '原文初筛' in sent[-1][-1]
+ before=len(sent);report['preparation']=None;m.main();assert '恢复未核实' in sent[-1][-1];assert not any('--dedup-clear' in args for args in sent[before:])
+ report['preparation']={'unresolvedErrors':0,'status':'waiting_budget'};m.main();assert sent[-1][0]=='--dedup-clear'
 print('probe state cases passed; no notification sent')`;
   const result = spawnSync("python3", ["-c", code], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
