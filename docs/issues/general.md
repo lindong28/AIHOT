@@ -1,5 +1,12 @@
 # 未解决问题
 
+## ISSUE-OPS-20261003-4f52：worker 停止等待窗口与 Gateway 请求上限不一致
+
+- 状态：open；负责人：AIHOT 维护者，待后续停止流程修复。本轮暂态错误修复未改变停止策略。
+- 已核代码：`deploy/production/aihot-worker.service` 的 `TimeoutStopSec=120`，`jobs/queue.ts` 的 `STOP_TIMEOUT_MS=195000`，Gateway transport 最长 caller deadline 为 560 秒。队列注释声称 systemd 等得更久，与 unit 不符。
+- 边界：尚未复现由此产生的历史 unknown，不能把这项差异写成既有 fetch failed 的确证根因。本轮发布在读取 pending 回执为零后停止 worker；没有因此重放旧请求。
+- 后续验收：以一个受控在途请求核对停止、回执结算与进程退出的顺序，再统一队列、调用与 systemd 的等待窗口；不只修改注释或通过延迟进程退出宣称已保护付费请求。
+
 ## ISSUE-MODEL-20261003-7a21：将上游未显式指定的模型参数记录到配置
 
 - 状态：open；负责人：AIHOT 维护者；按用户 2026-10-03 指示留待后续处理。

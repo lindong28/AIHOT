@@ -2,7 +2,9 @@
 
 面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
 
-实时与历史两条模型链均经个人 Gateway，历史启动批已导入并开始处理。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)：Qwen 仅限 self-hosted，评分、理解与摘要统一使用 DeepSeek V4.1 Flash，唯一候选为 `company_tencent_vod`；请求按允许路由集合与 registry revision 限定，不扩大到其他商业 API。
+实时与历史两条模型链均经个人 Gateway，历史启动批已导入并开始处理。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)：Qwen 允许 self-hosted 与明确批准的个人百炼订阅备用，排除 DashScope 按量；评分、理解与摘要统一使用 DeepSeek V4.1 Flash，唯一候选为 `company_tencent_vod`。请求按允许路由集合与 registry revision 限定。
+
+2026-10-03 已部署 Gateway `ed36698` 和 AIHOT `da3cf98`（release `bailian-fallback-da3cf98`）。当前历史 run `693bfde2-aa5a-499f-b17e-fd674ed7ea4c` 已在 paused 与批次锁下启用百炼备用，主绑定与历史回执身份保留，随后恢复 timer。两次真实小请求均完成：百炼回执 `45956` / Gateway UUID `64e3d7ff-83ea-46c3-a033-e79b5ca9264f`；正常双候选仍选 self-hosted，回执 `45957` / UUID `20569b0e-69f8-4887-93ef-c1df98938078`。二者均与 Gateway 的单次 success attempt 对应，usage 已返回，账本 cost_state 仍为 unknown，不表示免费。本次未人为制造生产故障；502 后冷却与同请求 fallback 的证据来自本地 HTTP fixture。生产 smoke 与公网健康检查正常，旧 unknown 未批量释放或重放。
 
 ## 环境与持久数据
 
