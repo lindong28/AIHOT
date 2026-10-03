@@ -20,50 +20,53 @@ interface Recovery {
 }
 const analysisPurposes = new Set(["analyze_article", "prefilter_article", "structure_article", "score_article", "understand_article", "summarize_article"]);
 
-function preparationTargets(receipts: Receipt[], db: Db) {
+function backfillTargets(receipts: Receipt[], db: Db) {
   let cached: Promise<Map<number, Item[]>> | undefined;
   return () => cached ??= (async () => {
     const wanted = receipts.filter(r => r.service === 'backfill');
-    const subjects = new Map<string, number[]>();
-    for (const r of wanted) if (r.subject) subjects.set(r.subject, [...(subjects.get(r.subject) ?? []), r.id]);
-    const ids = new Set(wanted.map(r => r.id));
-    // Keep the previous broad candidate filter; exact membership is checked below.
-    const patterns = wanted.map(r => `%${r.id}%`);
+    const subjects = new Map<string, number[]>(), articles = new Map<string, number[]>();
+    const ids = new Set<number>();
+    for (const r of wanted) {
+      const a = /^article:([^@]+)@(\d+)$/.exec(r.subject ?? '');
+      if (a && !a[1]!.startsWith('preparation:')) articles.set(a[1]!, [...(articles.get(a[1]!) ?? []),r.id]);
+      else {
+        ids.add(r.id);
+        if (r.subject) subjects.set(r.subject, [...(subjects.get(r.subject) ?? []), r.id]);
+      }
+    }
     const result = new Map<number, Item[]>();
     if (!wanted.length) return result;
-    const candidates = await db`SELECT run_id,identity_key,preparation FROM backfill_items WHERE preparation IS NOT NULL
-      AND (state='failed' OR preparation::text LIKE ANY(${patterns}::text[]))`;
-    for (const i of candidates) {
-      const p = loadPreparation(i.preparation), matched = new Set<number>();
-      for (const v of p.versions) {
-        for (const id of subjects.get(`article:preparation:${sha256(v.key)}@1`) ?? []) matched.add(id);
-      }
-      for (const v of Object.values(p.results)) {
-        if (ids.has(v.prefilter?.receiptId)) matched.add(v.prefilter.receiptId);
-        const id = v.error?.startsWith('receipt_unknown:') ? Number(v.error.slice('receipt_unknown:'.length)) : NaN;
-        if (ids.has(id)) matched.add(id);
-      }
-      for (const id of matched) {
-        const items = result.get(id) ?? [];
-        items.push({ runId: String(i.run_id), key: String(i.identity_key) }); result.set(id, items);
+    // Stream once with bounded memory. Searching every receipt ID inside every
+    // archived body is expensive and cannot establish the exact identity anyway.
+    for await (const candidates of db`SELECT run_id,identity_key,article_id,preparation FROM backfill_items
+      WHERE (${ids.size>0} AND preparation IS NOT NULL) OR article_id=ANY(${[...articles.keys()]}::text[])`.cursor(256)) {
+      for (const i of candidates) {
+        const matched = new Set<number>(articles.get(i.article_id) ?? []);
+        if (ids.size && i.preparation) {
+          const p = loadPreparation(i.preparation);
+          for (const v of p.versions) {
+            for (const id of subjects.get(`article:preparation:${sha256(v.key)}@1`) ?? []) matched.add(id);
+          }
+          for (const v of Object.values(p.results)) {
+            if (ids.has(v.prefilter?.receiptId)) matched.add(v.prefilter.receiptId);
+            const id = v.error?.startsWith('receipt_unknown:') ? Number(v.error.slice('receipt_unknown:'.length)) : NaN;
+            if (ids.has(id)) matched.add(id);
+          }
+        }
+        for (const id of matched) {
+          const items = result.get(id) ?? [];
+          items.push({ runId: String(i.run_id), key: String(i.identity_key) }); result.set(id, items);
+        }
       }
     }
     return result;
   })();
 }
 
-async function targetFor(r: Receipt, db: Db, preparation: ReturnType<typeof preparationTargets>): Promise<RecoveryTarget> {
+async function targetFor(r: Receipt, backfill: ReturnType<typeof backfillTargets>): Promise<RecoveryTarget> {
   const article = /^article:([^@]+)@(\d+)$/.exec(r.subject ?? "");
   if (r.service === "backfill") {
-    let rows;
-    if (article && !article[1]!.startsWith("preparation:")) {
-      rows = await db`SELECT run_id,identity_key FROM backfill_items WHERE article_id=${article[1]!}`;
-    } else {
-      // Archive versions have no articles row yet. Match their frozen input identity or
-      // the receipt stored in their preparation result (one receipt can serve many versions).
-      rows = ((await preparation()).get(r.id) ?? []).map(i => ({ run_id: i.runId, identity_key: i.key }));
-    }
-    const items = rows.map(i => ({ runId: String(i.run_id), key: String(i.identity_key) }));
+    const items = (await backfill()).get(r.id) ?? [];
     items.sort((a,b) => `${a.runId}:${a.key}`.localeCompare(`${b.runId}:${b.key}`));
     return items.length ? { kind: "backfill", items } : { kind: "unsupported", reason: "backfill_item_not_found" };
   }
@@ -83,9 +86,9 @@ export async function previewReceiptRecovery() {
       AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
     ORDER BY r.id`;
   const rows = [];
-  const preparation = preparationTargets(receipts, sql);
+  const backfill = backfillTargets(receipts, sql);
   for (const r of receipts) {
-    const target = await targetFor(r, sql, preparation);
+    const target = await targetFor(r, backfill);
     rows.push({ receiptId: r.id, attempt: r.attempts, status: r.status, target });
   }
   return rows;
@@ -104,9 +107,9 @@ export async function createReceiptRecoveryBatch(batch: string, note: string, re
         AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
       ORDER BY r.id FOR UPDATE`;
     if (!rows.length) throw new Error("No eligible receipts: no batch was created");
-    const preparation = preparationTargets(rows, tx);
+    const backfill = backfillTargets(rows, tx);
     for (const r of rows) {
-      const target = await targetFor(r, tx, preparation);
+      const target = await targetFor(r, backfill);
       await tx`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,note,original_status,state)
         VALUES (${r.id},${r.attempts},${batch},${JSON.stringify(target)},${tx.json(target as never)},${note},${r.status},
           ${target.kind === 'unsupported' ? 'blocked' : 'planned'})`;

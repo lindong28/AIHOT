@@ -78,18 +78,33 @@ test('existing monitor business success closes an old unknown without redispatch
 });
 
 test('batch lookup retains shared subjects and completed items linked by saved receipt', async () => {
-  const run=tag(), key=tag(), shared=tag(), batch=tag(), subject=`article:preparation:${sha256(key)}@1`;
+  const run=tag(), key=tag(), shared=tag(), noResult=tag(), batch=tag(), subject=`article:preparation:${sha256(key)}@1`;
   const a=await receipt(subject,'prefilter_article','backfill'),b=await receipt(subject,'score_article','backfill');
+  const c=await receipt(`article:preparation:${sha256(noResult)}@1`,'prefilter_article','backfill');
   await sql`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day,state) VALUES (${run},'test',${run},'2026-01-01','2026-01-01','complete')`;
-  for (const k of [key,shared]) {
-    const p=storePreparation({versions:[{key:k,day:'2026-01-01',provenance:{},prefilter:null,material:null,targetUrls:[],context:{}}],dayBasis:'earliest_version_utc',results:{[k]:{prefilter:{receiptId:a.id}}}});
+  for (const k of [key,shared,noResult]) {
+    const p=storePreparation({versions:[{key:k,day:'2026-01-01',provenance:{},prefilter:null,material:null,targetUrls:[],context:{}}],dayBasis:'earliest_version_utc',results:k===noResult?{}:{[k]:{prefilter:{receiptId:a.id}}}});
     await sql`INSERT INTO backfill_items(run_id,identity_key,day,material,content_hash,evidence,state,preparation)
       VALUES (${run},${k},'2026-01-01','{}','hash','test','filtered',${sql.json(p)})`;
   }
-  await createReceiptRecoveryBatch(batch,'authorized',[a.id,b.id]);
+  await createReceiptRecoveryBatch(batch,'authorized',[a.id,b.id,c.id]);
   const rows=await sql`SELECT receipt_id,target FROM receipt_recoveries WHERE batch=${batch}`;
   assert.equal(rows.find(r=>r.receipt_id===a.id)!.target.items.length,2);
   assert.equal(rows.find(r=>r.receipt_id===b.id)!.target.items.length,1);
+  assert.equal(rows.find(r=>r.receipt_id===c.id)!.target.items.length,1);
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,3);
+});
+
+test('batch lookup resolves ordinary backfill articles without preparation payloads', async () => {
+  const id=await article(),run=tag(),key=tag(),batch=tag();
+  const a=await receipt(`article:${id}@1`,'score_article','backfill'),b=await receipt(`article:${id}@1`,'summarize_article','backfill');
+  await sql`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day,state) VALUES (${run},'test',${run},'2026-01-01','2026-01-01','complete')`;
+  await sql`INSERT INTO backfill_items(run_id,identity_key,day,material,content_hash,evidence,state,article_id)
+    VALUES (${run},${key},'2026-01-01','{}','hash','test','filtered',${id})`;
+  await createReceiptRecoveryBatch(batch,'authorized',[a.id,b.id]);
+  const rows=await sql`SELECT target FROM receipt_recoveries WHERE batch=${batch}`;
+  assert.equal(rows.length,2);
+  for (const row of rows) assert.deepEqual(row.target,{kind:'backfill',items:[{runId:run,key}]});
   assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,2);
 });
 
