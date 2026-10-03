@@ -16,7 +16,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts --
 
 ```bash
 node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
-  --apply --batch receipts-20261003 \
+  --apply --batch receipts-20261004 \
   --note '站点所有者授权对既有异常进行一次业务重放；原费用未知保留，接受可能再次计费' \
   --limit 4 --wait-seconds 900
 ```
@@ -33,7 +33,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ```bash
 node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
-  --status --batch receipts-20261003 --json
+  --status --batch receipts-20261004 --json
 ```
 
 `--status` 核验业务结果并结案，不放行或排新任务。退出码 `0` 表示预览完成或该批全部结案；`2` 表示还有待排队、处理中或未解决项；`1` 表示执行错误。`--json` 提供逐条剩余目标和原 attempt，供 Codex／Claude 定向诊断。不能把“脚本正常退出了”或“已经排队”当作全部恢复。
@@ -63,3 +63,30 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 若本批出现新失败，先按剩余 target 检查实际阶段和 Gateway 请求，不用新批次名反复解除相同问题。脚本不自动解决文章修订冲突、缺失原文或新的 provider 故障。恢复后抽查 article identity、publication 唯一性、公开详情，并比较执行前后回填和实时任务进度；不能只看待核对数下降。
 
 2026-10-03 所有者明确授权上述受控重放及简单自动结案。该授权覆盖当次旧异常，不是以后对未知费用无限重放的默认授权。
+
+生产本次固定批次为 `receipts-20261004`，冻结 2,055 条回执。上面的命令使用这个实际批次名；继续这次恢复必须复用它。后续新异常须另行核对和授权，不能为清空页面不断新建批次。
+
+恢复期间，旧 unknown 主回执被授权放行后暂时显示为 failed，并刷新 `updated_at`；待对应业务成功才移出待核对列表。后台按 `updated_at` 排序，因此旧异常会重新排到前面，不能仅据列表位置或 failed 汇总判断发生了新错误；看 `receipt_attempts.started_at` 和 Gateway UUID 对应的实际 attempt。
+
+2026-10-04 01:40 新加坡时间的定向核验：当时剩余 327 条 backfill Qwen 异常中，302 条为旧 `ledger_unavailable`（调用发生于前一天 23:20 至当天 00:28），12 条旧 `route_cooldown`、9 条旧 HTTP 502、4 条旧 `no_route`。00:30 Gateway 切换 SQLite 运行时/WAL 后至 01:37 的 backfill Qwen attempt 有 2,904 条 received、48 条在途，未出现新的 failed/unknown。运行批次的 prefilter/structure 实际绑定包含自托管主路线与个人百炼 Token Plan fallback；回执 54971–54973 的 UUID 与 Gateway 百炼成功记录逐一一致。fallback 只能处理上游路线问题，不能绕过 Gateway 自己的账本故障。该段是时点快照，未来故障必须重新核验。
+
+## 2026-10-04 生产执行结果
+
+02:05 新加坡时间验收：固定批次 2,055 条中，2,049 条已恢复、6 条 blocked，planned/queued 均为零；已恢复项包括普通文章 307、回填 1,719、综述 14、归组 8、监控 1。后台全局实际剩 8 条异常，其中 2 条在冻结批次之后新发生；backfill Qwen 待核对已为零。00:30 修复后至本次验收，backfill Qwen 有 3,527 条 received，没有 failed/unknown，不能把这个有限窗口外推为永不失败。
+
+重复执行同一批次的真实 CLI 后，批次仍为 2,049/6，关联 attempt 行数与 attempts 合计均保持 4,158，授权审计记录保持 1,950；没有新增放行。以上是记录数，不是费用或新调用数。原 2,055 条 attempt 全部保留：unknown 1,891、failed 146、received 18；没有把旧 unknown 改写为成功或免费。
+
+恢复结果关联到 1,592 个不同 article_id、1,592 个 identity_key 和 1,592 条 publication；公开详情抽查覆盖普通文章与历史文章，API 共 6 篇、隔离浏览器实际阅读 3 篇，均沿用原 ID。其他 filtered 回填目标不要求出现公开文章。实际页面数据由后台同一 `runsOverview` 查询核验；管理员登录后的浏览器页面未在本次取得认证态，不将此写成已完成的后台 UI 验收。
+
+worker PID 2661716 全程未变，backfill timer 保持运行；回填恢复优先级消化后，原普通积压继续推进。此前 63 条 DeepSeek 冷却拒绝已退出全局异常列表，抽查 63925、63930、63931 均在同一文章上完成并发布。生产 smoke 覆盖 34 个网页/API/RSS/静态资源/MCP 入口，无失败或跳过；本地类型检查、14 个恢复专项测试及新建测试库的 279 个后端测试完成。
+
+剩余项由站点维护者按本表核对，不由本批脚本继续自动放行；如需再次重放 unknown，先取得覆盖该次费用的授权。当前处置是保留异常及全部证据，不作假结案。
+
+| 回执 | 是否属于本批 | 原因与现状 |
+| --- | --- | --- |
+| 3201、6511、11571 | 是 | Zhipu HTTP 400 / 1301 内容审核拒绝，分别发生在评分或理解阶段；不属于暂态网络重试 |
+| 14007 | 是 | 捕获的是文章 revision 2，当前 revision 3 已分析发布；脚本保留旧版本异常，没有覆盖新版 |
+| 54611 | 是 | Tencent 评分阶段 RemoteProtocolError；80.34 秒调用加最短 10 秒冷却超过 90 秒恢复预算，且只授权 Tencent 路线 |
+| 56022 | 是 | 01:56:03 一次本轮恢复操作之外的 Gateway 部署重启中断在途评分请求；AIHOT 为 UND_ERR_SOCKET，同 UUID 账本为 interrupted_unknown。新实例仍保留 Python 3.14.7、SQLite 3.53.4 与 WAL，重启后已有真实成功调用 |
+| 63250 | 否 | 理解阶段返回的内容没有 JSON 对象，保留 unknown，不把生成质量失败当作免费请求 |
+| 63708 | 否 | Tencent 评分阶段 ReadTimeout 约 180 秒，超过恢复预算；HTTP 504，保留 unknown |
