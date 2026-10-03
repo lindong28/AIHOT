@@ -9,6 +9,7 @@ import { sanitizeBody } from "../content/sanitize.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
 import { mpArticle, mpHistory, type MpArticle } from "../providers/dajiala.ts";
 import { BudgetExceededError, ProviderRejectedError } from "../providers/receipts.ts";
+import { checkWechat2Rss } from "./wechat2rss.ts";
 
 const MAX_NEW_PER_CHECK = 8;
 /** Posts older than this on the first check of an account are history, not news. */
@@ -31,7 +32,7 @@ async function fetchBody(url: string, sourceId: string, identity: string): Promi
 interface MpSource {
   id: string;
   name: string;
-  config: { wxid?: string; ghid?: string; nickname?: string };
+  config: { wxid?: string; ghid?: string; nickname?: string; provider?: string };
   cursor: Record<string, unknown> | null;
   enabled: boolean;
   participation_mode: string;
@@ -41,6 +42,7 @@ export async function checkMpAccount(sourceId: string, reason: "schedule" | "man
   const [source] = await sql<MpSource[]>`SELECT id, name, config, cursor, enabled, participation_mode FROM sources WHERE id = ${sourceId} AND kind = 'mp_account'`;
   if (!source) return { sourceId, status: "missing" as const };
   if (!source.enabled && reason !== "manual") return { sourceId, status: "paused" as const };
+  if (source.config.provider === "wechat2rss") return checkWechat2Rss(sourceId, reason);
   const ghid = source.config.ghid ?? source.config.wxid;
   if (!ghid) return { sourceId, status: "unconfigured" as const };
   const [run] = await sql<{ id: number }[]>`INSERT INTO fetch_runs (source_id, detail) VALUES (${sourceId}, ${sql.json({ reason })}) RETURNING id`;

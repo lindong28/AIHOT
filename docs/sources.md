@@ -59,7 +59,13 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 { "ghid": "gh_xxxxxxxx", "nickname": "公众号名称" }
 ```
 
-每个公众号按它的抓取间隔检查一次（查列表按次计费），新文章的正文一并取回。
+上述默认使用 Dajiala，每个公众号按抓取间隔检查，列表与正文按次计费。旧 AI RADAR 订阅使用已有 Wechat2RSS：
+
+```json
+{ "provider": "wechat2rss", "bizId": "3236757533", "feedId": "上游订阅的 feed_id" }
+```
+
+每个公众号一个来源，文章进入统一材料表与处理队列，保留作者、日期、正文、原文链接及来源身份，不使用推文专有 `x_post` 字段。认证与隧道由后端部署环境配置，来源 JSON 不含 token。首次取最近 7 天最多 8 条，后续可以补齐该固定窗口；详细边界和运维见 [Wechat2RSS](operations/wechat2rss.md)。
 
 ## 分级、参与方式与全文
 

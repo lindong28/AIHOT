@@ -6,6 +6,8 @@
 
 2026-10-03 已部署 Gateway `ed36698` 和 AIHOT `da3cf98`（release `bailian-fallback-da3cf98`）。当前历史 run `693bfde2-aa5a-499f-b17e-fd674ed7ea4c` 已在 paused 与批次锁下启用百炼备用，主绑定与历史回执身份保留，随后恢复 timer。两次真实小请求均完成：百炼回执 `45956` / Gateway UUID `64e3d7ff-83ea-46c3-a033-e79b5ca9264f`；正常双候选仍选 self-hosted，回执 `45957` / UUID `20569b0e-69f8-4887-93ef-c1df98938078`。二者均与 Gateway 的单次 success attempt 对应，usage 已返回，账本 cost_state 仍为 unknown，不表示免费。本次未人为制造生产故障；502 后冷却与同请求 fallback 的证据来自本地 HTTP fixture。生产 smoke 与公网健康检查正常，旧 unknown 未批量释放或重放。
 
+2026-10-04 公众号接入使用 release `wechat-sources-20261004`：Mac mini 原 Wechat2RSS 经专用隧道提供腾讯云 `127.0.0.1:39033`，后端私有环境增加 `WECHAT2RSS_BASE_URL` 与 `WECHAT2RSS_RSS_TOKEN`。22 个来源独立登记，采集仍由现有 worker 的 mp 队列执行。起停、验证与回退见[公众号运维](wechat2rss.md)，不因接入完成而将原服务搬迁或告警记作完成。
+
 ## 环境与持久数据
 
 DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`。摘要、归组、归组复核、综述、报告、翻译与监控选择非思考 V4.1；backfill 评分使用 `-selection`、理解使用 `-low`，明确保留上游 GLM 各角色参数，三种回填 DeepSeek 角色固定腾讯 VOD。完整参数见 [模型配置](../references/model-configuration.md)，执行见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。

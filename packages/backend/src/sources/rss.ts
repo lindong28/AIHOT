@@ -91,9 +91,9 @@ export function isTeaser(text: string): boolean {
  */
 function feedText(bodyHtml: string | null, summaryHtml: string, source: SourceRow): Pick<Candidate, "excerpt" | "bodyHtml" | "bodyText" | "bodyStatus"> {
   const bodyText = bodyHtml ? stripTags(bodyHtml) : null;
-  const teaser = !!bodyText && source.participation_mode === "editorial" && isTeaser(bodyText);
+  const teaser = !!bodyText && source.kind !== "mp_account" && source.participation_mode === "editorial" && isTeaser(bodyText);
   const excerpt = summaryHtml ? collapseWhitespace(stripTags(summaryHtml)).slice(0, 2000) : teaser ? collapseWhitespace(bodyText!) : null;
-  return bodyText && bodyText.length > 280 && !teaser
+  return bodyText && (bodyText.length > 280 || source.kind === "mp_account") && !teaser
     ? { excerpt, bodyHtml, bodyText, bodyStatus: "ok" }
     : { excerpt, bodyHtml: null, bodyText: null, bodyStatus: "pending" };
 }
@@ -134,9 +134,14 @@ export async function fetchRss(source: SourceRow, opts: { force?: boolean } = {}
     return { candidates: [], validator, notModified: true };
   }
   if (res.status !== 200) throw new FetchError(`HTTP ${res.status}`, res.status);
+  return { candidates: parseRss(res.text(), source, url), validator, notModified: false };
+}
+
+/** Parse already-fetched feed bytes; the caller owns transport and credentials. */
+export function parseRss(xml: string, source: SourceRow, url: string): Candidate[] {
   let doc: Record<string, any>;
   try {
-    doc = parser.parse(res.text());
+    doc = parser.parse(xml);
   } catch (e) {
     throw new FetchError(`feed parse error: ${String(e).slice(0, 200)}`);
   }
@@ -174,7 +179,7 @@ export async function fetchRss(source: SourceRow, opts: { force?: boolean } = {}
         raw: { guid: text(it.guid) || null },
       });
     }
-    return { candidates: out, validator, notModified: false };
+    return out;
   }
 
   const feed = doc.feed;
@@ -200,7 +205,7 @@ export async function fetchRss(source: SourceRow, opts: { force?: boolean } = {}
         raw: { id: text(e.id) || null },
       });
     }
-    return { candidates: out, validator, notModified: false };
+    return out;
   }
   throw new FetchError("not an RSS/Atom document");
 }

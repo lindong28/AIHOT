@@ -1,21 +1,26 @@
-// Configure the existing native RSS collector; keep the authenticated URL out of Git.
-// DATABASE_URL=... node deploy/wechat2rss/register-source.ts /absolute/path/service.env
+// Register the account-level sources from the industry pack without changing paused accounts.
+// node --env-file=/path/app.env deploy/wechat2rss/register-source.ts
 import { readFileSync } from "node:fs";
-import { parseEnv } from "node:util";
+import path from "node:path";
 import { closeDb, sql } from "@aihot/backend/db";
+import { credential, REPO_ROOT } from "@aihot/backend/config";
+import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 
-const file = process.argv[2];
-if (!file) throw new Error("请指定 Wechat2RSS 私有 service.env 文件；未修改信源。");
-const token = parseEnv(readFileSync(file, "utf8")).RSS_TOKEN;
-if (!token?.trim()) throw new Error("Wechat2RSS RSS_TOKEN 未配置；未修改信源。");
-const feed = new URL("http://127.0.0.1:18480/feed/all.xml");
-feed.searchParams.set("k", token);
+if (!credential("collectors", "WECHAT2RSS_BASE_URL") || !credential("collectors", "WECHAT2RSS_RSS_TOKEN")) {
+  throw new Error("请配置 WECHAT2RSS_BASE_URL 与 WECHAT2RSS_RSS_TOKEN；未修改信源。");
+}
+const { sources } = JSON.parse(readFileSync(path.join(REPO_ROOT, "industry/sources.json"), "utf8"));
+const accounts = sources.filter((s: { kind: string; config: { provider?: string } }) => s.kind === "mp_account" && s.config.provider === "wechat2rss");
 try {
-  const config = { feedUrl: feed.toString(), _aihot: { initialBackfillLimit: 8 } };
-  await sql`INSERT INTO sources (id, name, kind, config, tier, first_party, participation_mode, interval_minutes, enabled, site_fulltext, syndicate_fulltext, next_fetch_at)
-    VALUES ('radar-wechat2rss', '微信公众号（Wechat2RSS）', 'rss', ${sql.json(config)}, 'T1_5', false, 'editorial', 15, true, false, false, now())
-    ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, updated_at = now()`;
-  console.log("Wechat2RSS 已登记为原生 RSS 信源；保留已有启停状态与游标。尚未验证采集，未启动自动任务。");
+  await sql.begin(async (tx) => {
+    for (const s of accounts) {
+      assertSupportedConfig("mp_account", s.config);
+      await tx`INSERT INTO sources (id, name, kind, config, tier, first_party, participation_mode, interval_minutes, enabled, site_fulltext, syndicate_fulltext, next_fetch_at)
+        VALUES (${s.id}, ${s.name}, 'mp_account', ${tx.json(s.config)}, ${s.tier}, ${s.first_party}, ${s.participation_mode}, ${s.interval_minutes}, ${s.enabled}, false, false, now())
+        ON CONFLICT (id) DO NOTHING`;
+    }
+  });
+  console.log(`已登记 ${accounts.length} 个公众号来源（含原有项）；已有配置、启停状态与游标保留。尚未验证采集，请检查 worker 运行记录。`);
 } finally {
   await closeDb();
 }

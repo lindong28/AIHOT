@@ -13,6 +13,6 @@
 | 旧 RADAR Web／Nginx | 腾讯云原 Web 的 8000/8001 保留供回滚，公网 Nginx 已指向新站 | [公网切换与回滚](production.md#公网切换与回滚)；Nginx 使用系统原生接口 |
 | 旧 RADAR 采集、处理、同步 | Mac mini 四条 cron 已移除，在途同步已停；腾讯云 `ai-radar-db-apply.service` 已停止并禁用 | [停止记录与恢复边界](production.md#旧链路保留与恢复边界) |
 | AIHOT 本机 MVP | 独立本机环境；既有读数不代表生产状态 | [部署](../deploy.md)、[带日期的本机记录](../migration.md#本机-mvp) |
-| Wechat2RSS | 原机服务仍运行；目标迁移未完成，未随本次公网切站迁移 | [迁移、起停、验证与告警待办](wechat2rss.md)；`deploy/wechat2rss/compose.yaml` |
+| Wechat2RSS | Mac mini 原服务保留，22 个公众号经专用回环隧道接入腾讯云；服务搬迁未完成 | [接入、起停、验证与告警待办](wechat2rss.md)；`deploy/wechat2rss/tunnel.py`、`compose.yaml` |
 
 服务状态以对应环境的真实入口为准；以上不是持续健康保证。Wechat2RSS 不随 AIHOT 默认 Compose 自动启动。回填已有上表中的专用监督，范围不覆盖公开站点可用性；其余新生产服务的外部告警接管仍由本仓 AIHOT 维护者负责，待办见[根 README 服务章节](../../README.md#服务)；原有服务告警保持。

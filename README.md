@@ -8,7 +8,7 @@
 
 ## 服务
 
-腾讯云运行 API（后端）、Web（公开站点）、worker（采集与处理）和 PostgreSQL；生产采集与模型调用已启用。Mac Studio 的专用 launchd 隧道提供个人 Gateway 与代理出口。部署更新、起停、状态检查和回滚见[生产运维](docs/operations/production.md)，本机与 Docker 入口见[部署](docs/deploy.md)。可选 Wechat2RSS 仍在原机运行，尚未迁完；各环境及原生运维入口见[服务清单](docs/operations/services.md)。
+腾讯云运行 API（后端）、Web（公开站点）、worker（采集与处理）和 PostgreSQL；生产采集与模型调用已启用。Mac Studio 的专用 launchd 隧道提供个人 Gateway 与代理出口。部署更新、起停、状态检查和回滚见[生产运维](docs/operations/production.md)，本机与 Docker 入口见[部署](docs/deploy.md)。Wechat2RSS 保留在 Mac mini，通过独立隧道将原有 22 个公众号按账号接入生产；服务搬迁与隧道外部告警仍未验收，见[公众号运维](docs/operations/wechat2rss.md)。各环境及原生运维入口见[服务清单](docs/operations/services.md)。
 
 TODO（本仓，负责人：AIHOT 维护者）：接通新生产 worker、Gateway 隧道和公开站点的外部故障通知并验证投递；目前尚未验收无人值守告警，保留既有服务的告警安排。
 
