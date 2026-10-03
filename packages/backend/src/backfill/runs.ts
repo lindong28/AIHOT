@@ -122,7 +122,7 @@ async function articleFor(runId: string, key: string) {
 
 /** A bounded drain, not a new daemon. Concurrency is supplied from the deployed GPU capacity. */
 export async function runBackfill(id: string, options: { concurrency: number; maxItems: number; signal?: AbortSignal; skipLocked?: boolean }) {
-  if (![options.concurrency, options.maxItems].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 32) throw new Error("Supply positive maxItems and concurrency (1–32) from deployed capacity");
+  if (![options.concurrency, options.maxItems].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 64) throw new Error("Supply positive maxItems and concurrency (1–64) from deployed capacity");
   const lock = await sql.reserve();
   let acquired = false;
   try {
@@ -229,7 +229,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
 
 /** Visit each eligible batch at most once, sharing the item budget across the whole drain. */
 export async function drainBackfills(options: { concurrency: number; maxItems: number; maxRuns: number; signal?: AbortSignal }) {
-  if (![options.concurrency, options.maxItems, options.maxRuns].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 32) throw new Error("Supply positive maxItems, maxRuns and concurrency (1–32) from deployed capacity");
+  if (![options.concurrency, options.maxItems, options.maxRuns].every((n) => Number.isSafeInteger(n) && n > 0) || options.concurrency > 64) throw new Error("Supply positive maxItems, maxRuns and concurrency (1–64) from deployed capacity");
   const candidates = await sql`SELECT id FROM backfill_runs WHERE state IN ('ready','waiting_models','running')
     ORDER BY heartbeat_at ASC NULLS FIRST,created_at,id LIMIT ${options.maxRuns}`;
   const runs: Array<{ id: string; state: string; processed: number; claimed: number }> = [];

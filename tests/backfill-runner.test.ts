@@ -73,6 +73,17 @@ test("drain shares claimed-item budget across batches and skips paused/attention
   assert.equal((await runBackfill(ids[3]!, { concurrency: 1, maxItems: 1 })).state, "needs_attention");
 });
 
+test("64 workers still respect the shared claimed-item limit", async () => {
+  const id = await batch(65), before = requestCount;
+  const result = await drainBackfills({ concurrency: 64, maxItems: 64, maxRuns: 1 });
+  assert.equal(result.runs[0]!.id, id);
+  assert.equal(result.runs[0]!.claimed, 64);
+  assert.equal(result.runs[0]!.processed, 64);
+  assert.equal(requestCount, before + 64);
+  assert.equal((await sql`SELECT count(*)::int AS n FROM backfill_items WHERE run_id=${id} AND state='pending'`)[0]!.n, 1);
+  assert.equal((await sql`SELECT max(attempts)::int AS n FROM backfill_items WHERE run_id=${id}`)[0]!.n, 1);
+});
+
 test("busy batch is skipped without resetting its running item; another batch can proceed", async () => {
   const busy = await batch(1), next = await batch(1);
   await sql`UPDATE backfill_runs SET state='running' WHERE id=${busy}`;
@@ -122,6 +133,8 @@ test("aborted drain does not acquire work; invalid capacity is rejected", async 
   const controller = new AbortController(); controller.abort();
   assert.deepEqual((await drainBackfills({ concurrency: 1, maxItems: 2, maxRuns: 2, signal: controller.signal })).runs, []);
   await assert.rejects(() => drainBackfills({ concurrency: 0, maxItems: 2, maxRuns: 2 }), /capacity/);
+  await assert.rejects(() => drainBackfills({ concurrency: 65, maxItems: 2, maxRuns: 2 }), /capacity/);
+  await assert.rejects(() => runBackfill("unused", { concurrency: 65, maxItems: 2 }), /capacity/);
 });
 
 test("Mac probe distinguishes batch attention, model wait and supervisor failures without sending", () => {

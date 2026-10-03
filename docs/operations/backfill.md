@@ -147,10 +147,12 @@ MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_I
 
 | 必须显式配置的环境变量 | 含义 |
 |---|---|
-| `BACKFILL_CONCURRENCY` | 并发 1–32；当前生产为 8 |
+| `BACKFILL_CONCURRENCY` | 并发 1–64；当前生产为用户指定的 64 |
 | `BACKFILL_MAX_ITEMS` | 整轮最多领取条数，正整数；当前生产为 64，失败领取也消耗该上限 |
 | `BACKFILL_MAX_RUNS` | 整轮最多访问批次数，正整数；当前生产为 4 |
 | `BACKFILL_DRAIN_SECONDS` | 1–1500 秒；当前生产为 1500，到时停止后续调用并等待在途结算 |
+
+2026-10-03 首轮 64 并发执行约 81 秒：领取 64 条，39 条完成，25 条因每分钟 300 次模型调用预算返回待处理，未新增失败。每小时 6000 次、每日 40000 次预算及模型参数保持原值；64 是同时处理新闻的上限，不保证持续满载或吞吐提高八倍。预算等待按原有 `retry_after` 和 timer 接续。
 
 ```bash
 node scripts/backfill.ts drain
