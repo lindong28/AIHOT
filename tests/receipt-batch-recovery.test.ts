@@ -77,6 +77,22 @@ test('existing monitor business success closes an old unknown without redispatch
   assert.equal((await sql`SELECT status,attempts FROM receipts WHERE id=${r.id}`)[0]!.status,'unknown');
 });
 
+test('batch lookup retains shared subjects and completed items linked by saved receipt', async () => {
+  const run=tag(), key=tag(), shared=tag(), batch=tag(), subject=`article:preparation:${sha256(key)}@1`;
+  const a=await receipt(subject,'prefilter_article','backfill'),b=await receipt(subject,'score_article','backfill');
+  await sql`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day,state) VALUES (${run},'test',${run},'2026-01-01','2026-01-01','complete')`;
+  for (const k of [key,shared]) {
+    const p=storePreparation({versions:[{key:k,day:'2026-01-01',provenance:{},prefilter:null,material:null,targetUrls:[],context:{}}],dayBasis:'earliest_version_utc',results:{[k]:{prefilter:{receiptId:a.id}}}});
+    await sql`INSERT INTO backfill_items(run_id,identity_key,day,material,content_hash,evidence,state,preparation)
+      VALUES (${run},${k},'2026-01-01','{}','hash','test','filtered',${sql.json(p)})`;
+  }
+  await createReceiptRecoveryBatch(batch,'authorized',[a.id,b.id]);
+  const rows=await sql`SELECT receipt_id,target FROM receipt_recoveries WHERE batch=${batch}`;
+  assert.equal(rows.find(r=>r.receipt_id===a.id)!.target.items.length,2);
+  assert.equal(rows.find(r=>r.receipt_id===b.id)!.target.items.length,1);
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,2);
+});
+
 test('backfill waits for executor lock, retries only selected item, and uses no live analyze queue', async () => {
   const run=tag(), key=tag(), other=tag(), r=await receipt(`article:preparation:${sha256(key)}@1`,'prefilter_article','backfill'),batch=tag();
   const p=storePreparation({versions:[{key,day:'2026-01-01',provenance:{},prefilter:null,material:null,targetUrls:[],context:{}}],dayBasis:'earliest_version_utc',results:{[key]:{error:`receipt_unknown:${r.id}`}}});

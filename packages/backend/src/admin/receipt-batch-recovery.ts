@@ -20,7 +20,39 @@ interface Recovery {
 }
 const analysisPurposes = new Set(["analyze_article", "prefilter_article", "structure_article", "score_article", "understand_article", "summarize_article"]);
 
-async function targetFor(r: Receipt, db: Db): Promise<RecoveryTarget> {
+function preparationTargets(receipts: Receipt[], db: Db) {
+  let cached: Promise<Map<number, Item[]>> | undefined;
+  return () => cached ??= (async () => {
+    const wanted = receipts.filter(r => r.service === 'backfill');
+    const subjects = new Map<string, number[]>();
+    for (const r of wanted) if (r.subject) subjects.set(r.subject, [...(subjects.get(r.subject) ?? []), r.id]);
+    const ids = new Set(wanted.map(r => r.id));
+    // Keep the previous broad candidate filter; exact membership is checked below.
+    const patterns = wanted.map(r => `%${r.id}%`);
+    const result = new Map<number, Item[]>();
+    if (!wanted.length) return result;
+    const candidates = await db`SELECT run_id,identity_key,preparation FROM backfill_items WHERE preparation IS NOT NULL
+      AND (state='failed' OR preparation::text LIKE ANY(${patterns}::text[]))`;
+    for (const i of candidates) {
+      const p = loadPreparation(i.preparation), matched = new Set<number>();
+      for (const v of p.versions) {
+        for (const id of subjects.get(`article:preparation:${sha256(v.key)}@1`) ?? []) matched.add(id);
+      }
+      for (const v of Object.values(p.results)) {
+        if (ids.has(v.prefilter?.receiptId)) matched.add(v.prefilter.receiptId);
+        const id = v.error?.startsWith('receipt_unknown:') ? Number(v.error.slice('receipt_unknown:'.length)) : NaN;
+        if (ids.has(id)) matched.add(id);
+      }
+      for (const id of matched) {
+        const items = result.get(id) ?? [];
+        items.push({ runId: String(i.run_id), key: String(i.identity_key) }); result.set(id, items);
+      }
+    }
+    return result;
+  })();
+}
+
+async function targetFor(r: Receipt, db: Db, preparation: ReturnType<typeof preparationTargets>): Promise<RecoveryTarget> {
   const article = /^article:([^@]+)@(\d+)$/.exec(r.subject ?? "");
   if (r.service === "backfill") {
     let rows;
@@ -29,13 +61,7 @@ async function targetFor(r: Receipt, db: Db): Promise<RecoveryTarget> {
     } else {
       // Archive versions have no articles row yet. Match their frozen input identity or
       // the receipt stored in their preparation result (one receipt can serve many versions).
-      const candidates = await db`SELECT run_id,identity_key,preparation FROM backfill_items WHERE preparation IS NOT NULL
-        AND (state='failed' OR preparation::text LIKE ${`%${r.id}%`})`;
-      rows = candidates.filter(i => {
-        const p = loadPreparation(i.preparation);
-        return p.versions.some(v => `article:preparation:${sha256(v.key)}@1` === r.subject)
-          || Object.values(p.results).some(v => v.prefilter?.receiptId === r.id || v.error === `receipt_unknown:${r.id}`);
-      });
+      rows = ((await preparation()).get(r.id) ?? []).map(i => ({ run_id: i.runId, identity_key: i.key }));
     }
     const items = rows.map(i => ({ runId: String(i.run_id), key: String(i.identity_key) }));
     items.sort((a,b) => `${a.runId}:${a.key}`.localeCompare(`${b.runId}:${b.key}`));
@@ -57,8 +83,9 @@ export async function previewReceiptRecovery() {
       AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
     ORDER BY r.id`;
   const rows = [];
+  const preparation = preparationTargets(receipts, sql);
   for (const r of receipts) {
-    const target = await targetFor(r, sql);
+    const target = await targetFor(r, sql, preparation);
     rows.push({ receiptId: r.id, attempt: r.attempts, status: r.status, target });
   }
   return rows;
@@ -77,8 +104,9 @@ export async function createReceiptRecoveryBatch(batch: string, note: string, re
         AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
       ORDER BY r.id FOR UPDATE`;
     if (!rows.length) throw new Error("No eligible receipts: no batch was created");
+    const preparation = preparationTargets(rows, tx);
     for (const r of rows) {
-      const target = await targetFor(r, tx);
+      const target = await targetFor(r, tx, preparation);
       await tx`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,note,original_status,state)
         VALUES (${r.id},${r.attempts},${batch},${JSON.stringify(target)},${tx.json(target as never)},${note},${r.status},
           ${target.kind === 'unsupported' ? 'blocked' : 'planned'})`;
