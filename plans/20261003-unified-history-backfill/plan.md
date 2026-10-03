@@ -36,6 +36,10 @@
 
 L1/A2 单轮独立决策审查七项放行。暂停 timer，等旧 service 自然结束，修改配置并单独启动一轮；主线程观察终态、耗时、预算等待和新增异常后恢复 timer。若发生容量故障，停止新领取、结算在途后恢复 8。已知两条 unknown 保留且不重放。64 的实际容量、持续吞吐和共享在线链路影响尚未验证，首轮读数仅覆盖该批；不增加效果调优或独立模型验证流量。
 
+## 2026-10-03 回填预算调整
+
+用户指定将 backfill 额度提高到每分钟 30000 次、每小时 600000 次、每日 4000000 次，修订上轮“预算不变”的范围。通过现有 `updateBudget('backfill', ...)` 更新数据库并记录原生审计；每次付费请求前 `checkBudget` 都重新查询该配置，无需重启或代码改动。仅修改 backfill 这条预算；并发64、其它服务额度、模型参数及未知回执保护保持。配置及审计回读用于确认生效，不等同于供应商容量或吞吐保证。L1/A2 单轮独立审查七项放行，已发生调用费用不可撤回，配置可通过同一接口恢复。
+
 ## 当前事实与复用入口
 
 基线 `6b86cfa`。`packages/backend/src/backfill/preparation-prefilter.ts` 已提供有界初筛与结果复用；`scripts/backfill-fetch-originals.ts` 提供原始响应缓存；`packages/backend/src/backfill/runs.ts` 提供导入、模型执行与发布；`apps/web/app/routes/admin/backfill.tsx` 目前只显示已批准批次。

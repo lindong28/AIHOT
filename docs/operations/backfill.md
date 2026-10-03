@@ -154,6 +154,8 @@ MODEL_CALLS_ENABLED=true node scripts/backfill.ts run BATCH_ID CONCURRENCY MAX_I
 
 2026-10-03 首轮 64 并发执行约 81 秒：领取 64 条，39 条完成，25 条因每分钟 300 次模型调用预算返回待处理，未新增失败。每小时 6000 次、每日 40000 次预算及模型参数保持原值；64 是同时处理新闻的上限，不保证持续满载或吞吐提高八倍。预算等待按原有 `retry_after` 和 timer 接续。
 
+2026-10-03 19:02 +08，按用户指令将生产 `budgets` 表的 `backfill` 行更新为每分钟 30000 次、每小时 600000 次、每日 4000000 次，原生 `budget.update` 审计 ID 为 133。通过已有 `updateBudget` 配置入口生效；每次模型调用前都会查询数据库，无需重启或修改代码。其它服务预算未变；并发仍为64，模型参数与未知回执保护保持。上述首轮试跑使用的是调整前额度。
+
 ```bash
 node scripts/backfill.ts drain
 node scripts/backfill.ts drain CONCURRENCY MAX_ITEMS MAX_RUNS
