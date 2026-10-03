@@ -29,6 +29,8 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 `--limit` 是本批同时在处理的业务目标上限，默认 4，范围 1–100；排队中的目标占用额度。它不是新建模型 worker 的并发数。线上分析仍由现有 worker 和预算控制，回填仍由原 runner/timer 执行；恢复会增加正常模型工作量。生产应依据共享 worker/provider 容量设置上限，不把 100 当作推荐值。`--wait-seconds` 限定本次脚本等待时间（最多一天），到期不会取消已经排入的业务任务。
 
+只有显式传入 `--backfill-limit` 时才分开计算回填和普通任务额度：`--limit` 管普通目标，`--backfill-limit` 管回填目标，二者范围均为 1–100；不传时仍是原全局额度。2026-10-04 独立决策审查通过本批使用 `--limit 4 --backfill-limit 64`：生产普通 worker 并发为 6、回填并发及单轮上限为 64，分池不增加执行器或模型并发。目标可能关联多个 item，不能把目标额度当成调用数或单轮完成数。回退可去掉新参数，已排入的目标自然消化，不撤销任务。
+
 ```bash
 node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
   --status --batch receipts-20261003 --json

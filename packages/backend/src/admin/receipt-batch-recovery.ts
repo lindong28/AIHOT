@@ -241,17 +241,23 @@ async function queueBackfill(db: Db, items: Item[]): Promise<string | null> {
 }
 
 /** Each target transaction releases all of its frozen blockers and enqueues once. */
-export async function advanceReceiptRecoveryBatch(batch: string, limit = 4) {
+export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, backfillLimit?: number) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("limit must be 1..100");
+  if (backfillLimit !== undefined && (!Number.isInteger(backfillLimit) || backfillLimit < 1 || backfillLimit > 100)) throw new Error("backfill limit must be 1..100");
   await settleReceiptRecoveryBatch(batch);
   // Existing queued work consumes the allowance: repeated invocations cannot flood the live worker.
-  const [active] = await sql`SELECT count(DISTINCT target_key)::int AS n FROM receipt_recoveries WHERE batch=${batch} AND state='queued'`;
-  const targets = await sql<{ target_key: string }[]>`SELECT DISTINCT target_key FROM receipt_recoveries
+  const active = await sql<{ pool: string; n: number }[]>`SELECT
+    CASE WHEN ${backfillLimit !== undefined} AND target->>'kind'='backfill' THEN 'backfill' ELSE 'ordinary' END AS pool,
+    count(DISTINCT target_key)::int AS n FROM receipt_recoveries WHERE batch=${batch} AND state='queued' GROUP BY 1`;
+  const remaining: Record<string, number> = { ordinary: limit, backfill: backfillLimit ?? 0 };
+  for (const row of active) remaining[row.pool] = Math.max(0, remaining[row.pool]! - row.n);
+  const targets = await sql<{ target_key: string; kind: string }[]>`SELECT DISTINCT target_key,target->>'kind' AS kind FROM receipt_recoveries
     WHERE batch=${batch} AND state='planned' ORDER BY target_key`;
   const results = [];
-  let admitted = 0;
-  for (const { target_key: key } of targets) {
-    if (admitted >= Math.max(0, limit - active!.n)) break;
+  for (const { target_key: key, kind } of targets) {
+    if (!remaining.ordinary && !remaining.backfill) break;
+    const pool = backfillLimit !== undefined && kind === 'backfill' ? 'backfill' : 'ordinary';
+    if (!remaining[pool]) continue;
     const result = await sql.begin(async tx => {
       await tx`SELECT pg_advisory_xact_lock(hashtext('receipt-recovery:' || ${key}))`;
       const rows = await tx<Recovery[]>`SELECT * FROM receipt_recoveries WHERE batch=${batch} AND target_key=${key} AND state='planned' ORDER BY receipt_id FOR UPDATE`;
@@ -300,7 +306,7 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4) {
       return { target: key, result: routed.recovery, admitted: queued };
     });
     results.push(result);
-    if ('admitted' in result && result.admitted) admitted++;
+    if ('admitted' in result && result.admitted) remaining[pool] = remaining[pool]! - 1;
   }
   return { results, ...(await receiptRecoveryStatus(batch)) };
 }

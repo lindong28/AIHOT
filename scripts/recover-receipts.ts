@@ -7,12 +7,14 @@ import { previewReceiptRecovery, createReceiptRecoveryBatch, advanceReceiptRecov
 const { values } = parseArgs({ options: {
   batch: { type: "string" }, apply: { type: "boolean", default: false }, note: { type: "string" },
   status: { type: "boolean", default: false }, json: { type: "boolean", default: false },
-  limit: { type: "string", default: "4" }, "wait-seconds": { type: "string", default: "0" },
+  limit: { type: "string", default: "4" }, "backfill-limit": { type: "string" }, "wait-seconds": { type: "string", default: "0" },
 } });
 let lock: Awaited<ReturnType<typeof sql.reserve>> | undefined;
 try {
   const limit = Number(values.limit), wait = Number(values["wait-seconds"]);
+  const backfillLimit = values["backfill-limit"] === undefined ? undefined : Number(values["backfill-limit"]);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isFinite(wait) || wait < 0 || wait > 86400) throw new Error("limit 须为 1..100，wait-seconds 须为 0..86400");
+  if (backfillLimit !== undefined && (!Number.isInteger(backfillLimit) || backfillLimit < 1 || backfillLimit > 100)) throw new Error("backfill-limit 须为 1..100");
   if (!values.apply && !values.status) {
     const rows = await previewReceiptRecovery();
     if (values.json) console.log(JSON.stringify({ mode: "preview", receipts: rows }));
@@ -29,7 +31,7 @@ try {
     const deadline = Date.now() + wait * 1000;
     let result;
     do {
-      if (values.apply) await advanceReceiptRecoveryBatch(values.batch, limit);
+      if (values.apply) await advanceReceiptRecoveryBatch(values.batch, limit, backfillLimit);
       else await settleReceiptRecoveryBatch(values.batch);
       result = await receiptRecoveryStatus(values.batch);
       if (!result.counts.planned && !result.counts.queued || Date.now() >= deadline) break;

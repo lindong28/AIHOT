@@ -171,6 +171,33 @@ test('a permanently changed first target does not starve later eligible work',as
   assert.equal((await sql`SELECT status FROM receipts WHERE id=${receipts[1]!.id}`)[0]!.status,'failed');
 });
 
+test('explicit backfill allowance is independent while omitted allowance preserves the global cap',async()=>{
+  const batch=tag(),run=tag(), receipts=[];
+  await sql`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day,state) VALUES (${run},'test',${run},'2026-01-01','2026-01-01','needs_attention')`;
+  for (const backfill of [false,false,true,true]) {
+    const id=await article();
+    receipts.push(await receipt(`article:${id}@1`,'prefilter_article',backfill?'backfill':'batch-test'));
+    if (backfill) await sql`INSERT INTO backfill_items(run_id,identity_key,day,material,content_hash,evidence,state,article_id)
+      VALUES (${run},${id},'2026-01-01','{}','hash','test','failed',${id})`;
+  }
+  await createReceiptRecoveryBatch(batch,'authorized',receipts.map(r=>r.id));
+  await advanceReceiptRecoveryBatch(batch,1);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.queued,1);
+  await advanceReceiptRecoveryBatch(batch,1);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.queued,1);
+  await advanceReceiptRecoveryBatch(batch,1,2);
+  const pools=await sql`SELECT target->>'kind' AS kind,count(*)::int AS n FROM receipt_recoveries WHERE batch=${batch} AND state='queued' GROUP BY 1 ORDER BY 1`;
+  assert.deepEqual(pools.map(r=>[r.kind,r.n]),[['article',1],['backfill',2]]);
+  await advanceReceiptRecoveryBatch(batch,1,2);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.queued,3);
+  const [ordinary]=await sql`SELECT target FROM receipt_recoveries WHERE batch=${batch} AND state='queued' AND target->>'kind'='article'`;
+  await success(ordinary!.target.id);
+  await advanceReceiptRecoveryBatch(batch,1,2);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.recovered,1);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.queued,3);
+  await assert.rejects(()=>advanceReceiptRecoveryBatch(batch,1,0),/backfill limit/);
+});
+
 test('an empty or unknown batch is an error, never a reusable completed cohort',async()=>{
   const batch=tag();
   await assert.rejects(()=>createReceiptRecoveryBatch(batch,'authorized',[]),/No eligible receipts/);
