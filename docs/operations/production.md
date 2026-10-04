@@ -10,6 +10,8 @@
 
 ## 环境与持久数据
 
+生产模板使用 `LLM_GATEWAY_ATTEMPT_TIMEOUT_MS=60000`，在线 worker 与 backfill 的 Gateway 客户端实例均读取它；共享 SDK 缺省仍为 30000。次数预算仍默认 3 次（含首次），backoff 仍为 3 秒、6 秒，每次请求派发后独立计算最多 60 秒，backoff 与路由冷却不扣该时间。修改 `app.env` 后需让 worker 和 backfill 在途任务结算退出，再启动新进程；以新回执的 `request.gateway.retry.attemptTimeoutMs` 和 Gateway attempt 关联核对实际值。更长超时不保证每条新闻成功，也不自动清除历史 unknown 回执。
+
 DeepSeek 具名预设与部署模板已改为 `deepseek-v4.1-flash`。摘要、归组、归组复核、综述、报告、翻译与监控选择非思考 V4.1；backfill 评分使用 `-selection`、理解使用 `-low`，明确保留上游 GLM 各角色参数，三种回填 DeepSeek 角色固定腾讯 VOD。完整参数见 [模型配置](../references/model-configuration.md)，执行见[回填接入](backfill.md)。迁移部署时同时检查 `app.env`、数据库 `models.*` 设置和已有回填批次的模型绑定；历史回执保持原名，不批量重写。直连官方 API 的 `default` 示例仍使用厂商原生 `deepseek-flash`，它与 Gateway logical 名分属不同入口。具名预设直连配置使用 `DEEPSEEK_V41_BASE_URL` / `DEEPSEEK_V41_API_KEY`，端点须识别 `deepseek-v4.1-flash`，不复用旧 V4 自托管地址。
 
 V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库模型设置、运行进程或既有回填绑定。Gateway 项目需显式登记 personal/company 双归属，腾讯账户保持 company_paid；应用预检核对双归属和唯一腾讯路由。启动回填前必须以运行中的 Gateway 完成预检与真实模型验证，不能把源文件已修改视为生产已加载。
