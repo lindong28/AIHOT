@@ -21,6 +21,8 @@ const models: BackfillBindings = {
 let requestCount = 0;
 let entered: ReturnType<typeof gate> | undefined, release: ReturnType<typeof gate> | undefined;
 const server = createServer(async (req, res) => {
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
   res.setHeader("content-type", "application/json");
   if (req.url === "/health") {
     res.end(JSON.stringify({ status: "ok", loaded_registry_revision: "runner-fixture", file_registry_revision: "runner-fixture" })); return;
@@ -38,7 +40,7 @@ const server = createServer(async (req, res) => {
   entered?.open(undefined); if (release) await release.promise;
   res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ label: "BLOCK", reason: "Local fixture unrelated to AI" }) } }],
     usage: { prompt_tokens: 10, completion_tokens: 10 },
-    llm_gateway: { projection_version: 1, logical_request_id: req.headers["x-llm-request-id"], provider_id: "self-hosted", selected_route_id: "personal_gpu/qwen/stream", actual_model: "self_hosted/qwen" } }));
+    llm_gateway: { projection_version: 1, retry_policy: JSON.parse(String(req.headers["x-llm-retry-policy"])), logical_request_id: req.headers["x-llm-request-id"], provider_id: "self-hosted", selected_route_id: "personal_gpu/qwen/stream", actual_model: "self_hosted/qwen" } }));
 });
 await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

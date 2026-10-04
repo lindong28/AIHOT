@@ -70,7 +70,7 @@ test("retries of unusable answers stop at the budget, and every request sent is 
     );
   }
   assert.equal(provider.hits() - before, 2, "requests sent");
-  assert.deepEqual(outcomes, ["unusable", "unusable", "budget", "budget", "budget"]);
+  assert.deepEqual(outcomes, ["budget", "budget", "budget", "budget", "budget"]);
   const attempts = await sql<{ status: string; tokens: number }[]>`
     SELECT a.status, (a.usage->>'total_tokens')::int AS tokens
     FROM receipt_attempts a JOIN receipts r ON r.id = a.receipt_id WHERE r.subject = ${subject} ORDER BY a.attempt`;

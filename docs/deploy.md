@@ -78,19 +78,23 @@ docker compose logs -f --tail 100 api worker web
 
 设置 Gateway 后，文本与向量都经它转发，不会退回直接调用供应商。向量可用 `EMBEDDINGS_ENABLED=false` 关闭；启用时必须显式指定 `EMBEDDING_MODEL`，维数可用 `EMBEDDING_DIMS` 指定。容器内的 `127.0.0.1` 指向容器自身，应填写 worker 实际能访问的 Gateway 地址。当前本机部署进度与尚待裁决的资源见 [切换清单](migration.md)。
 
-本站在发出请求前将 UUID 写入 `receipts.request_id` 与 `receipt_attempts.request_id`，作为 `X-LLM-Request-ID` 发送，并校验响应的 `llm_gateway` 身份；压缩 JSON 则校验 Gateway identity headers，并一同保存到回执响应中。Gateway 负责网络重试与供应商切换；本站不自动重发 Gateway 的未知结果。请求超时、连接中断、HTTP 错误、响应身份不匹配或业务结果不可用时，回执保持 `unknown`，处理暂停。按回执 ID 查询请求身份，再到 Gateway 的 ledger 核对该请求及其 attempts，确认结果后通过既有后台恢复入口处理；不得只因等待时间已过就放行重试。
+本站使用 Gateway 仓维护的 `@lindong/llm-gateway-client`。启用新版消费者前，先升级 Gateway 并确认 `/api/capabilities` 宣告 retry policy v1，再执行数据库迁移（含 `0043_receipt_output_validation.sql`）与应用更新。旧服务端不支持时，客户端在模型派发前失败；不得以此退回直连供应商。
 
-连接尚未建立的 `ECONNREFUSED`、`EAI_AGAIN`、`UND_ERR_CONNECT_TIMEOUT` 允许本站最多尝试三次，间隔 250/500 ms，始终保留原 UUID、body 与同一总超时；禁止自动跟随重定向，以免先发送成功再遇到连接错误。其它 `fetch failed` 不盲目重发，回执错误会保留安全原因码（如 `ECONNRESET`、`UND_ERR_SOCKET`）；原因不明标记 `UNKNOWN`，不记录可能含凭据的底层消息。连接重试耗尽也继续按 unknown 核账。Gateway 的 `ledger_unavailable` 503 表示其审计存储失败，不证明上游没有执行。
+实例参数来自 `LLM_GATEWAY_MAX_ATTEMPTS=3`、`LLM_GATEWAY_ATTEMPT_TIMEOUT_MS=30000`、`LLM_GATEWAY_INITIAL_BACKOFF_MS=3000`，分别表示包含首次的 provider 次数、每次独立的时间上限与第一次退避。Gateway 执行退避和 provider 切换，本站不额外重发 fetch。`LLM_JSON_MAX_ATTEMPTS=3` 控制应用 JSON/schema 校验生成次数，失败后立即重新生成。配置由客户端实例读取；同一实例内不按每次请求修改，修改生产环境变量后需要重启 worker 才生效。
+
+本站在每次生成前把新的 UUID 写入 `receipts.request_id` 与 `receipt_attempts.request_id`，再发送 `X-LLM-Request-ID` 并核对响应 identity（压缩响应使用 identity headers）。每次响应与 usage 先保存到 attempt，再校验 JSON；不合格记录 `output_validation_error`，同一业务回执内有界重试。预算在数据库认领事务中核对，worker 重启不会获得全新三次。成功保存业务结果后主回执变为 `completed`，旧失败 attempt 和未知费用继续保留。默认最坏为三次生成、每次三个 provider attempts，共九次，均可能收费；本站预算按生成回执计数，provider 明细在 Gateway ledger。
+
+无法确认已收到结果的超时、连接中断、HTTP 错误，以及身份不匹配，仍保持 `unknown`，不自动重发。例外是能证明零 provider 派发的拒绝，以及已收到且 identity 匹配的指定输出校验失败；普通 502 不等于 JSON 失败。`fetch failed` 保留安全原因码，原因不明为 `UNKNOWN`，不记录可能含凭据的底层消息。Gateway 的 `ledger_unavailable` 503 不证明上游没有执行。按 UUID 核账后再使用[受控恢复入口](operations/receipt-recovery.md)，不能因等待已久就解除 unknown。
 
 ```sql
 SELECT id, status, request_id, usage, error
 FROM receipts WHERE id = '<后台显示的回执 ID>';
-SELECT attempt, status, request_id, usage, error
+SELECT attempt, status, request_id, usage, error, output_validation_error
 FROM receipt_attempts WHERE receipt_id = '<后台显示的回执 ID>'
 ORDER BY attempt;
 ```
 
-未取得金额时费用保持未知，不把 token 数当作实际账单。当前上游单次超时最大 180 秒；本站等待窗口为两倍上游超时加 200 秒，用于预留恢复时间，并非 Gateway 完成保证。窗口到期仍须查账。未配置 Gateway 时，原有供应商直连及其恢复规则保持原样。
+未取得金额时费用保持未知，不把 token 数当作实际账单。默认一次 Gateway HTTP 等待窗口为 160 秒，含三次 30 秒执行、两次候选等待与传输余量；窗口到期仍须查账。配置所得总窗口须低于本站回执过期阈值，具体参数校验以客户端为准。未配置 Gateway 时，原有供应商直连保留其网络行为，应用输出校验仍使用配置的生成次数上限。
 
 - **模型**：每条新资料至少预筛一次；可能入选的再评分两次，入选的还要写标题摘要、打标签、归组，另外还有日报和事件综述。我们用示范信源在本地试跑，第一次导入的 152 条资料一共用了大约 930 次模型调用。之后每天用多少，取决于你的信源每天更新多少条。后台“模型与评测”页能看到每一步的调用次数和输入输出 token 数。
 - **付费采集**（X、公众号、Jina）：按请求计费，默认不启用，填了 key 才会用。

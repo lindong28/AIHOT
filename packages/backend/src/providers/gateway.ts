@@ -1,6 +1,6 @@
 // Optional Gateway transport. Upstream credentials stay with the Gateway.
 import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
+import { GatewayClient, GatewayHTTPError, GatewayCapabilityError, GatewayProtocolError } from "@lindong/llm-gateway-client";
 import { bindingRoutes, bindingIdentityRoutes, type BackfillBinding } from "../backfill/context.ts";
 import { GatewayNotDispatchedError } from "./receipts.ts";
 
@@ -23,6 +23,30 @@ export function gatewayConfigured(): boolean {
   return !!process.env.LLM_GATEWAY_URL;
 }
 
+let cachedClient: { key: string; client: GatewayClient } | undefined;
+
+export function jsonMaxAttempts(): number {
+  const value = Number(process.env.LLM_JSON_MAX_ATTEMPTS ?? 3);
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error("LLM_JSON_MAX_ATTEMPTS must be a positive integer");
+  return value;
+}
+
+function gatewayClient(baseUrl: string, project: string, mode: "stream" | "batch") {
+  const retry = {
+    maxAttempts: Number(process.env.LLM_GATEWAY_MAX_ATTEMPTS ?? 3),
+    attemptTimeoutMs: Number(process.env.LLM_GATEWAY_ATTEMPT_TIMEOUT_MS ?? 30000),
+    initialBackoffMs: Number(process.env.LLM_GATEWAY_INITIAL_BACKOFF_MS ?? 3000),
+  };
+  const jsonRetry = { maxAttempts: jsonMaxAttempts() };
+  const key = JSON.stringify({ baseUrl, project, mode, retry, jsonRetry });
+  if (cachedClient?.key === key) return cachedClient.client;
+  const client = new GatewayClient({ baseUrl, project, mode, retry, jsonRetry });
+  // Each generation must finish before the ten-minute pending receipt lease.
+  if (client.deadlineMs > 9 * 60 * 1000) throw new Error("Gateway retry policy exceeds the 9-minute receipt waiting limit");
+  cachedClient = { key, client };
+  return client;
+}
+
 export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: BackfillBinding) {
   if (!gatewayConfigured()) return null;
   const url = new URL(process.env.LLM_GATEWAY_URL!);
@@ -34,11 +58,12 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
   if (!project) throw new Error("LLM_GATEWAY_PROJECT must name a registered project");
   const mode = process.env.LLM_GATEWAY_MODE ?? "stream";
   if (mode !== "stream" && mode !== "batch") throw new Error("LLM_GATEWAY_MODE must be stream or batch");
-  // Keep the local waiting policy below receipts' ten-minute stale threshold.
+  // Preserve the historical receipt identity, independently of instance policy.
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 180_000) {
     throw new Error("Gateway upstream timeout must be between 1 and 180000 ms");
   }
   const requestId = randomUUID();
+  const client = gatewayClient(baseUrl, project, mode);
   const routes = pin ? bindingRoutes(pin) : [];
   if (pin?.routes && !pin.registryRevision) throw new Error("Backfill fallback requires a verified Gateway registry revision");
   // The registry revision constrains this dispatch, not the semantic request:
@@ -46,38 +71,26 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
   const identity = { baseUrl, project, mode, model, timeoutMs, ...(pin ? { routes: bindingIdentityRoutes(pin) } : {}) };
   return {
     requestId,
+    client,
     identity,
-    summary: { ...identity, ...(pin ? { routes } : {}), ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
+    summary: { ...identity, retry: client.retry, jsonRetry: client.jsonRetry, ...(pin ? { routes } : {}), ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
     async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>): Promise<Record<string, unknown>> {
-      // Only proven pre-connect failures may be retried here. Gateway owns all
-      // provider retries; a socket reset or HTTP error may already have incurred cost.
-      const init: RequestInit = {
-        method: "POST",
-        redirect: "error",
-        headers: { "content-type": "application/json", "X-LLM-Project": project, "X-LLM-Request-ID": requestId, "X-LLM-Mode": mode,
+      let res: { body: unknown; headers: Headers; status: number };
+      try {
+        res = await client.request(`/v1/${endpoint}`, { ...body, model }, { requestId, headers: {
           ...(pin?.route ? { "X-LLM-Route": pin.route } : {}),
           ...(pin?.registryRevision ? { "X-LLM-Allowed-Routes": JSON.stringify(routes.map((r) => r.route)), "X-LLM-Registry-Revision": pin.registryRevision } : {}),
-        },
-        body: JSON.stringify({ ...body, model, timeout: timeoutMs / 1000 }),
-        signal: AbortSignal.timeout(2 * timeoutMs + 200_000),
-      };
-      let res: Response;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          res = await fetch(`${baseUrl}/v1/${endpoint}`, init);
-          break;
-        } catch (error) {
-          const codes = networkCodes(error);
-          if (attempt < 2 && !init.signal!.aborted && codes.every((code) => CONNECT_RETRY_CODES.has(code))) {
-            await delay(250 * (attempt + 1));
-            if (!init.signal!.aborted) continue;
-          }
-          throw new Error(`Gateway network failure (${[...new Set(codes)].join(",")}); reconcile request ${requestId} before retrying`);
-        }
+        } });
+      } catch (error) {
+        if (error instanceof GatewayCapabilityError) throw new GatewayNotDispatchedError(requestId, "Gateway does not support the configured retry policy; no model request dispatched");
+        if (error instanceof GatewayProtocolError) throw new Error(`Gateway response identity or protocol mismatch; reconcile request ${requestId} before retrying`);
+        if (error instanceof GatewayHTTPError) res = error;
+        else throw new Error(`Gateway network failure (${[...new Set(networkCodes(error))].join(",")}); reconcile request ${requestId} before retrying`);
       }
-      if (!res.ok) {
-        const json = await res.json().catch(() => null) as Record<string, unknown> | null;
-        const error = json?.error as Record<string, unknown> | undefined;
+      const json = res.body as Record<string, unknown> | null;
+      const error = json?.error as Record<string, unknown> | undefined;
+      const parseError = res.status === 502 && error?.code === "parse_error";
+      if (res.status >= 400 && !parseError) {
         // Gateway emits these exact rejections only when the logical request has NO
         // attempts. A single attempt's not_crossed says nothing about prior fallbacks.
         const hasCompanion = json?.llm_gateway !== undefined || error?.llm_gateway !== undefined ||
@@ -90,21 +103,24 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
         const code = typeof error?.code === "string" && /^[a-zA-Z0-9_]{1,80}$/.test(error.code) ? ` (${error.code})` : "";
         throw new Error(`Gateway HTTP ${res.status}${code}; reconcile request ${requestId} before retrying`);
       }
-      const json = await res.json() as Record<string, unknown>;
       // Compressed provider JSON is passed through: Gateway identity then lives
       // in percent-encoded headers, even though fetch has decompressed the body.
       const compressed = !!res.headers.get("content-encoding");
       const companion = compressed
         ? Object.fromEntries([...res.headers].filter(([key]) => key.startsWith("x-llm-gateway-"))
           .map(([key, value]) => [key.slice("x-llm-gateway-".length).replaceAll("-", "_"), decodeURIComponent(value)]))
-        : json?.llm_gateway as Record<string, unknown> | undefined;
+        : (json?.llm_gateway ?? error?.llm_gateway) as Record<string, unknown> | undefined;
       if (compressed && companion?.projection_version === "1") companion.projection_version = 1;
+      if (compressed && typeof companion?.retry_policy === "string") companion.retry_policy = JSON.parse(companion.retry_policy);
       if (companion?.projection_version !== 1 || companion.logical_request_id !== requestId) {
         throw new Error(`Gateway identity mismatch; reconcile request ${requestId} before retrying`);
       }
       if (pin && !routes.some((r) => companion.provider_id === r.provider && companion.selected_route_id === r.route && companion.actual_model === r.actualModel &&
           (!r.credentialProfile || companion.credential_profile_id === r.credentialProfile))) {
         throw new Error(`Gateway backfill route mismatch; reconcile request ${requestId} before retrying`);
+      }
+      if (parseError && (!json?.output || typeof json.output !== "object" || !Array.isArray((json.output as Record<string, unknown>).choices))) {
+        throw new Error(`Gateway parse_error has no retained output; reconcile request ${requestId} before retrying`);
       }
       return { ...json, llm_gateway: companion };
     },

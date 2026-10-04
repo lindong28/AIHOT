@@ -30,6 +30,8 @@ function view(model: string) {
 }
 let selected = zai, hits = 0, stale = false;
 const server = createServer(async (req, res) => {
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
   res.setHeader("content-type", "application/json");
   if (req.url?.startsWith("/v1/discovery?")) {
     assert.equal(req.headers["x-llm-project"], "fixture");
@@ -44,7 +46,7 @@ const server = createServer(async (req, res) => {
   assert.equal(req.headers["x-llm-route"], undefined);
   assert.equal(req.headers["x-llm-allowed-routes"], JSON.stringify(binding.routes.map((r) => r.route)));
   assert.equal(req.headers["x-llm-registry-revision"], revision);
-  res.end(JSON.stringify({ llm_gateway: { projection_version: 1, logical_request_id: req.headers["x-llm-request-id"],
+  res.end(JSON.stringify({ llm_gateway: { projection_version: 1, retry_policy: JSON.parse(String(req.headers["x-llm-retry-policy"])), logical_request_id: req.headers["x-llm-request-id"],
     provider_id: selected.provider, credential_profile_id: selected.credentialProfile, selected_route_id: selected.route, actual_model: selected.actualModel } }));
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

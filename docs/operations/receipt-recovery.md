@@ -58,6 +58,8 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ## 核账与人工后续
 
+新调用的自动 JSON 恢复与本页历史批次重放分开：`LLM_JSON_MAX_ATTEMPTS` 限定同一回执的生成次数，`receipt_attempts.response` 保留每次响应，`output_validation_error` 记录应用校验失败。业务成功后主回执完成，后台不再把它当待核对；旧失败 attempt 仍是失败事实。额度耗尽仍显示失败，网络 unknown 仍需核账。参数与升级顺序见[部署说明](../deploy.md#使用个人-llm-gateway)。安装这项能力不会自动解除历史 unknown，也不会重新开启已结束的恢复批次。
+
 有完整 Gateway 账本且能证明零 attempt、未派发时，继续使用 `reconcile-gateway-receipts.ts` 的证据路径；它与本页的“接受可能再次计费后重放”不同。missing ledger、HTTP 502、断连或缺 usage 都不构成免费证明。
 
 若本批出现新失败，先按剩余 target 检查实际阶段和 Gateway 请求，不用新批次名反复解除相同问题。脚本不自动解决文章修订冲突、缺失原文或新的 provider 故障。恢复后抽查 article identity、publication 唯一性、公开详情，并比较执行前后回填和实时任务进度；不能只看待核对数下降。

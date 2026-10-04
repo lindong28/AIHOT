@@ -21,6 +21,16 @@ export class BudgetExceededError extends Error {
 
 export class ReceiptBusyError extends Error {}
 
+export class ReceiptOutputExhaustedError extends Error {
+  readonly receiptId: number;
+  readonly maxAttempts: number;
+  constructor(receiptId: number, maxAttempts: number) {
+    super(`Receipt ${receiptId} exhausted its ${maxAttempts} output validation attempts`);
+    this.receiptId = receiptId;
+    this.maxAttempts = maxAttempts;
+  }
+}
+
 export class ReceiptUnknownError extends Error {
   readonly receiptId: number;
   constructor(receiptId: number, message: string) {
@@ -69,12 +79,15 @@ export interface ReceiptRequest {
   attemptTag?: string;
   /** Gateway UUID, persisted before dispatch; unknown outcomes require reconciliation. */
   gatewayRequestId?: string;
+  /** Application generation budget; persisted invalid outputs count across worker restarts. */
+  outputMaxAttempts?: number;
 }
 
 export interface ReceiptResult {
   receiptId: number;
   response: unknown;
   reused: boolean;
+  attemptId: number;
 }
 
 const PENDING_STALE_MS = 10 * 60 * 1000;
@@ -119,6 +132,9 @@ async function checkBudget(tx: Db, service: string): Promise<void> {
  */
 export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallOutcome>): Promise<ReceiptResult> {
   const logicalKey = logicalKeyFor(req);
+  if (req.outputMaxAttempts !== undefined && (!Number.isSafeInteger(req.outputMaxAttempts) || req.outputMaxAttempts < 1)) {
+    throw new Error("outputMaxAttempts must be a positive integer");
+  }
 
   const claimed = await sql.begin(async (tx) => {
     // Serialise budget checks per service so concurrent workers cannot overshoot.
@@ -126,13 +142,22 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     const [existing] = await tx<ReceiptRow[]>`
       SELECT id, status, response, created_at, updated_at FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
     if (existing) {
-      if (existing.status === "received" || existing.status === "completed") return { kind: "reuse" as const, row: existing };
+      if (existing.status === "received" || existing.status === "completed") {
+        const [attempt] = await tx<{ id: number }[]>`SELECT id FROM receipt_attempts WHERE receipt_id = ${existing.id} ORDER BY attempt DESC LIMIT 1`;
+        if (!attempt) throw new Error(`Receipt ${existing.id} has no attempt record`);
+        return { kind: "reuse" as const, row: existing, attemptId: attempt.id };
+      }
       if (existing.status === "pending") {
         if (Date.now() - existing.updated_at.getTime() < PENDING_STALE_MS) return { kind: "busy" as const, row: existing };
         await markUnknown(tx, existing.id, "placeholder went stale without a recorded result");
         return { kind: "unknown" as const, row: existing };
       }
       if (existing.status === "unknown") return { kind: "unknown" as const, row: existing };
+      if (req.outputMaxAttempts !== undefined) {
+        const [invalid] = await tx<{ count: number }[]>`SELECT count(*)::int AS count FROM receipt_attempts
+          WHERE receipt_id = ${existing.id} AND output_validation_error IS NOT NULL`;
+        if (invalid!.count >= req.outputMaxAttempts) throw new ReceiptOutputExhaustedError(existing.id, req.outputMaxAttempts);
+      }
       // failed: the provider did not take the request, or its answer was unusable; a new attempt is allowed.
       await checkBudget(tx, req.service);
       const [r] = await tx<{ attempts: number }[]>`
@@ -152,7 +177,7 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     return { kind: "call" as const, id: row!.id, attemptId };
   });
 
-  if (claimed.kind === "reuse") return { receiptId: claimed.row.id, response: claimed.row.response, reused: true };
+  if (claimed.kind === "reuse") return { receiptId: claimed.row.id, response: claimed.row.response, reused: true, attemptId: claimed.attemptId };
   if (claimed.kind === "busy") throw new ReceiptBusyError(`Receipt ${claimed.row.id} is in flight`);
   if (claimed.kind === "unknown") {
     throw new ReceiptUnknownError(claimed.row.id, `Receipt ${claimed.row.id} has an unknown outcome; reconcile it before retrying`);
@@ -194,11 +219,12 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     await tx`
       UPDATE receipt_attempts SET
         status = 'received', request_id = ${outcome.requestId ?? null}, usage = ${outcome.usage ? tx.json(outcome.usage as never) : null},
+        response = ${tx.json((outcome.response ?? null) as never)},
         cost = ${outcome.cost?.amount ?? null}, currency = ${outcome.cost?.currency ?? null}, cost_basis = ${outcome.cost?.basis ?? null},
         latency_ms = ${Date.now() - started}, finished_at = now()
       WHERE id = ${attemptId}`;
   });
-  return { receiptId, response: outcome.response, reused: false };
+  return { receiptId, response: outcome.response, reused: false, attemptId };
 }
 
 async function startAttempt(tx: Db, receiptId: number, attempt: number, req: ReceiptRequest): Promise<number> {
@@ -231,4 +257,19 @@ export async function completeReceipt(db: Db, receiptId: number): Promise<void> 
 /** Marks a received response that could not be used (e.g. unparsable) so a fresh attempt can be made. */
 export async function rejectReceivedResponse(receiptId: number, reason: string, reconcile = false): Promise<void> {
   await sql`UPDATE receipts SET status = ${reconcile ? "unknown" : "failed"}, error = ${reason.slice(0, 2000)}, updated_at = now() WHERE id = ${receiptId}`;
+}
+
+/** Fence validation to the received attempt, retaining its response and unknown cost. */
+export async function rejectReceivedOutput(receiptId: number, attemptId: number, reason: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [receipt] = await tx`SELECT status, attempts FROM receipts WHERE id = ${receiptId} FOR UPDATE`;
+    const [attempt] = await tx`SELECT attempt, output_validation_error FROM receipt_attempts
+      WHERE id = ${attemptId} AND receipt_id = ${receiptId}`;
+    if (!receipt || !attempt || receipt.attempts !== attempt.attempt) throw new ReceiptBusyError(`Receipt ${receiptId} changed during validation`);
+    if (receipt.status === "failed" && attempt.output_validation_error !== null) return;
+    if (receipt.status !== "received") throw new ReceiptBusyError(`Receipt ${receiptId} is no longer awaiting validation`);
+    const message = reason.slice(0, 2000);
+    await tx`UPDATE receipt_attempts SET output_validation_error = ${message}, error = ${message}, status = 'failed' WHERE id = ${attemptId}`;
+    await tx`UPDATE receipts SET status = 'failed', error = ${message}, updated_at = now() WHERE id = ${receiptId}`;
+  });
 }

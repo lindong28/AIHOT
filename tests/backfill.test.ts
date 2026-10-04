@@ -33,13 +33,15 @@ let pauseOnPrefilter: string | null = null, malformed = false, healthRevision = 
 let waiting: ReturnType<typeof gate> | null = null, entered: ReturnType<typeof gate> | null = null;
 let healthWait: ReturnType<typeof gate> | null = null, healthEntered: ReturnType<typeof gate> | null = null;
 const server = createServer(async (req,res) => {
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
   if (req.url === "/health") { if (healthWait) { healthEntered?.open(undefined); await healthWait.promise; } res.setHeader("content-type","application/json"); res.end(JSON.stringify({ status:"ok",file_registry_revision:healthRevision,loaded_registry_revision:healthRevision })); return; }
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(Buffer.from(c));
   const body = JSON.parse(Buffer.concat(chunks).toString());
   const system = String(body.messages[0]?.role === "system" ? body.messages[0].content : "");
   const user = JSON.stringify(body.messages.at(-1).content);
   const stage = system.includes("宽召回的AI相关性预筛") ? "prefilter" : system.includes("事件注意力评分器") ? "score" : system.includes("内容理解编辑") ? "understand" : system.includes("资料结构化助手") ? "structure" : "summarize";
-  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user,thinking:body.thinking,maxTokens:body.max_tokens,temperature:body.temperature,timeout:body.timeout,reasoningEffort:body.reasoning_effort,topP:body.top_p });
+  requests.push({ model:body.model,route:req.headers["x-llm-route"] as string|undefined ?? (req.headers["x-llm-allowed-routes"] ? JSON.parse(String(req.headers["x-llm-allowed-routes"]))[0] : undefined),stage,user,thinking:body.thinking,maxTokens:body.max_tokens,temperature:body.temperature,timeout:JSON.parse(String(req.headers["x-llm-retry-policy"])).attempt_timeout_ms / 1000,reasoningEffort:body.reasoning_effort,topP:body.top_p });
   if (stage === "prefilter" && pauseOnPrefilter) { const id=pauseOnPrefilter;pauseOnPrefilter=null;await controlBackfill(id,"pause","test"); }
   if (stage === "prefilter" && waiting) { entered?.open(undefined); await waiting.promise; }
   const answer = stage === "prefilter" ? { label:user.includes("OFFTOPIC") ? "BLOCK" : "PASS",reason:"fixture" }
@@ -52,7 +54,7 @@ const server = createServer(async (req,res) => {
   res.setHeader("content-type","application/json");res.end(JSON.stringify({
     choices:[{message:{content:malformed ? "bad" : binding ? typeof answer === "string" ? answer : JSON.stringify(answer) : '{"ok":true}'}}],
     usage:{prompt_tokens:20,completion_tokens:10},
-    llm_gateway:{projection_version:1,logical_request_id:req.headers["x-llm-request-id"],provider_id:route?.provider ?? "bailian",selected_route_id:route?.route,actual_model:route?.actualModel,credential_profile_id:route?.credentialProfile},
+    llm_gateway:{projection_version:1, retry_policy: JSON.parse(String(req.headers["x-llm-retry-policy"])),logical_request_id:req.headers["x-llm-request-id"],provider_id:route?.provider ?? "bailian",selected_route_id:route?.route,actual_model:route?.actualModel,credential_profile_id:route?.credentialProfile},
   }));
 });
 await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -116,13 +118,13 @@ test("native publication progresses by day, filters noise, preserves existing or
     for (const call of calls) {
       if (stage === "score") {
         assert.deepEqual(call.thinking, { type: "enabled", clear_thinking: false });
-        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort, call.topP], [1, 65536, 180, "high", 0.95]);
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort, call.topP], [1, 65536, 30, "high", 0.95]);
       } else if (stage === "understand") {
         assert.deepEqual(call.thinking, { type: "enabled" });
-        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort], [0.2, 16384, 180, "low"]);
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout, call.reasoningEffort], [0.2, 16384, 30, "low"]);
       } else {
         assert.deepEqual(call.thinking, { type: "disabled" });
-        assert.deepEqual([call.temperature, call.maxTokens, call.timeout], [0.2, 2048, 120]);
+        assert.deepEqual([call.temperature, call.maxTokens, call.timeout], [0.2, 2048, 30]);
       }
     }
   }
@@ -155,7 +157,7 @@ test("pause at the next call boundary persists progress and resume reuses the re
   assert.equal(requests.slice(before).filter(r=>r.stage==="prefilter").length,2,"one prefilter per article, including resumed one");
 });
 
-test("missing models wait without inference; unknown responses stay failed without blind retry",async()=>{
+test("missing models wait without inference; exhausted invalid responses stay failed without blind retry",async()=>{
   const raw=await importBackfill({label:"模型待部署",startDay:"2026-06-01",endDay:"2026-06-02",entries:[entry("NO_MODEL"),entry("NO_MODEL2","2026-06-02")]});
   await controlBackfill(raw.id,"resume","test");const before=requests.length;
   assert.equal((await runBackfill(raw.id,{concurrency:1,maxItems:2})).state,"waiting_models");assert.equal(requests.length,before);

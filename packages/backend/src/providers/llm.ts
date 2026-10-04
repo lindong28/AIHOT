@@ -1,11 +1,12 @@
 // OpenAI-compatible chat calls, always through receipts. One model is enough: `default` is whatever the
 // deployment names in LLM_BASE_URL / LLM_API_KEY / LLM_MODEL, and every capability uses it unless an
 // environment variable or the admin's model page picks one of the named presets below.
-import type { z } from "zod";
+import { z } from "zod";
+import { runJson, OutputValidationError, JSONRetryExhaustedError } from "@lindong/llm-gateway-client";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
-import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
-import { prepareGatewayRequest } from "./gateway.ts";
+import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, ReceiptOutputExhaustedError, rejectReceivedResponse, rejectReceivedOutput } from "./receipts.ts";
+import { prepareGatewayRequest, jsonMaxAttempts } from "./gateway.ts";
 import { sql } from "../db.ts";
 import { backfillBinding, backfillContext } from "../backfill/context.ts";
 
@@ -166,6 +167,7 @@ function isConnectFailure(error: unknown): boolean {
 
 export function parseChatResponse<S extends z.ZodType>(opts: Pick<ChatJsonOptions<S>, "schema" | "parse">, response: unknown): z.infer<S> {
   const content = (response as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
+  if (typeof content !== "string") throw new ModelOutputError("Model content is not text");
   return opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
 }
 
@@ -199,67 +201,100 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     ...(spec.extra ?? {}),
   };
 
-  const receipt = await paidRequest(
-    {
-      service: spec.service,
-      model: spec.model,
-      purpose: opts.purpose,
-      subject: opts.subject,
-      identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null, ...(gateway ? { gateway: gateway.identity } : {}) },
-      requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens, ...(gateway ? { gateway: gateway.summary } : {}) },
-      attemptTag: opts.attemptTag,
-      gatewayRequestId: gateway?.requestId,
-    },
-    async () => {
-      const started = Date.now();
-      if (gateway) {
-        const json = await gateway.send("chat/completions", body);
-        return { response: { ...json, _latencyMs: Date.now() - started }, requestId: gateway.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
-      }
-      let res: Response;
-      try {
-        res = await fetch(`${baseUrl!.replace(/\/$/, "")}/chat/completions`, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-        });
-      } catch (error) {
-        if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
-        throw error;
-      }
-      const text = await res.text();
-      if (!res.ok) {
-        const retryable = res.status === 429 || res.status >= 500;
-        throw new ProviderRejectedError(`HTTP ${res.status}: ${text.slice(0, 500)}`, res.status, retryable);
-      }
-      let json: Record<string, unknown>;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = { unparsable: text.slice(0, 20000) };
-      }
-      const usage = (json.usage as Record<string, unknown> | undefined) ?? null;
-      return {
-        response: { ...json, _latencyMs: Date.now() - started },
-        requestId: (json.id as string | undefined) ?? res.headers.get("x-request-id"),
-        usage,
-        cost: null,
-      };
-    },
-  );
+  const maxAttempts = gateway?.client.jsonRetry.maxAttempts ?? jsonMaxAttempts();
+  const lifecycle = {
+    execute: async (attempt: number) => {
+      if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
+      if (attempt > 1) await backfillContext.getStore()?.beforeCall(opts.purpose, spec.model);
+      // Each generation gets its own UUID while the receipt's semantic identity stays fixed.
+      const generation = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000, binding ?? undefined);
+      const receipt = await paidRequest(
+        {
+          service: spec.service,
+          model: spec.model,
+          purpose: opts.purpose,
+          subject: opts.subject,
+          identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null, ...(gateway ? { gateway: gateway.identity } : {}) },
+          outputMaxAttempts: maxAttempts,
+          requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens, ...(generation ? { gateway: generation.summary } : {}) },
+          attemptTag: opts.attemptTag,
+          gatewayRequestId: generation?.requestId,
+        },
+        async () => {
+          const started = Date.now();
+          if (generation) {
+            const json = await generation.send("chat/completions", body);
+            return { response: { ...json, _latencyMs: Date.now() - started }, requestId: generation.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
+          }
+          let res: Response;
+          try {
+            res = await fetch(`${baseUrl!.replace(/\/$/, "")}/chat/completions`, {
+              method: "POST",
+              headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+              body: JSON.stringify(body),
+              signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+            });
+          } catch (error) {
+            if (isConnectFailure(error)) throw new ProviderRejectedError(`connect failed: ${String(error)}`, null, true);
+            throw error;
+          }
+          const text = await res.text();
+          if (!res.ok) {
+            const retryable = res.status === 429 || res.status >= 500;
+            throw new ProviderRejectedError(`HTTP ${res.status}: ${text.slice(0, 500)}`, res.status, retryable);
+          }
+          let json: Record<string, unknown>;
+          try {
+            json = JSON.parse(text);
+          } catch {
+            json = { unparsable: text.slice(0, 20000) };
+          }
+          const usage = (json.usage as Record<string, unknown> | undefined) ?? null;
+          return {
+            response: { ...json, _latencyMs: Date.now() - started },
+            requestId: (json.id as string | undefined) ?? res.headers.get("x-request-id"),
+            usage,
+            cost: null,
+          };
+        },
+      );
 
-  const response = receipt.response as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }>; usage?: Record<string, unknown> };
-  let parsed: z.infer<S>;
+      const raw = receipt.response as Record<string, unknown>;
+      const response = ((raw.error as { code?: string } | undefined)?.code === "parse_error" ? raw.output : raw) as {
+        choices?: Array<{ message?: { content?: string; refusal?: unknown }; finish_reason?: string }>;
+      };
+      const choice = response?.choices?.[0];
+      if (choice?.finish_reason === "content_filter" || choice?.message?.refusal) {
+        await rejectReceivedResponse(receipt.receiptId, "Model refused the requested content", !!generation);
+        if (generation) throw new ReceiptUnknownError(receipt.receiptId, "Gateway content refusal requires reconciliation");
+        throw new ModelOutputError("Model refused the requested content");
+      }
+      return { receipt, response, usage: raw.usage as Record<string, unknown> | null };
+    },
+    validate: (result: { response: unknown }) => {
+      try {
+        return parseChatResponse(opts, result.response);
+      } catch (error) {
+        // Only known output errors are retryable. Application bugs and I/O errors propagate.
+        if (!(error instanceof ModelOutputError || error instanceof SyntaxError || error instanceof z.ZodError)) throw error;
+        throw new OutputValidationError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${String(error).slice(0, 300)}`);
+      }
+    },
+    onInvalid: async (error: OutputValidationError, result: { receipt: { receiptId: number; attemptId: number } }) => {
+      await rejectReceivedOutput(result.receipt.receiptId, result.receipt.attemptId, error.message);
+    },
+  };
   try {
-    parsed = parseChatResponse(opts, response);
+    const { value, result } = gateway
+      ? await gateway.client.runJson(lifecycle)
+      : await runJson(lifecycle, { maxAttempts });
+    return { data: value, receiptId: result.receipt.receiptId, reused: result.receipt.reused, model: spec.key, usage: result.usage ?? null };
   } catch (error) {
-    // Gateway outputs require ledger reconciliation before another paid attempt.
-    await rejectReceivedResponse(receipt.receiptId, `unusable output: ${String(error).slice(0, 500)}`, !!gateway);
-    if (gateway) throw new ReceiptUnknownError(receipt.receiptId, `Gateway output requires reconciliation for receipt ${receipt.receiptId}`);
-    throw new ModelOutputError(`Model ${opts.model} returned unusable output for ${opts.subject}: ${String(error).slice(0, 300)}`);
+    if (error instanceof JSONRetryExhaustedError || error instanceof ReceiptOutputExhaustedError) {
+      throw new ModelOutputError(error.message, { cause: error });
+    }
+    throw error;
   }
-  return { data: parsed, receiptId: receipt.receiptId, reused: receipt.reused, model: spec.key, usage: response.usage ?? null };
 }
 
 export async function markReceiptsCompleted(ids: number[]): Promise<void> {

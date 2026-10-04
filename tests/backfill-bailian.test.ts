@@ -51,12 +51,13 @@ test("fallback sends both allowed routes and accepts only their exact response i
   const saved = globalThis.fetch;
   let selected = BAILIAN_QWEN_FALLBACK;
   globalThis.fetch = async (_url, init) => {
+    if (String(_url).endsWith("/api/capabilities")) return Response.json({ retry_policy_versions: [1] });
     const h = new Headers(init!.headers);
     assert.equal(h.get("X-LLM-Allowed-Routes"), JSON.stringify(bindingRoutes(models.prefilter).map(r => r.route)));
     assert.equal(h.get("X-LLM-Route"), null);
     assert.equal(h.get("X-LLM-Registry-Revision"), revision);
-    return Response.json({ llm_gateway: { projection_version: 1, logical_request_id: h.get("X-LLM-Request-ID"),
-      provider_id: selected.provider, selected_route_id: selected.route, actual_model: selected.actualModel, credential_profile_id: selected.credentialProfile } });
+    return Response.json({ llm_gateway: { projection_version: 1, retry_policy: JSON.parse(h.get("X-LLM-Retry-Policy")!), logical_request_id: h.get("X-LLM-Request-ID"),
+      provider_id: selected.provider, selected_route_id: selected.route, actual_model: selected.actualModel, credential_profile_id: selected.credentialProfile } }, { headers: { "X-LLM-Retry-Policy": h.get("X-LLM-Retry-Policy")! } });
   };
   try {
     const request = () => prepareGatewayRequest("qwen3.8-flash", 1000, { ...models.prefilter, registryRevision: revision })!;

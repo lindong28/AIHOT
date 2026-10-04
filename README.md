@@ -10,7 +10,7 @@
 
 腾讯云运行 API（后端）、Web（公开站点）、worker（采集与处理）和 PostgreSQL；生产采集与模型调用已启用。Mac Studio 的专用 launchd 隧道提供个人 Gateway 与代理出口。部署更新、起停、状态检查和回滚见[生产运维](docs/operations/production.md)，本机与 Docker 入口见[部署](docs/deploy.md)。Wechat2RSS 已与 X ingest 同机部署于腾讯云，22 个公众号按账号接入生产，并随 `deploy/production/service.sh` 统一启停；Mac mini 保留外部健康探针。固定版本部署、中央 env 配置生成、订阅恢复和专用探针安装均由 AIHOT 与 ai-agent-config 两仓维护，历史正文保存在数据库，见[公众号运维](docs/operations/wechat2rss.md)。各环境及原生运维入口见[服务清单](docs/operations/services.md)。
 
-TODO（本仓，负责人：AIHOT 维护者）：接通新生产 worker、Gateway 隧道和公开站点的外部故障通知并验证投递；目前尚未验收无人值守告警，保留既有服务的告警安排。
+TODO（本仓，负责人：AIHOT 维护者）：接通新生产 worker、Gateway 隧道和公开站点的外部故障通知并验证投递，覆盖模型重试耗尽与 JSON 校验预算耗尽；目前尚未验收无人值守告警，保留既有服务的告警安排。重试可减少短暂失败，但不代替无人值守告警。
 
 <p align="center">
   <picture>

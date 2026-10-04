@@ -127,9 +127,10 @@ test("real native prefilter uses backfill receipts and preserves missingEvidence
   const script = `
     import assert from 'node:assert/strict'; import {mock} from 'node:test';
     globalThis.fetch=()=>{throw new Error('network forbidden')};
+    const {runJson}=await import('@lindong/llm-gateway-client');
     const receipts=await import('./packages/backend/src/providers/receipts.ts');let requests=[];
     mock.module('./packages/backend/src/providers/receipts.ts',{namedExports:{...receipts,paidRequest:async(req,call)=>{requests.push(req);return {receiptId:91,response:(await call()).response,reused:false}}}});
-    mock.module('./packages/backend/src/providers/gateway.ts',{namedExports:{gatewayConfigured:()=>true,prepareGatewayRequest:()=>({identity:{fixture:true},summary:{},requestId:'fixture',send:async()=>({choices:[{message:{content:JSON.stringify({label:'BLOCK',reason:'fixture'})}}]})})}});
+    mock.module('./packages/backend/src/providers/gateway.ts',{namedExports:{jsonMaxAttempts:()=>3,gatewayConfigured:()=>true,prepareGatewayRequest:()=>({client:{jsonRetry:{maxAttempts:3},runJson},identity:{fixture:true},summary:{},requestId:'fixture',send:async()=>({choices:[{message:{content:JSON.stringify({label:'BLOCK',reason:'fixture'})}}]})})}});
     const {runPrefilter}=await import('./packages/backend/src/editorial/analyze.ts');
     const {backfillContext}=await import('./packages/backend/src/backfill/context.ts');
     const a=${JSON.stringify(row("native", "Title", null).article)};a.publishedAt=new Date(a.publishedAt);

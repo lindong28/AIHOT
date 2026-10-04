@@ -133,11 +133,13 @@ async function gatewayFixture(fn: (hit: number) => { status: number; content?: o
   const previousUrl = process.env.LLM_GATEWAY_URL, previousProject = process.env.LLM_GATEWAY_PROJECT;
   const previousEnabled = config.modelCallsEnabled;
   const server = createServer(async (req, res) => {
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
     for await (const _ of req) { /* consume request */ }
     const answer = fn(++hits);
     res.writeHead(answer.status, { "content-type": "application/json" });
     res.end(JSON.stringify(answer.status === 200
-      ? { llm_gateway: { projection_version: 1, logical_request_id: req.headers["x-llm-request-id"] }, choices: [{ message: { content: JSON.stringify(answer.content) } }] }
+      ? { llm_gateway: { projection_version: 1, retry_policy: JSON.parse(String(req.headers["x-llm-retry-policy"])), logical_request_id: req.headers["x-llm-request-id"] }, choices: [{ message: { content: JSON.stringify(answer.content) } }] }
       : { error: { code: "route_cooldown" } }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

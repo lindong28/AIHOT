@@ -27,6 +27,8 @@ const models: BackfillBindings = { prefilter:qwen,structure:qwen,score:deep,unde
 let calls = 0, qualityCalls = 0, prefilterMode: 'complete'|'unknown'|'undispatched' = 'complete';
 let forcePrefilterPass = false;
 const server = createServer(async (req,res) => {
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
   res.setHeader('content-type','application/json');
   if (req.url === '/health') { res.end(JSON.stringify({status:'ok',loaded_registry_revision:'history-test',file_registry_revision:'history-test'})); return; }
   if (req.url?.startsWith('/v1/discovery?')) {
@@ -47,7 +49,7 @@ const server = createServer(async (req,res) => {
   if (prefilterMode==='unknown') {res.statusCode=502;res.end(JSON.stringify({error:{code:'provider_stream_error'}}));return;}
   if (prefilterMode==='undispatched') {res.statusCode=422;res.end(JSON.stringify({error:{code:'route_cooldown',logical_request_id:req.headers['x-llm-request-id']}}));return;}
   res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(response)}}],usage:{prompt_tokens:10,completion_tokens:10},
-    llm_gateway:{projection_version:1,logical_request_id:req.headers['x-llm-request-id'],provider_id:r.provider,selected_route_id:r.route,actual_model:r.actualModel,credential_profile_id:r.credentialProfile}}));
+    llm_gateway:{projection_version:1, retry_policy: JSON.parse(String(req.headers["x-llm-retry-policy"])),logical_request_id:req.headers['x-llm-request-id'],provider_id:r.provider,selected_route_id:r.route,actual_model:r.actualModel,credential_profile_id:r.credentialProfile}}));
 });
 await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
