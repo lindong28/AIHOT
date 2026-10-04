@@ -40,6 +40,8 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ## 恢复边界
 
+后台侧栏“运行”的数字统计尚未结案的回执与待核实投递，复用运行页列表的筛选条件：回执包含结果未知、近三天失败及超过十五分钟未完成，排除当前 attempt 已恢复的记录；投递包含结果未知、失败及超过十五分钟仍在发送的记录。侧栏统计完整数量，列表各最多展示 40 条。结案不会清除历史费用未知状态，旧 attempt 的恢复也不会隐藏新 attempt 的失败。
+
 新版业务结果可以结案旧版本异常：必须是同一 article_id，当前文章版本不小于捕获版本，publication 引用的 analysis.input_revision 等于当前文章版本，且文章已完成分析或过滤。只有 revision 增长、旧分析仍留在 publication，均不能结案。证据中的 `superseded_revision` 会记录捕获版本和成功版本，后台显示“新版已替代”。原调用状态、attempt 与未知费用保留；后续新 failed/unknown attempt 仍会显示。
 
 `--status`、`--apply` 和每十分钟的 `ops.recover` 都会重评已有批次的业务证据（包括此前因版本不符或审核拒绝而 blocked 的记录）。定时重评只结案，不授权调用、不新建重放任务；尚未纳入批次的异常仍通过统一脚本冻结。

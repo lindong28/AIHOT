@@ -10,6 +10,16 @@ import { contentPolicyRejected, safeGatewayFailure } from "../providers/gateway-
 
 const STALE_HEARTBEAT_MS = 3 * 60_000;
 
+// Shared by the issue lists and navigation totals; callers use receipt alias r.
+export function receiptIssueCondition() {
+  return sql`(r.status = 'unknown' OR (r.status = 'failed' AND r.updated_at > now() - interval '3 days') OR (r.status = 'pending' AND r.updated_at < now() - interval '15 minutes'))
+    AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')`;
+}
+
+export function deliveryIssueCondition() {
+  return sql`status IN ('unknown', 'failed') OR (status = 'sending' AND updated_at < now() - interval '15 minutes')`;
+}
+
 export async function runsOverview() {
   const [heartbeats, latest, timeline, queues, failedJobs, lagging, receipts, receiptIssues, deliveries, errors, ingest, leaderboard] = await Promise.all([
     sql<{ key: string; value: Record<string, unknown>; updated_at: Date }[]>`SELECT key, value, updated_at FROM settings WHERE key LIKE 'heartbeat.%' ORDER BY key`,
@@ -47,12 +57,11 @@ export async function runsOverview() {
         (SELECT a.error FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS attempt_error,
         (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id
       FROM receipts r
-      WHERE (status = 'unknown' OR (status = 'failed' AND updated_at > now() - interval '3 days') OR (status = 'pending' AND updated_at < now() - interval '15 minutes'))
-        AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')
+      WHERE ${receiptIssueCondition()}
       ORDER BY status = 'unknown' DESC, updated_at DESC LIMIT 40`,
     sql`
       SELECT id, target_key, subject_kind, subject_id, status, attempts, left(response, 240) AS response, created_at, updated_at FROM deliveries
-      WHERE status IN ('unknown', 'failed') OR (status = 'sending' AND updated_at < now() - interval '15 minutes')
+      WHERE ${deliveryIssueCondition()}
       ORDER BY status = 'unknown' DESC, updated_at DESC LIMIT 40`,
     sql`
       SELECT ${failureGroupSql()} AS error, count(*)::int AS n, max(discovered_at) AS last,
