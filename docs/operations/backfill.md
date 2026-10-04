@@ -6,6 +6,24 @@
 
 2026-10-02 上线快照：AIHOT `bbbb789` 已发布至生产 `backfill-bbbb789`，个人 Gateway `2d5d4aab549ae355339509469af60703d85f11d9` 已重装运行。启动批已导入，首篇完成处理并公开；生产 timer 与 Mac 监督已启动。以下读数不表示整批或全部历史已完成，具体覆盖与待办见下文。
 
+## 按用户指定的文章补录
+
+少量指定 URL 使用 `scripts/backfill-selected.ts`，支持离散日期和最近文章，无需改变持续历史批次。它把缺失原文经 `upsertMaterial` 和 `queueProcessing` 交给普通 worker，使用该 worker 的模型、预算、回执、过滤及发布规则；不使用受管历史批次的模型绑定，也不修改其进度。超过 48 小时的文章按既有规则进入低优先级历史队列，不增加事件热度。本文与脚本均由 Git 维护，供 Codex / Claude 复用。
+
+先取得用户指定 URL 的原文，确认来源已在 `industry/sources.json` 和目标数据库登记为 editorial。微信可用 user-scope `connectors` skill 读取，普通新闻可用既有来源抓取工具。脚本不负责联网获取原文；不要把旧系统的分类、评分、摘要作为输入。将原生 `manifestEntry` 每行一个保存到不入 Git 的 `.data/selected.jsonl`：`material` 包含 sourceId、规范 url、原始 title、publishedAt、bodyText，可含 author/bodyHtml/media；`quality` 使用 complete、原文依据 evidence 和 `materialHash(material)` 的 contentHash。字段与 hash 实现见 [manifest.ts](../../packages/backend/src/backfill/manifest.ts)。
+
+微信必须从原文取得 `__biz`、`mid`、`idx`、`sn`，构成 `https://mp.weixin.qq.com/s?__biz=...&mid=...&idx=...&sn=...` 规范地址；另在该行顶层 `submittedUrl` 保存用户提供的短链接，用于匹配旧短链接入库记录。不要将短链接直接填进 `material.url`。其它站点同样使用实际规范链接，submittedUrl 可选；两种地址已对应不同文章时脚本拒绝继续，需先核对。脚本不做全网转载去重，也不猜测未提供的其它链接别名。
+
+```bash
+node --env-file=.env scripts/backfill-selected.ts preview .data/selected.jsonl
+node --env-file=.env scripts/backfill-selected.ts apply .data/selected.jsonl
+node --env-file=.env scripts/backfill-selected.ts status .data/selected.jsonl --json
+```
+
+`preview/status` 只读；`apply` 会入库和入队，worker 随后可能产生模型费用，因此只对用户授权清单运行。入库与任务按文章同一事务提交，中断后可重复 apply；已有文章保留原版本和分析，不自动重放失败或 outcome-unknown 回执。queued 只表示已入队，不是处理成功；status 返回当前 revision 的 AI 判定、分类、标签、score、精选、发布状态，`matchedTopics` 是分析标签匹配主题，`publishedTopics` 才是满足公开精选条件的主题页归属。relevance 为 null 表示尚无当前版本判定，不能解释成非 AI；block 是过滤，unknown 是业务不确定，processing_error 是执行问题。
+
+退出码：preview/apply 正常结束为 0；status 全部文章处于 analyzed/blocked/skipped 为 0，有缺失或未完成为 2；参数、原文或执行错误为 1。失败时已提交条目保留。先查看 status 和 `/admin/runs`，付费异常按[回执恢复](receipt-recovery.md)处理，不通过换 attemptTag 强制重发。公众号即使被过滤仍保留原文，其它来源按[内容保留规则](content-retention.md)处理。
+
 ## 准备原文，不调用模型
 
 在仓库根目录运行，先按[部署说明](../deploy.md)准备 Node、依赖和数据库，设置目标 `DATABASE_URL` 并执行 `node scripts/migrate.ts`。首次上线此功能须完成 `0039_backfill.sql` 迁移，重启 API、重新构建并重启 Web；普通 worker 也须更新，以识别受管历史条目。安全阀保持关闭。
