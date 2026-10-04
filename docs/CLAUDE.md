@@ -18,6 +18,8 @@
 | [references/20261004-wechat-colocate.md](references/20261004-wechat-colocate.md) | 开发者：Wechat2RSS 与 X ingest 同机、统一启停与迁移验收 |
 | [references/20261004-wechat-portable.md](references/20261004-wechat-portable.md) | 开发者：双仓恢复所需配置、数据库边界与外部专用探针验收 |
 | [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
+| [operations/content-retention.md](operations/content-retention.md) | 维护者：微信保留、其它过滤内容清除与历史候选识别 |
+| [references/20261004-content-retention.md](references/20261004-content-retention.md) | 开发者：终态清除、去重占位、热度等待与回执边界决定 |
 | [operations/receipt-recovery.md](operations/receipt-recovery.md) | 维护者与 Agent：旧异常的授权重放、固定批次续跑、业务结案与核账边界 |
 | [references/model-configuration.md](references/model-configuration.md) | 维护者：在线/回填模型、上游参数基线与实际配置查看入口 |
 | [issues/general.md](issues/general.md) | 维护者：上游未显式参数的后续配置化与 embedding 缺省分支差异 |

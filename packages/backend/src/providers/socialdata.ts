@@ -125,7 +125,7 @@ export interface SdArticle {
  * The long-form article a post published, looked up by the id of that post (the number in an
  * `x.com/i/article/<id>` link is not it). Null when the post published none. Paid per article.
  */
-export async function getArticle(tweetId: string, opts: { purpose: string; subject: string }): Promise<SdArticle | null> {
+export async function getArticle(tweetId: string, opts: { purpose: string; subject: string; receiptIds?: number[] }): Promise<SdArticle | null> {
   const key = apiKey();
   const receipt = await paidRequest(
     { service: "socialdata", purpose: opts.purpose, subject: opts.subject, identity: { article: tweetId }, requestSummary: { article: tweetId } },
@@ -148,6 +148,7 @@ export async function getArticle(tweetId: string, opts: { purpose: string; subje
       return { response: article, usage: { articles: article ? 1 : 0 }, cost: objectsCost(1) };
     },
   );
+  opts.receiptIds?.push(receipt.receiptId);
   return (receipt.response as SdArticle | null) ?? null;
 }
 

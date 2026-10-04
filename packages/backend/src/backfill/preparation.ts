@@ -163,7 +163,11 @@ async function savePreparation(runId: string, key: string, state: PreparationSta
 }
 
 export async function prepareHistoryItem(runId: string, key: string, models: BackfillBindings): Promise<"ready" | "terminal"> {
-  const [item] = await sql`SELECT preparation FROM backfill_items WHERE run_id=${runId} AND identity_key=${key}`;
+  const [item] = await sql`SELECT preparation,content_discarded_at FROM backfill_items WHERE run_id=${runId} AND identity_key=${key}`;
+  if (item?.content_discarded_at) {
+    await sql`UPDATE backfill_items SET state='filtered',stage='finished',updated_at=now() WHERE run_id=${runId} AND identity_key=${key}`;
+    return "terminal";
+  }
   if (!item?.preparation) return "ready";
   const p = loadPreparation(item.preparation);
   if (p.selected) return "ready";

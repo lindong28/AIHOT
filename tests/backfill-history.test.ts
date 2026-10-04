@@ -56,7 +56,7 @@ const base=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
 Object.assign(process.env,{LLM_GATEWAY_URL:base,LLM_GATEWAY_PROJECT:'history-test',LLM_GATEWAY_MODE:'stream',BACKFILL_ORIGINAL_CACHE:root});
 delete process.env.LLM_GATEWAY_CLI;
 config.modelCallsEnabled=true; // Only the loopback Gateway stub is configured.
-before(async()=>{await sql`INSERT INTO sources(id,name,kind,tier,enabled) VALUES(${source},'Native fixture','rss','T1',false)`;await mkdir(join(root,'responses'));});
+before(async()=>{await sql`INSERT INTO sources(id,name,kind,tier,enabled) VALUES(${source},'Native fixture','rss','T1',false),(${source+'-wx'},'WeChat fixture','mp_account','T1',false)`;await mkdir(join(root,'responses'));});
 beforeEach(async()=>{prefilterMode='complete';forcePrefilterPass=false;delete process.env.BACKFILL_PREFILTER_CACHE;delete process.env.BACKFILL_NOT_DISPATCHED_AUDIT;await sql`UPDATE backfill_runs SET state='paused' WHERE state<>'complete'`;});
 after(async()=>{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await stopBoss();await closeDb();});
 
@@ -127,16 +127,16 @@ test('queued recovery is claimed before ordinary history within the same drain c
   assert.equal(second.claimed,1);
   assert.equal((await item(r.id,early.identityKey)).state,'filtered');
 });
-test('archived HTML with NUL round-trips unchanged through import and settled preparation',async()=>{
+test('WeChat archived HTML with NUL round-trips unchanged through import and settled preparation',async()=>{
   // Actual bodyHtml from raw key 981a370d34f9904b:834acd92d6aa0b7b (x:2064154387879186760).
   const html='<p>昨晚苹果 WWDC 唯一的亮点就是这个灵动岛的新 Siri AI 了。<br />\n<br />\n而且本地端侧模型居然只支持 17Pro 这一款设备，当然欧洲和中国还是不可用。'+'\u0000'.repeat(24)+'</p>\n<a href="https://nitter.net/op7418/status/2064154387879186760#m">\n<br />Video<br />\n  <img src="https://nitter.net/pic/amplify_video_thumb%2F2064057253259554816%2Fimg%2FI7rNWKarBNZ7A1Nt.jpg" />\n</a>';
-  const v=version('BLOCK_FIXTURE');v.material!.bodyHtml=html;
+  const v=version('BLOCK_FIXTURE');v.material!.bodyHtml=html;v.material!.sourceId=source+'-wx';
   const r=await batch([candidate(v)]);assert.equal((await item(r.id)).preparation.versions[0].material.bodyHtml,html);
   await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);
   assert.equal(saved.state,'filtered');assert.equal(saved.article_id,null);assert.equal(saved.preparation.versions[0].material.bodyHtml,html);
 });
 test('archived original bypasses both fetching and the removed completeness model',async()=>{
-  const v=version('archived');v.material!.bodyText='A complete short release. Version two fixes the stated bug.';
+  const v=version('archived');v.material!.sourceId=source+'-wx';v.material!.bodyText='A complete short release. Version two fixes the stated bug.';
   const r=await batch([candidate(v)]);await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);
   assert.ok(saved.article_id);assert.equal(saved.material.bodyText,v.material!.bodyText);
   assert.equal(saved.preparation.results[v.key].fetched,undefined);assert.equal(saved.preparation.results[v.key].quality,undefined);
@@ -144,7 +144,8 @@ test('archived original bypasses both fetching and the removed completeness mode
 });
 test('archived body takes priority over old empty or removed-page extraction',async()=>{
   for (const text of ['', 'This content is no longer available.']) {
-    const v=version('old-fetch-'+tag()),r=await batch([candidate(v)]),p=(await item(r.id)).preparation;
+    const v=version('old-fetch-'+tag());v.material!.sourceId=source+'-wx';
+    const r=await batch([candidate(v)]),p=(await item(r.id)).preparation;
     p.results[v.key]={fetched:{status:200,extracted:{text}}};
     await sql`UPDATE backfill_items SET preparation=${sql.json(storePreparation(p))} WHERE run_id=${r.id}`;
     await runBackfill(r.id,{concurrency:1,maxItems:1});
@@ -262,7 +263,8 @@ test('six real X NUL samples reach material_ready and article without a complete
     assert.equal(prepared.preparation.results[v.key].quality,undefined);assert.equal(qualityCalls,0);
     assert.equal(prepared.preparation.versions[0].material.bodyHtml,sample.material.bodyHtml);
     await runBackfill(r.id,{concurrency:1,maxItems:1});const saved=await item(r.id);assert.ok(saved.article_id);assert.equal(saved.content_hash,prepared.content_hash);
-    const [article]=await sql`SELECT body_text,body_html,x_post FROM articles WHERE id=${saved.article_id}`;
-    assert.equal(article!.body_html,null);assert.equal(article!.body_text,input.material.bodyText);assert.deepEqual(article!.x_post,input.material.xPost);
+    const [article]=await sql`SELECT body_text,body_html,x_post,content_discarded_at FROM articles WHERE id=${saved.article_id}`;
+    assert.equal(saved.state,'filtered');assert.ok(article!.content_discarded_at);
+    assert.equal(article!.body_html,null);assert.equal(article!.body_text,null);assert.equal(article!.x_post,null);
   }
 });

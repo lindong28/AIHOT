@@ -441,7 +441,11 @@ export async function analyzeArticle(articleId: string, opts: StepOpts = {}): Pr
     fact: out.fact,
   };
   const committed = await sql.begin(async (tx) => {
-    const [current] = await tx<{ revision: number }[]>`SELECT revision FROM articles WHERE id = ${articleId} FOR UPDATE`;
+    const [current] = await tx<{ revision: number; content_discarded_at: Date | null }[]>`SELECT revision,content_discarded_at FROM articles WHERE id = ${articleId} FOR UPDATE`;
+    if (current?.content_discarded_at) {
+      for (const id of receiptIds) await completeReceipt(tx, id);
+      return { analysisId: null, stale: true };
+    }
     const stale = !current || current.revision !== input.revision;
     const [row] = await tx<{ id: number }[]>`
       INSERT INTO analyses (article_id, input_revision, origin, model, prompt_version, receipt_ids, relevance, category, tags,

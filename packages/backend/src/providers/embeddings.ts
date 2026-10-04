@@ -5,7 +5,7 @@
 import { config, credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
-import { paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
+import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
 import { gatewayConfigured, prepareGatewayRequest } from "./gateway.ts";
 
 const own = !gatewayConfigured() && !!credential("models", "EMBEDDING_API_KEY");
@@ -33,7 +33,7 @@ export function embeddingsAvailable(): boolean {
   return config.modelCallsEnabled && available && process.env.EMBEDDINGS_ENABLED !== "false";
 }
 
-async function embedBatch(texts: string[], subject: string): Promise<number[][]> {
+async function embedBatch(texts: string[], subject: string): Promise<{ vectors: number[][]; receiptId: number }> {
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
   const gateway = prepareGatewayRequest(EMBEDDING_MODEL, 60_000);
   const base = gateway ? null : own ? credential("models", "EMBEDDING_BASE_URL") ?? "https://api.openai.com/v1" : credential("models", "DASHSCOPE_BASE_URL") ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
@@ -64,7 +64,7 @@ async function embedBatch(texts: string[], subject: string): Promise<number[][]>
     await rejectReceivedResponse(receipt.receiptId, "Unusable Gateway embedding response", true);
     throw new ReceiptUnknownError(receipt.receiptId, `Gateway embedding output requires reconciliation for receipt ${receipt.receiptId}`);
   }
-  return [...data].sort((a, b) => a.index - b.index).map((d) => d.embedding);
+  return { vectors: [...data].sort((a, b) => a.index - b.index).map((d) => d.embedding), receiptId: receipt.receiptId };
 }
 
 /** Returns stored embeddings, computing and storing the missing ones. */
@@ -100,16 +100,19 @@ export async function ensureEmbeddings(kind: "fact" | "article" | "story", items
   });
   for (let i = 0; i < missing.length; i += 10) {
     const batch = missing.slice(i, i + 10);
-    const vectors = await embedBatch(batch.map((b) => b.text.slice(0, 2000)), `${kind}:${batch[0]!.id}`);
-    for (let j = 0; j < batch.length; j++) {
-      const item = batch[j]!;
-      const v = vectors[j]!;
-      out.set(item.id, v);
-      await sql`INSERT INTO embeddings (kind, ref_id, model, text_hash, vector) VALUES (${kind}, ${item.id}, ${EMBEDDING_MODEL}, ${hashes.get(item.id)!}, ${v})
+    const { vectors, receiptId } = await embedBatch(batch.map((b) => b.text.slice(0, 2000)), `${kind}:${batch[0]!.id}`);
+    await sql.begin(async tx => {
+      for (let j = 0; j < batch.length; j++) {
+        const item = batch[j]!;
+        const v = vectors[j]!;
+        out.set(item.id, v);
+        await tx`INSERT INTO embeddings (kind, ref_id, model, text_hash, vector) VALUES (${kind}, ${item.id}, ${EMBEDDING_MODEL}, ${hashes.get(item.id)!}, ${v})
                 ON CONFLICT (kind, ref_id, model) DO UPDATE SET text_hash = EXCLUDED.text_hash, vector = EXCLUDED.vector, created_at = now()`;
-      // Cache only vectors read back from PostgreSQL. Its real[] text representation can round
-      // provider doubles; reusing the provider response here would change later cosine results.
-    }
+        // Cache only vectors read back from PostgreSQL. Its real[] text representation can round
+        // provider doubles; reusing the provider response here would change later cosine results.
+      }
+      await completeReceipt(tx, receiptId);
+    });
   }
   return out;
 }

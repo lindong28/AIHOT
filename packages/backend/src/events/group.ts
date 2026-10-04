@@ -15,6 +15,7 @@
 // look when a report founds a fact close to them (rematchSignals); history (isHistorical) founds no
 // event. Runs serially (queue concurrency 1).
 import { modelFor } from "../editorial/models.ts";
+import { discardFilteredContent } from "../content/retention.ts";
 import { sql, type Db } from "../db.ts";
 import { newShortId, newUuid, sha256 } from "../lib/ids.ts";
 import { chatJson } from "../providers/llm.ts";
@@ -595,10 +596,16 @@ export interface GroupOptions {
 }
 
 export async function groupArticle(articleId: string, opts: GroupOptions = {}): Promise<GroupResult> {
+  // A new attempt may fail; only a successful unmatched decision arms expiry again.
+  await sql`UPDATE articles SET content_discard_after=NULL WHERE id=${articleId} AND content_discard_after IS NOT NULL`;
   const result = await decide(articleId, opts);
   // Decided under the current rules: the report is evidence for others again. A failed decision
   // throws before this, so the report keeps waiting and the retry decides it again.
   await sql`DELETE FROM regroup_pending WHERE article_id = ${articleId}`;
+  if (result.verdict === 'signal-unmatched') {
+    await sql`UPDATE articles SET content_discard_after=discovered_at+interval '48 hours' WHERE id=${articleId} AND content_discarded_at IS NULL`;
+  }
+  await discardFilteredContent(articleId);
   return result;
 }
 
@@ -607,7 +614,7 @@ async function decide(articleId: string, opts: GroupOptions): Promise<GroupResul
     SELECT a.id, a.title, a.url, a.published_at, a.discovered_at, a.grouped_at, a.body_text, a.x_post, a.backfill,
            s.id AS source_id, s.name AS source_name, s.signal_group_id, s.first_party, s.participation_mode,
            EXISTS (SELECT 1 FROM regroup_pending rp WHERE rp.article_id = a.id) AS regroup_pending
-    FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
+    FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId} AND a.content_discarded_at IS NULL`;
   if (!a) return { verdict: "skipped" };
   const observedAt = a.published_at ?? a.discovered_at;
   const source = { id: a.source_id, signal_group_id: a.signal_group_id };
@@ -779,6 +786,7 @@ const WAIT_HOURS = 48;
 /** Discussion posts not yet attached to any story (a post a person placed or detached is left alone). */
 const unattachedSignal = sql`
   s.participation_mode = 'hot_signal' AND a.processing_state = 'skipped'
+  AND a.content_discarded_at IS NULL
   AND (NOT a.backfill OR a.discovered_at - a.published_at <= make_interval(secs => ${STALE_ON_DISCOVERY_MS / 1000}))
   AND NOT EXISTS (SELECT 1 FROM story_signals ss WHERE ss.article_id = a.id)
   AND NOT EXISTS (SELECT 1 FROM grouping_decisions d WHERE d.article_id = a.id AND d.verdict <> 'signal-unmatched')

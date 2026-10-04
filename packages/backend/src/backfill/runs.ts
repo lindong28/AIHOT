@@ -8,6 +8,7 @@ import { backfillContext, BackfillPaused } from "./context.ts";
 import { bindingsSchema, preflightBackfill } from "./gateway.ts";
 import { entryIdentity, validateManifest, type ManifestEntry } from "./manifest.ts";
 import { prepareHistoryItem, preparationIdentity, retryablePreparationError } from "./preparation.ts";
+import { discardBackfillContent } from "../content/retention.ts";
 import { BudgetExceededError } from "../providers/receipts.ts";
 import { stableJson } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "./history-input.ts";
@@ -183,7 +184,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
           };
           await beforeStage('preparation', '');
           const prepared = await backfillContext.run({ runId: id, models: ready.models, beforeCall: beforeStage }, () => prepareHistoryItem(id, key, run.models));
-          if (prepared === 'terminal') { processed++; continue; }
+          if (prepared === 'terminal') { await discardBackfillContent(id, key); processed++; continue; }
           await beforeStage('import', '');
           const articleId = await articleFor(id, key);
           if (!articleId) { processed++; continue; }
@@ -211,6 +212,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
           await beforeCall("finished", "");
           const [p] = await sql`SELECT visibility,eligible FROM publications WHERE article_id=${articleId}`;
           await sql`UPDATE backfill_items SET state=${p?.visibility === "public" && p.eligible ? "published" : "filtered"},stage='finished',reason=${state === "unknown" ? "analysis_unknown" : null},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
+          await discardBackfillContent(id, key);
           processed++;
         } catch (e) {
           const retry = retryablePreparationError(e);

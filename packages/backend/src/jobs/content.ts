@@ -13,6 +13,7 @@ import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUn
 import { ModelOutputError } from "../providers/llm.ts";
 import { ensureQueue, enqueue, QUEUES, shutdownSignal } from "./queue.ts";
 import { backfillContext } from "../backfill/context.ts";
+import { discardFilteredContent } from "../content/retention.ts";
 
 /** Minutes to wait after the n-th failed attempt; one more failure after the last ends in "failed". */
 const RETRY_MINUTES = [5, 10, 20, 40, 60, 120, 240, 360];
@@ -42,7 +43,7 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
   const [row] = await db<{ body_status: string; participation_mode: string; kind: string; config: Record<string, unknown>; url: string; bare: boolean; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
     SELECT a.body_status, s.participation_mode, s.kind, s.config, a.url, (coalesce(a.body_text, '') = '' AND a.x_post IS NULL) AS bare,
            a.backfill, a.published_at, a.discovered_at
-    FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
+    FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId} AND a.content_discarded_at IS NULL`;
   if (!row) return null;
   const historical = isHistorical(row);
   const signal = row.participation_mode !== "editorial";
@@ -90,16 +91,20 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
 export async function settleNonEditorial(articleId: string): Promise<{ group: boolean }> {
   const [row] = await sql<{ participation_mode: string; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
     UPDATE articles a SET processing_state = 'skipped', processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL
-    FROM sources s WHERE s.id = a.source_id AND a.id = ${articleId} AND s.participation_mode <> 'editorial'
+    FROM sources s WHERE s.id = a.source_id AND a.id = ${articleId} AND s.participation_mode <> 'editorial' AND a.content_discarded_at IS NULL
     RETURNING s.participation_mode, a.backfill, a.published_at, a.discovered_at`;
   if (!row) return { group: false };
   await publishArticle(articleId);
+  if (!backfillContext.getStore()) {
+    if (row.participation_mode !== 'hot_signal' || isHistorical(row)) await discardFilteredContent(articleId);
+  }
   return { group: row.participation_mode === "hot_signal" && !isHistorical(row) };
 }
 
 /** attemptTag makes an explicit re-evaluation a new (paid) request; the same tag reuses its receipt. */
 export async function processArticle(articleId: string, opts: { attemptTag?: string } = {}): Promise<{ state: string }> {
-  const [managed] = await sql`SELECT managed_backfill_id FROM articles WHERE id = ${articleId}`;
+  const [managed] = await sql`SELECT managed_backfill_id,content_discarded_at FROM articles WHERE id = ${articleId}`;
+  if (managed?.content_discarded_at) return { state: "discarded" };
   if (managed?.managed_backfill_id && backfillContext.getStore()?.runId !== managed.managed_backfill_id) return { state: "managed-backfill" };
   const [found] = await sql<{ participation_mode: string; processing_state: string; revision: number; backfill: boolean; published_at: Date | null; discovered_at: Date }[]>`
     SELECT s.participation_mode, a.processing_state, a.revision, a.backfill, a.published_at, a.discovered_at FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId}`;
@@ -124,6 +129,7 @@ export async function processArticle(articleId: string, opts: { attemptTag?: str
     await publishArticle(articleId);
     // History is archived but founds no event (isHistorical).
     if (result.output.relevance === "pass" && !row.historical) await enqueue(QUEUES.group, { articleId }, { singletonKey: articleId, priority: PRIORITY.live });
+    if (!backfillContext.getStore()) await discardFilteredContent(articleId);
     return { state: result.output.relevance };
   } catch (error) {
     if (error instanceof AnalysisInterruptedError || shutdownSignal.signal.aborted) throw error;

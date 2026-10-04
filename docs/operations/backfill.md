@@ -33,6 +33,8 @@ node scripts/backfill.ts status
 
 ### 统一历史清单与自动执行
 
+2026-10-04 保留规则更新：公众号内容继续保留，其它来源在正常 filtered 终态后清除业务内容与准备材料正文，保留身份、版本 hash、进度和回执关联；未完成或执行异常仍保留材料。下文“全部原始版本保留”适用于处理期间及微信内容，终态清除后的 provenance/判定继续存在。此前已完成的历史数据不自动批删，详见[内容保留](content-retention.md)。
+
 全量链路采用已有 `backfill_runs/items`，`scope=history` 的一个 run 覆盖固定日期与规范新闻身份。每条 item 保留全部原始版本、原始归档文件/行号/hash、固定 UTC 归属日和准备结果；选定归档正文或成功补取之前不创建 article。多个版本的 BLOCK 独立保存，只有全部版本均为已结算 BLOCK 才归正常过滤。无效 URL 保留原始 key 和分母；有可筛文字时仍先初筛，已结算 BLOCK 可正常过滤，否则保留 URL 异常。
 
 在内存充足的本机离线冻结原始输入，再把冻结文件传到生产。原始目录包含 `prepared-v2`、`full-prefilter-input`、`full-x`、`full-non-x`、`import-ready-v1` 及来源映射；本命令不联网、不调用模型、不写数据库：

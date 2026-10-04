@@ -4,6 +4,7 @@ import { sql, type Db } from "../db.ts";
 import { newArticleId, sha256 } from "../lib/ids.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
 import { collapseWhitespace } from "../lib/text.ts";
+import { wechatOrigin } from "./retention.ts";
 
 export interface MediaItem {
   kind: "image" | "video";
@@ -150,18 +151,36 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
       ${m.xPost ? db.json(m.xPost as never) : null}, ${m.raw === undefined ? null : db.json(m.raw as never)})
     ON CONFLICT (identity_key) DO NOTHING RETURNING id`;
   if (inserted) {
-    await db`INSERT INTO article_revisions (article_id, revision, content_hash, title, body_text)
-             VALUES (${newId}, 1, ${hash}, ${title}, ${m.bodyText ?? null})`;
+    await db`INSERT INTO article_revisions (article_id, revision, content_hash, material_hash, title, body_text)
+             VALUES (${newId}, 1, ${hash}, ${hash}, ${title}, ${m.bodyText ?? null})`;
     await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
              VALUES (${newId}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
     return { articleId: newId, created: true, revised: false, backfill: t.backfill };
   }
 
-  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null; managed_backfill_id: string | null }[]>`
-    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt, managed_backfill_id FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
+  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null; managed_backfill_id: string | null; content_discarded_at: Date | null }[]>`
+    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt, managed_backfill_id,content_discarded_at FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
   await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
            VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
   const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill };
+  if (existing!.content_discarded_at) {
+    const [source] = await db`SELECT kind FROM sources WHERE id=${m.sourceId}`;
+    const wechat = wechatOrigin(m.sourceId, source?.kind, m.url);
+    const [seen] = await db`SELECT 1 FROM article_revisions WHERE article_id=${existing!.id}
+      AND (content_hash=${hash} OR material_hash=${hash}) LIMIT 1`;
+    if (!wechat && (seen || m.insertOnly || existing!.managed_backfill_id || existing!.source_id !== m.sourceId)) return unchanged;
+    // A genuine new input (or newly discovered WeChat origin) can be evaluated again.
+    const [restored] = await db`UPDATE articles SET source_id=${wechat ? m.sourceId : existing!.source_id},title=${title},
+      author=${m.author ?? null},language=${m.language ?? null},excerpt=${m.excerpt ?? null},body_text=${m.bodyText ?? null},
+      body_html=${m.bodyHtml ?? null},body_status=${m.bodyStatus ?? (m.bodyText ? 'ok' : 'pending')},
+      media=${db.json((m.media ?? []) as never)},x_post=${m.xPost ? db.json(m.xPost as never) : null},
+      raw=${m.raw === undefined ? null : db.json(m.raw as never)},revision=revision+1,content_hash=${hash},
+      processing_state='new',processing_error=NULL,processing_attempts=0,processing_retry_at=NULL,processing_queued_at=NULL,
+      content_discarded_at=NULL,content_discard_after=NULL,updated_at=now() WHERE id=${existing!.id} RETURNING revision`;
+    await db`INSERT INTO article_revisions(article_id,revision,content_hash,material_hash,title,body_text)
+      VALUES(${existing!.id},${restored!.revision},${hash},${hash},${title},${m.bodyText ?? null})`;
+    return { ...unchanged, revised: true };
+  }
   // A backfill's reviewed raw input is frozen, including after publication.
   if (m.insertOnly || existing!.managed_backfill_id) return unchanged;
   // Another source listing the same material (an aggregator, a translated mirror, a hot signal) is a
@@ -203,7 +222,7 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
       revision = revision + 1, content_hash = ${next}, processing_state = 'new', updated_at = now()
     WHERE id = ${existing!.id}
     RETURNING revision`;
-  await db`INSERT INTO article_revisions (article_id, revision, content_hash, title, body_text)
-           VALUES (${existing!.id}, ${row!.revision}, ${next}, ${title}, ${bodyText})`;
+  await db`INSERT INTO article_revisions (article_id, revision, content_hash, material_hash, title, body_text)
+           VALUES (${existing!.id}, ${row!.revision}, ${next}, ${hash}, ${title}, ${bodyText})`;
   return { articleId: existing!.id, created: false, revised: true, backfill: existing!.backfill };
 }
