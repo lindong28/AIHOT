@@ -6,7 +6,7 @@
 
 2026-10-03 已部署 Gateway `ed36698` 和 AIHOT `da3cf98`（release `bailian-fallback-da3cf98`）。当前历史 run `693bfde2-aa5a-499f-b17e-fd674ed7ea4c` 已在 paused 与批次锁下启用百炼备用，主绑定与历史回执身份保留，随后恢复 timer。两次真实小请求均完成：百炼回执 `45956` / Gateway UUID `64e3d7ff-83ea-46c3-a033-e79b5ca9264f`；正常双候选仍选 self-hosted，回执 `45957` / UUID `20569b0e-69f8-4887-93ef-c1df98938078`。二者均与 Gateway 的单次 success attempt 对应，usage 已返回，账本 cost_state 仍为 unknown，不表示免费。本次未人为制造生产故障；502 后冷却与同请求 fallback 的证据来自本地 HTTP fixture。生产 smoke 与公网健康检查正常，旧 unknown 未批量释放或重放。
 
-2026-10-04 公众号接入使用 release `wechat-sources-20261004`：Mac mini 原 Wechat2RSS 经专用隧道提供腾讯云 `127.0.0.1:39033`，后端私有环境增加 `WECHAT2RSS_BASE_URL` 与 `WECHAT2RSS_RSS_TOKEN`。22 个来源独立登记，采集仍由现有 worker 的 mp 队列执行。起停、验证与回退见[公众号运维](wechat2rss.md)，不因接入完成而将原服务搬迁或告警记作完成。
+2026-10-04 首次公众号接入后，release `wechat-colocate-20261004` 已将 Wechat2RSS 迁到腾讯，与调用 SocialData 的 worker 同机。后端私有 `WECHAT2RSS_BASE_URL` 改为 `http://127.0.0.1:18480`，token 保持，22 个来源继续由 worker 的 mp 队列采集。`deploy/production/service.sh` 统一管理 API/Web/worker 和已配置的 Wechat2RSS 容器；Mac mini 旧容器与隧道已停，仅保留外部健康探针。私有目录、起停、验证与迁移边界见[公众号运维](wechat2rss.md)及[同机部署记录](../references/20261004-wechat-colocate.md)。
 
 ## 环境与持久数据
 
@@ -162,7 +162,7 @@ sudo systemctl reload nginx
 
 ## 旧链路保留与恢复边界
 
-Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。旧数据库与 Web 保留，Wechat2RSS 仍原机运行，迁移状态见[专页](wechat2rss.md)。
+Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。旧数据库与 Web 保留；Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
 
 用户要求停旧采集，公网回滚不改变这一决定。若另行恢复旧链路，维护者须先核对备份与届时 crontab 的差异，只恢复获授权的任务，并单独决定是否启用旧库应用服务；不要用整份旧 crontab 覆盖后来新增的任务。
 

@@ -4,7 +4,7 @@
 
 ## 2026-10-04 公众号接入
 
-原 Wechat2RSS 的 22 个订阅已按独立 `mp_account` 登记到生产，使用 Mac mini → 腾讯云回环隧道，不再把全部公众号归为一个 RSS 来源。复用既有文章 schema、URL 去重、处理队列与事件来源身份，公开全文继续关闭。服务搬迁未完成，隧道端到端外部告警由 AIHOT 维护者承接；决策、测试与线上验收见[公众号接入记录](references/20261004-wechat-sources.md)，运维见[Wechat2RSS](operations/wechat2rss.md)。
+原 Wechat2RSS 的 22 个订阅已按独立 `mp_account` 登记到生产，不再把全部公众号归为一个 RSS 来源。复用既有文章 schema、URL 去重、处理队列与事件来源身份，公开全文继续关闭。首次接入后，服务已从 Mac mini 搬到负责 X ingest 的腾讯服务器，复用原登录与许可证，随 AIHOT 生产入口统一启停；旧容器停止、旧隧道卸载，Mac mini 保留外部健康探针。决策、测试与线上验收见[公众号接入记录](references/20261004-wechat-sources.md)及[同机迁移记录](references/20261004-wechat-colocate.md)，运维见[Wechat2RSS](operations/wechat2rss.md)。下方各日期快照保留当时状态，微信迁移以本段为准。
 
 ## 生产切站快照（2026-10-02）
 

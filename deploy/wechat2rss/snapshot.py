@@ -42,4 +42,4 @@ except Exception:
     print(f"快照未完成，部分文件保留在 {args.destination}；未启停源端或目标服务。请检查 SSH、源路径和 Python 3.11+ 后换新目录重试。")
     raise
 print(f"快照已保存：{subscriptions} 个订阅、{articles} 篇文章，SQLite 完整性正常。路径：{args.destination}")
-print("源服务仍在运行；本快照不含之后的新数据。尚未启动目标或验证登录状态，切换前须停旧实例并取得最终快照。")
+print("本脚本未启停源服务；快照不含之后的新数据。尚未启动目标或验证登录状态，切换前须确认旧实例已停并使用最终快照。")
