@@ -13,7 +13,7 @@
 | 旧 RADAR Web／Nginx | 腾讯云原 Web 的 8000/8001 保留供回滚，公网 Nginx 已指向新站 | [公网切换与回滚](production.md#公网切换与回滚)；Nginx 使用系统原生接口 |
 | 旧 RADAR 采集、处理、同步 | Mac mini 四条 cron 已移除，在途同步已停；腾讯云 `ai-radar-db-apply.service` 已停止并禁用 | [停止记录与恢复边界](production.md#旧链路保留与恢复边界) |
 | AIHOT 本机 MVP | 独立本机环境；既有读数不代表生产状态 | [部署](../deploy.md)、[带日期的本机记录](../migration.md#本机-mvp) |
-| Wechat2RSS | 腾讯云 Compose 容器，回环 18480，与 X ingest 同机；22 个公众号，登录有效。Mac mini 旧容器已停、旧隧道已卸载，保留旧数据 | [部署与验证](wechat2rss.md)；随 `deploy/production/service.sh` 统一启停 |
+| Wechat2RSS | 腾讯云 Compose 容器，回环 18480，与 X ingest 同机；31 个公众号已登记启用。Mac mini 旧容器已停、旧隧道已卸载，保留旧数据 | [部署与验证](wechat2rss.md)；随 `deploy/production/service.sh` 统一启停 |
 | Wechat2RSS 外部健康探针 | Mac mini 原 cron 频率与 im-notify 身份保留；专用受限 SSH 检查腾讯，身份/目标/主机信任由中央 env 维护 | `deploy/wechat2rss/probe-install.ts` 生成入口，`healthcheck.sh`、`login-status.ts` 执行；故障 key 为 `wechat2rss-{unreachable,apierr,noaccount,login,riskctl}`，恢复为 `wechat2rss-recovered` |
 
 服务状态以对应环境的真实入口为准；以上不是持续健康保证。Wechat2RSS 随腾讯生产入口启动；通用本机开发 Compose 仍独立配置。回填已有上表中的专用监督，范围不覆盖公开站点可用性；其余新生产服务的外部告警接管仍由本仓 AIHOT 维护者负责，待办见[根 README 服务章节](../../README.md#服务)；原有服务告警保持。

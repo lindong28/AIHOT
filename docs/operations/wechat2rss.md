@@ -2,6 +2,21 @@
 
 部署定义由本仓 `deploy/wechat2rss/` 维护。公众号在 AIHOT 中按独立 `mp_account` 保存，`provider=wechat2rss` 使用原服务的逐账号 RSS，复用文章、去重、处理与公开读取层。私有许可证和固定密钥归 ai-agent-config 的加密 `env`，不提交到 AIHOT；动态登录态和数据库的持久边界见下文。Mp2RSS 不在接入范围。
 
+## 新增公众号与配置生效
+
+公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。
+
+新增时先从文章页核对公众号名称与 `bizId`，通过上游 `/list` 完整分页确认是否已有订阅；仅缺项调用 `/add/:bizId`，从返回订阅地址的 `/feed/<feedId>.xml` 取得 `feedId`。认证使用机器上的私有 RSS token，不把带 token 的 URL 输出或提交。接口契约见[上游 API 文档](https://github.com/ttttmr/wechat2rss/blob/master/deploy/api.md)。把账号按既有 `mp_account` / `provider=wechat2rss` 结构加入清单后，将该文件部署至 `/home/ubuntu/aihot/current/industry/sources.json`，再在生产 release 根目录执行：
+
+```bash
+node deploy/wechat2rss/restore-subscriptions.ts
+node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-source.ts
+```
+
+若是已知 `feedId` 的订阅恢复，第一条发现缺项时按下节用 `--apply` 补齐。第二条只插入缺失来源，不覆盖已有配置、暂停状态与游标；因此这套入口适合新增，不是已有来源的全量配置同步器。来源新增无需重启 worker，现有 `sources.mp` 调度会读取数据库并采集；验收查看各账号的 RSS 内容、`fetch_runs` 与文章入库情况，不能只看订阅数量或空 RSS 的 HTTP 200。
+
+首次接入沿用现有最近 7 天、最多 8 篇的初始采集范围。账号已订阅不等于全部历史文章已导入；RSS 为空或文章早于窗口时可能暂时没有文章入库。需要旧文章时另走历史回填，不通过更改采集游标扩大范围。
+
 ## 两个仓库与新机器恢复
 
 这里的“自包含”指 AIHOT 和 ai-agent-config 两仓提供部署所需代码、固定输入及操作说明，不要求把上游镜像源码放进本仓。私有仓访问与 ai-agent-config 的 git-crypt 解锁需已有授权；解锁材料沿用该仓已有分发方式，不能放入它自己加密的 `env`。新机器先按两仓 README 安装 Node.js 24、Python 3、Git/OpenSSH 和 AIHOT 的 PostgreSQL 等前置依赖，按 ai-agent-config 安装说明建立 `~/.claude/.env → <ai-agent-config>/env`。不要 `source ~/.claude/.env`。
