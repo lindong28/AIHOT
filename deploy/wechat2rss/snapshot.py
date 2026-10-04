@@ -11,6 +11,8 @@ parser = argparse.ArgumentParser(description="复制 Wechat2RSS 数据与私有�
 parser.add_argument("host", help="SSH 主机别名")
 parser.add_argument("source", help="远端部署目录绝对路径")
 parser.add_argument("destination", type=Path, help="尚不存在的本机快照目录（必须不受 Git 跟踪）")
+parser.add_argument("--remote-python", default="/opt/homebrew/bin/python3", help="远端 Python 3.11+ 可执行路径")
+parser.add_argument("--env-name", default=".env", choices=[".env", "service.env"], help="源部署目录中的私有配置文件名")
 args = parser.parse_args()
 os.umask(0o077)
 args.destination.mkdir(parents=True, exist_ok=False)
@@ -26,10 +28,10 @@ sys.stdout.buffer.write(dst.serialize())
 try:
     with (args.destination / "res.db").open("xb") as out:
         subprocess.run(["ssh", "-T", "-o", "ConnectTimeout=10", args.host,
-                        "/opt/homebrew/bin/python3 -"], input=code.encode(), stdout=out, check=True, timeout=180)
+                        shlex.quote(args.remote_python) + " -"], input=code.encode(), stdout=out, check=True, timeout=180)
     with (args.destination / ".env").open("xb") as out:
         subprocess.run(["ssh", "-T", "-o", "ConnectTimeout=10", args.host,
-                        "cat " + shlex.quote(str(Path(args.source) / ".env"))], stdout=out, check=True, timeout=30)
+                        "cat " + shlex.quote(str(Path(args.source) / args.env_name))], stdout=out, check=True, timeout=30)
     # This newly copied snapshot has no concurrent writer or WAL sidecar. Immutable mode also
     # lets macOS system SQLite validate a serialized WAL-mode database without creating sidecars.
     db = sqlite3.connect((args.destination / "res.db").resolve().as_uri() + "?mode=ro&immutable=1", uri=True)

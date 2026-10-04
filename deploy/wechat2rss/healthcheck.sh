@@ -60,7 +60,12 @@ alert() {  # $1 = dedup key suffix, $2 = message
 }
 
 if [[ -n "${WECHAT2RSS_SSH_HOST:-}" ]]; then
-  body="$(ssh -T -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$WECHAT2RSS_SSH_HOST" \
+  ssh_options=(-T -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3)
+  if [[ -n "${WECHAT2RSS_SSH_KEY_FILE:-}" ]]; then
+    [[ -n "${WECHAT2RSS_SSH_KNOWN_HOSTS_FILE:-}" ]] || alert unreachable 'Wechat2RSS 探针缺少专用 SSH 主机信任文件，健康未核实。请重新运行 probe-install.ts。'
+    ssh_options+=(-F /dev/null -i "$WECHAT2RSS_SSH_KEY_FILE" -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$WECHAT2RSS_SSH_KNOWN_HOSTS_FILE")
+  fi
+  body="$(ssh "${ssh_options[@]}" "$WECHAT2RSS_SSH_HOST" \
     '/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/wechat2rss/service.env /home/ubuntu/aihot/current/deploy/wechat2rss/login-status.ts' 2>/dev/null)" \
     || alert unreachable "腾讯 Wechat2RSS 健康未核实：SSH 或健康检查失败，公众号采集可能受影响。请运行 ssh tencent-webserver-china 'bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh status' 排查。"
 else
