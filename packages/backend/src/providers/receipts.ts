@@ -8,6 +8,7 @@
 //    released once after 30 minutes by ops.recover (admin/runs.ts).
 import { sql, type Db } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
+import { GatewayResponseError, safeGatewayFailure } from "./gateway-error.ts";
 
 export class BudgetExceededError extends Error {
   readonly service: string;
@@ -197,7 +198,8 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     const message = (error instanceof ProviderRejectedError ? error.message : String(error)).slice(0, 2000);
     await sql.begin(async (tx) => {
       await tx`UPDATE receipts SET status = ${status}, error = ${message}, updated_at = now() WHERE id = ${receiptId}`;
-      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
+      const details = error instanceof GatewayResponseError ? safeGatewayFailure(error.details) : null;
+      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, error_details = ${tx.json(details as never)}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
     });
     if (req.gatewayRequestId && !rejected) throw new ReceiptUnknownError(receiptId, `Gateway request ${req.gatewayRequestId}: ${message}`);
     throw error;

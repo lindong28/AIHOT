@@ -21,6 +21,7 @@
 | [operations/content-retention.md](operations/content-retention.md) | 维护者：微信保留、其它过滤内容清除与历史候选识别 |
 | [references/20261004-content-retention.md](references/20261004-content-retention.md) | 开发者：终态清除、去重占位、热度等待与回执边界决定 |
 | [operations/receipt-recovery.md](operations/receipt-recovery.md) | 维护者与 Agent：旧异常的授权重放、固定批次续跑、业务结案与核账边界 |
+| [references/20261004-receipt-resolution.md](references/20261004-receipt-resolution.md) | 开发者：新版结案证据、安全错误详情与审核拒绝不重放 |
 | [references/model-configuration.md](references/model-configuration.md) | 维护者：在线/回填模型、上游参数基线与实际配置查看入口 |
 | [issues/general.md](issues/general.md) | 维护者：上游未显式参数的后续配置化与 embedding 缺省分支差异 |
 | [references/20261003-backfill-prefilter.md](references/20261003-backfill-prefilter.md) | 开发者：全量原文前初筛、冻结输入、回执恢复与准备计数边界 |

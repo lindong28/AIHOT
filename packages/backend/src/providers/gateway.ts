@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { GatewayClient, GatewayHTTPError, GatewayCapabilityError, GatewayProtocolError } from "@lindong/llm-gateway-client";
 import { bindingRoutes, bindingIdentityRoutes, type BackfillBinding } from "../backfill/context.ts";
 import { GatewayNotDispatchedError } from "./receipts.ts";
+import { GatewayResponseError, gatewayFailure } from "./gateway-error.ts";
 
 const CONNECT_RETRY_CODES = new Set(["ECONNREFUSED", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
 const NETWORK_CODES = new Set([...CONNECT_RETRY_CODES, "ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "EPIPE",
@@ -94,14 +95,13 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
         // Gateway emits these exact rejections only when the logical request has NO
         // attempts. A single attempt's not_crossed says nothing about prior fallbacks.
         const hasCompanion = json?.llm_gateway !== undefined || error?.llm_gateway !== undefined ||
-          [...res.headers.keys()].some((key) => key.startsWith("x-llm-gateway-"));
+          ["projection-version", "logical-request-id", "attempt-id", "selected-route-id", "provider-id"].some((key) => res.headers.has(`x-llm-gateway-${key}`));
         if (res.status === 422 && (error?.code === "route_cooldown" || error?.code === "no_route") && !hasCompanion &&
             (error.logical_request_id === undefined || error.logical_request_id === requestId)) {
           throw new GatewayNotDispatchedError(requestId, `Gateway ${error.code}: 未派发模型请求，等待任务退避重试；request ${requestId}`);
         }
         // Persist codes, not upstream messages: those can contain credentials or private URLs.
-        const code = typeof error?.code === "string" && /^[a-zA-Z0-9_]{1,80}$/.test(error.code) ? ` (${error.code})` : "";
-        throw new Error(`Gateway HTTP ${res.status}${code}; reconcile request ${requestId} before retrying`);
+        throw new GatewayResponseError(res.status, requestId, gatewayFailure(json, res.headers, res.status), error?.code);
       }
       // Compressed provider JSON is passed through: Gateway identity then lives
       // in percent-encoded headers, even though fetch has decompressed the body.

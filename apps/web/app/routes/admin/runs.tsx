@@ -33,6 +33,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 export const meta: Route.MetaFunction = () => [{ title: `运行 · ${SITE.name} 后台` }];
 
 const STATE_LABEL: Record<string, string> = { created: "排队", retry: "等待重试", active: "执行中" };
+const RECEIPT_LABEL: Record<string, string> = { recovered: "业务已恢复", superseded: "新版已替代", unknown: "费用待核对", failed: "失败", received: "已收到", completed: "已完成", pending: "处理中" };
+const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不自动重放", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
 
 export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
   const refresh = useFetcher<typeof loader>();
@@ -123,7 +125,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
       )}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <Card title="需要核对的付费回执" right={<span>{Object.entries(r.receipts.counts).map(([k, v]) => `${k} ${v}`).join(" · ")}</span>} pad={false}>
+        <Card className="xl:col-span-2" title="需要核对的付费回执" right={<span>{Object.entries(r.receipts.counts).map(([k, v]) => `${RECEIPT_LABEL[k] ?? k} ${v}`).join(" · ")}</span>} pad={false}>
           <DataTable
             dense
             rows={r.receipts.issues}
@@ -131,10 +133,17 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
             empty="没有待处理的回执"
             columns={[
               { key: "id", label: "回执", render: (x) => <span className="num">#{x.id}</span> },
-              { key: "s", label: "状态", render: (x) => <Badge tone={x.status === "unknown" ? "bad" : "warn"}>{x.status}</Badge> },
+              { key: "s", label: "状态", render: (x) => <><Badge tone={x.status === "unknown" ? "bad" : "warn"}>{RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div></> },
               { key: "w", label: "服务", render: (x) => <span className="whitespace-nowrap">{x.service}{x.model ? ` · ${x.model}` : ""}</span> },
               { key: "p", label: "用途", render: (x) => (x.subject && /^[\w-]{10,}$/.test(x.subject) && x.purpose.includes("analy") ? <Link className="text-accent" to={`/admin/content/${x.subject}`}>{x.purpose}</Link> : x.purpose) },
-              { key: "e", label: "错误", render: (x) => <span className="line-clamp-2 text-[12px] text-ink-3" title={x.error ?? ""}>{x.error}</span> },
+              { key: "e", label: "错误", render: (x) => <div className="max-w-md break-all text-[12px] text-ink-3">
+                <span className="line-clamp-2" title={x.error ?? ""}>{x.error}</span>
+                {x.error_details && <div>HTTP {x.error_details.httpStatus ?? "未返回"} · 错误码 {x.error_details.providerCode ?? "未返回"}</div>}
+                {x.recovery_status === "content_policy_rejected" && <div>{x.error_details?.contentFilter
+                  ? `审核对象：${x.error_details.contentFilter.role === "user" ? "输入" : "输出"} · 等级 ${x.error_details.contentFilter.level}`
+                  : "上游未返回具体审核原因"}</div>}
+                {x.request_id && <details><summary>请求标识</summary><span className="break-all">{x.request_id}</span></details>}
+              </div> },
               { key: "a", label: "", render: (x) => (x.status === "unknown" ? <Button size="sm" onClick={() => setReceipt(x)}>核对</Button> : null) },
             ]}
           />

@@ -5,6 +5,8 @@ import { audit } from "./auth.ts";
 import { Conflict } from "./sources.ts";
 import { failureGroupSql, requeueFailed } from "../jobs/content.ts";
 import { releaseUnknownReceipt } from "./receipt-recovery.ts";
+import { settleReceiptRecoveries } from "./receipt-batch-recovery.ts";
+import { contentPolicyRejected, safeGatewayFailure } from "../providers/gateway-error.ts";
 
 const STALE_HEARTBEAT_MS = 3 * 60_000;
 
@@ -35,10 +37,16 @@ export async function runsOverview() {
         AND (health = 'failing' OR next_fetch_at < now() - interval '30 minutes' OR last_ok_at < now() - make_interval(mins => greatest(interval_minutes * 6, 360)))
       ORDER BY health = 'failing' DESC, next_fetch_at LIMIT 60`,
     sql<{ status: string; n: number }[]>`SELECT CASE WHEN EXISTS (SELECT 1 FROM receipt_recoveries x
+      WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered' AND x.evidence->>'reason'='superseded_revision') THEN 'superseded'
+      WHEN EXISTS (SELECT 1 FROM receipt_recoveries x
       WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered') THEN 'recovered' ELSE r.status END AS status,
       count(*)::int AS n FROM receipts r WHERE created_at > now() - interval '7 days' GROUP BY 1`,
-    sql`
-      SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at FROM receipts r
+    sql<Array<{ id: number; attempt_error: string | null; error_details: unknown } & Record<string, unknown>>>`
+      SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at,
+        (SELECT a.error_details FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS error_details,
+        (SELECT a.error FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS attempt_error,
+        (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id
+      FROM receipts r
       WHERE (status = 'unknown' OR (status = 'failed' AND updated_at > now() - interval '3 days') OR (status = 'pending' AND updated_at < now() - interval '15 minutes'))
         AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')
       ORDER BY status = 'unknown' DESC, updated_at DESC LIMIT 40`,
@@ -71,7 +79,11 @@ export async function runsOverview() {
     queues,
     failedJobs,
     lagging,
-    receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issues: receiptIssues },
+    receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issues: receiptIssues.map(({ attempt_error, ...r }) => {
+      const details = safeGatewayFailure(r.error_details);
+      return { ...r, error_details: details, recovery_status: contentPolicyRejected(details, attempt_error) ? "content_policy_rejected"
+        : details?.retryable === true ? "retryable" : "needs_review" };
+    }) },
     deliveries,
     errors,
     retrying: { count: retrying?.n ?? 0, next: retrying?.next ?? null },
@@ -110,6 +122,7 @@ const AUTO_RELEASE_NOTE = "自动放行：结果未知超过 30 分钟，未核�
  * way once and unknown again stays for the admin (the daily ops digest lists it).
  */
 export async function autoReleaseUnknownReceipts(now = Date.now()) {
+  await settleReceiptRecoveries();
   const rows = await sql<{ id: number }[]>`
     SELECT r.id FROM receipts r
     WHERE r.status = 'unknown' AND r.updated_at < ${new Date(now - AUTO_RELEASE_AFTER_MS)}

@@ -1,16 +1,17 @@
 import { tag } from "./setup.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { after, test, mock } from "node:test";
+import { after, before, test, mock } from "node:test";
 import { sql, closeDb } from "@aihot/backend/db";
 import { logicalKeyFor, paidRequest } from "@aihot/backend/providers/receipts";
 import { createReceiptRecoveryBatch, advanceReceiptRecoveryBatch, settleReceiptRecoveryBatch, receiptRecoveryStatus } from "@aihot/backend/admin/receipt-batch-recovery";
 import { stopBoss, enqueue, QUEUES, getBoss } from "@aihot/backend/jobs/queue";
 import { publishArticle } from "@aihot/backend/publication/publish";
-import { runsOverview } from "@aihot/backend/admin/runs";
+import { runsOverview, autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
 import { sha256 } from "@aihot/backend/lib/ids";
 import { storePreparation, loadPreparation } from "@aihot/backend/backfill/history-input";
 
+before(async () => { await getBoss(); });
 after(async () => { await stopBoss(); await closeDb(); });
 async function article() {
   const id=tag(), source=tag();
@@ -25,11 +26,62 @@ async function receipt(subject: string, purpose='prefilter_article', service='ba
   const [r] = await sql`SELECT id FROM receipts WHERE logical_key=${logicalKeyFor(req)}`;
   return { id: Number(r!.id), req };
 }
-async function success(id: string) {
-  await sql`INSERT INTO analyses(article_id,input_revision,origin,relevance,title_zh,summary_zh) VALUES (${id},1,'model','pass','恢复标题','恢复后的新闻摘要内容')`;
+async function success(id: string, revision = 1) {
+  await sql`INSERT INTO analyses(article_id,input_revision,origin,relevance,title_zh,summary_zh) VALUES (${id},${revision},'model','pass','恢复标题','恢复后的新闻摘要内容')`;
   await sql`UPDATE articles SET processing_state='analyzed' WHERE id=${id}`;
   await publishArticle(id);
 }
+
+test('a completed current revision settles an old blocked incident without rewriting billing or enqueuing', async () => {
+  const id=await article(), r=await receipt(`article:${id}@1`), batch=tag();
+  await createReceiptRecoveryBatch(batch,'authorized',[r.id]);
+  await sql`UPDATE articles SET revision=2 WHERE id=${id}`;
+  await advanceReceiptRecoveryBatch(batch);
+  assert.equal((await receiptRecoveryStatus(batch)).outstanding[0]!.evidence.reason,'article_not_failed_current_revision');
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,0);
+  await success(id,2);
+  await autoReleaseUnknownReceipts();
+  assert.equal((await receiptRecoveryStatus(batch)).counts.recovered,1);
+  const [proof]=await sql`SELECT evidence FROM receipt_recoveries WHERE batch=${batch}`;
+  assert.equal(proof!.evidence.reason,'superseded_revision');
+  assert.equal(proof!.evidence.capturedRevision,1); assert.equal(proof!.evidence.revision,2);
+  assert.equal((await sql`SELECT status FROM receipts WHERE id=${r.id}`)[0]!.status,'unknown');
+  assert.deepEqual((await sql`SELECT status,cost FROM receipt_attempts WHERE receipt_id=${r.id}`).map(a=>[a.status,a.cost]),[['unknown',null]]);
+  assert.equal((await sql`SELECT id FROM pgboss.job WHERE data->>'articleId'=${id}`).length,0);
+  assert.equal((await runsOverview()).receipts.issues.some(a=>a.id===r.id),false);
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,0);
+});
+
+test('revision growth and an old published analysis are insufficient; a later unknown stays visible',async()=>{
+  const id=await article(),r=await receipt(`article:${id}@1`),batch=tag();
+  await createReceiptRecoveryBatch(batch,'authorized',[r.id]);
+  await success(id);
+  await sql`UPDATE articles SET revision=2 WHERE id=${id}`;
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,0);
+  await success(id,2);
+  await sql`UPDATE receipts SET attempts=2,status='unknown' WHERE id=${r.id}`;
+  assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,0);
+  assert.equal((await runsOverview()).receipts.issues.some(a=>a.id===r.id),true);
+});
+
+test('content rejection blocks the entire frozen target without authorization, yet newer success can settle it',async()=>{
+  for (const historical of [true,false]) {
+    const id=await article(),r=await receipt(`article:${id}@1`),sibling=await receipt(`article:${id}@1`),batch=tag();
+    await sql`UPDATE receipt_attempts SET error=${`Error: Gateway HTTP 400 (1301); reconcile request ${r.req.gatewayRequestId} before retrying`},
+      error_details=${historical ? null : sql.json({version:1,httpStatus:400,providerCode:'1301',category:'content_policy_rejected',retryable:false})} WHERE receipt_id=${r.id}`;
+    await createReceiptRecoveryBatch(batch,'authorized',[r.id,sibling.id]);
+    await advanceReceiptRecoveryBatch(batch);
+    assert.equal((await receiptRecoveryStatus(batch)).counts.blocked,2);
+    assert.equal((await receiptRecoveryStatus(batch)).outstanding[0]!.evidence.reason,'content_policy_rejected');
+    assert.equal((await sql`SELECT id FROM audit_log WHERE action='receipt.authorize_replay' AND subject=${`receipt:${r.id}`}`).length,0);
+    assert.equal((await sql`SELECT id FROM pgboss.job WHERE data->>'articleId'=${id}`).length,0);
+    assert.equal((await sql`SELECT status FROM receipts WHERE id=${sibling.id}`)[0]!.status,'unknown');
+    assert.equal((await runsOverview()).receipts.issues.find(a=>a.id===r.id)!.recovery_status,'content_policy_rejected');
+    await sql`UPDATE articles SET revision=2 WHERE id=${id}`;
+    await success(id,2);
+    assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,2);
+  }
+});
 
 test('one frozen target, one job; business completion closes old incidents without changing paid history', async () => {
   const id=await article(), a=await receipt(`article:${id}@1`), b=await receipt(`article:${id}@1`), batch=tag();
@@ -93,6 +145,26 @@ test('batch lookup retains shared subjects and completed items linked by saved r
   assert.equal(rows.find(r=>r.receipt_id===b.id)!.target.items.length,1);
   assert.equal(rows.find(r=>r.receipt_id===c.id)!.target.items.length,1);
   assert.equal((await settleReceiptRecoveryBatch(batch)).recovered,3);
+});
+
+test('overlapping backfill targets cannot indirectly replay a refused shared item', async () => {
+  const run=tag(),key=tag(),shared=tag(),batch=tag(),subject=`article:preparation:${sha256(key)}@1`;
+  const refused=await receipt(subject,'prefilter_article','backfill'),sibling=await receipt(subject,'score_article','backfill');
+  await sql`UPDATE receipt_attempts SET error_details=${sql.json({version:1,httpStatus:400,providerCode:'1301',category:'content_policy_rejected',retryable:false})} WHERE receipt_id=${refused.id}`;
+  await sql`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day,state) VALUES (${run},'test',${run},'2026-01-01','2026-01-01','needs_attention')`;
+  for (const k of [key,shared]) {
+    const p=storePreparation({versions:[{key:k,day:'2026-01-01',provenance:{},prefilter:null,material:null,targetUrls:[],context:{}}],dayBasis:'earliest_version_utc',results:{[k]:{prefilter:{receiptId:refused.id},error:'blocked fixture'}}});
+    await sql`INSERT INTO backfill_items(run_id,identity_key,day,material,content_hash,evidence,state,preparation)
+      VALUES (${run},${k},'2026-01-01','{}','hash','test','failed',${sql.json(p)})`;
+  }
+  await createReceiptRecoveryBatch(batch,'authorized',[refused.id,sibling.id]);
+  const frozen=await sql`SELECT receipt_id,target FROM receipt_recoveries WHERE batch=${batch}`;
+  assert.equal(frozen.find(x=>x.receipt_id===refused.id)!.target.items.length,2);
+  assert.equal(frozen.find(x=>x.receipt_id===sibling.id)!.target.items.length,1);
+  await advanceReceiptRecoveryBatch(batch);
+  assert.equal((await receiptRecoveryStatus(batch)).counts.blocked,2);
+  assert.deepEqual((await sql`SELECT state FROM backfill_items WHERE run_id=${run}`).map(x=>x.state),['failed','failed']);
+  assert.equal((await sql`SELECT id FROM audit_log WHERE action='receipt.authorize_replay' AND subject=ANY(${[`receipt:${refused.id}`,`receipt:${sibling.id}`]}::text[])`).length,0);
 });
 
 test('batch lookup resolves ordinary backfill articles without preparation payloads', async () => {

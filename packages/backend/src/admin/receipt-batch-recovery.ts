@@ -3,6 +3,7 @@ import { sql, type Db } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "../backfill/history-input.ts";
 import { recoverTask, type Receipt } from "./receipt-recovery.ts";
+import { contentPolicyRejected } from "../providers/gateway-error.ts";
 
 type Item = { runId: string; key: string };
 export type RecoveryTarget =
@@ -122,9 +123,10 @@ async function businessEvidence(db: Db, t: RecoveryTarget, since: Date, jobId?: 
   if (t.kind === "article") {
     const [row] = await db`SELECT a.id,a.revision,a.processing_state,p.analysis_id FROM articles a
       JOIN publications p ON p.article_id=a.id JOIN analyses n ON n.id=p.analysis_id
-      WHERE a.id=${t.id} AND a.revision=${t.revision} AND n.input_revision=a.revision
+      WHERE a.id=${t.id} AND a.revision>=${t.revision} AND n.article_id=a.id AND n.input_revision=a.revision
         AND n.created_at>=${since} AND a.processing_state IN ('analyzed','blocked')`;
-    return row ? { kind: "article", ...row } : null;
+    return row ? { kind: "article", ...row, capturedRevision: t.revision,
+      reason: row.revision > t.revision ? "superseded_revision" : "business_completed" } : null;
   }
   if (t.kind === "backfill") {
     const proof = [];
@@ -165,7 +167,8 @@ async function businessEvidence(db: Db, t: RecoveryTarget, since: Date, jobId?: 
 
 /** Successful business state closes only the captured attempt, never a subsequent failure. */
 export async function settleReceiptRecoveryBatch(batch: string) {
-  const rows = await sql<Recovery[]>`SELECT * FROM receipt_recoveries WHERE batch=${batch} AND state IN ('planned','queued') ORDER BY receipt_id`;
+  const rows = await sql<Recovery[]>`SELECT * FROM receipt_recoveries WHERE batch=${batch} AND
+    (state IN ('planned','queued') OR (state='blocked' AND evidence->>'reason' IN ('article_not_failed_current_revision','content_policy_rejected'))) ORDER BY receipt_id`;
   let recovered = 0;
   for (const x of rows) {
     await sql.begin(async tx => {
@@ -186,10 +189,20 @@ export async function settleReceiptRecoveryBatch(batch: string) {
         return;
       }
       const result = await tx`UPDATE receipt_recoveries SET state='recovered',recovered_at=now(),evidence=${tx.json(proof as never)}
-        WHERE receipt_id=${x.receipt_id} AND original_attempt=${x.original_attempt} AND state IN ('planned','queued')`;
+        WHERE receipt_id=${x.receipt_id} AND original_attempt=${x.original_attempt} AND
+          (state IN ('planned','queued') OR (state='blocked' AND evidence->>'reason' IN ('article_not_failed_current_revision','content_policy_rejected')))`;
       recovered += result.count;
     });
   }
+  return { recovered };
+}
+
+/** Re-evaluate existing business evidence only; never authorize or dispatch a paid replay. */
+export async function settleReceiptRecoveries() {
+  const batches = await sql<{ batch: string }[]>`SELECT DISTINCT batch FROM receipt_recoveries WHERE
+    state IN ('planned','queued') OR (state='blocked' AND evidence->>'reason' IN ('article_not_failed_current_revision','content_policy_rejected'))`;
+  let recovered = 0;
+  for (const { batch } of batches) recovered += (await settleReceiptRecoveryBatch(batch)).recovered;
   return { recovered };
 }
 
@@ -271,6 +284,19 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
           return { target: key, result: "receipt_changed" };
         }
         receipts.push(r);
+      }
+      // One refused stage blocks replay of the entire frozen business target: another
+      // receipt from that target must not indirectly dispatch the same rejected input.
+      const attempts = await tx`SELECT a.error_details,a.error FROM receipt_attempts a
+        JOIN receipt_recoveries x ON x.receipt_id=a.receipt_id AND x.original_attempt=a.attempt
+        WHERE x.batch=${batch} AND (x.target_key=${key}
+          ${t.kind === 'backfill' ? tx`OR (x.target->>'kind'='backfill' AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements(x.target->'items') i WHERE ${tx.json(t.items as never)} @> jsonb_build_array(i)
+          ))` : tx``})`;
+      if (attempts.some(a => contentPolicyRejected(a.error_details, a.error))) {
+        await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason: 'content_policy_rejected' })}
+          WHERE batch=${batch} AND target_key=${key} AND state='planned'`;
+        return { target: key, result: "content_policy_rejected" };
       }
       if (t.kind === 'backfill') {
         const problem = await queueBackfill(tx, t.items);

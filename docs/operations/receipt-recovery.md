@@ -40,6 +40,14 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ## 恢复边界
 
+新版业务结果可以结案旧版本异常：必须是同一 article_id，当前文章版本不小于捕获版本，publication 引用的 analysis.input_revision 等于当前文章版本，且文章已完成分析或过滤。只有 revision 增长、旧分析仍留在 publication，均不能结案。证据中的 `superseded_revision` 会记录捕获版本和成功版本，后台显示“新版已替代”。原调用状态、attempt 与未知费用保留；后续新 failed/unknown attempt 仍会显示。
+
+`--status`、`--apply` 和每十分钟的 `ops.recover` 都会重评已有批次的业务证据（包括此前因版本不符或审核拒绝而 blocked 的记录）。定时重评只结案，不授权调用、不新建重放任务；尚未纳入批次的异常仍通过统一脚本冻结。
+
+明确的 `content_policy_rejected`（例如 HTTP 400 / 1301）会被批量脚本标记 blocked，并跳过整个冻结业务目标的放行和入队；不通过同一新闻的其他回执间接重放。以后该目标出现合格成功证据时仍可结案。普通 429 不等于额度耗尽；`retryable` 也不代表已获准重放费用未知的调用。
+
+新调用的安全错误详情保存在 `receipt_attempts.error_details`，请求关联仍用该行 `request_id`。后台显示 HTTP 状态、已知错误码，以及上游实际提供的审核对象/等级；没有这些字段时显示“上游未返回具体审核原因”，不猜拒绝词句。上游原始自由文本、私有 URL 与凭据不写入这些详情。旧记录只按当时 Gateway 固定错误格式识别 400/1301，不能补造历史审核理由。
+
 | 目标 | 执行方式 | 结案证据 |
 | --- | --- | --- |
 | 普通文章分析 | 原 article_id、当前 revision，复用分析队列和旧 run tag | 当前 revision 的分析已经持久化，并进入同一文章的 publication |

@@ -48,9 +48,18 @@ const server = createServer(async (req, res) => {
     assert.equal(body.api_key, undefined);
     if (mode === "disconnect") { req.socket.destroy(); return; }
     if (mode === "http-error") { res.writeHead(503); res.end("upstream uncertain"); return; }
+    if (mode.startsWith("failure-")) {
+      const failure = { version: 1, httpStatus: 400, providerCode: "1301", category: "content_policy_rejected", retryable: false,
+        contentFilter: { role: "user", level: 2, secret: "must-not-persist" }, message: "must-not-persist", secret: "must-not-persist" };
+      res.writeHead(400, { "content-type": "application/json",
+        ...(mode === "failure-native" ? { "x-llm-gateway-error": encodeURIComponent(JSON.stringify(failure)) } : {}) });
+      res.end(JSON.stringify({ error: { code: "1301", message: "must-not-persist", ...(mode === "failure-compat" ? { failure } : {}) } }));
+      return;
+    }
     if (mode.startsWith("cooldown") || mode === "no-route" || mode === "attempt-not-crossed") {
       res.writeHead(mode === "cooldown-wrong-status" ? 502 : 422, {
         "content-type": "application/json", ...(mode === "cooldown-header" ? { "x-llm-gateway-attempt-id": "earlier-attempt" } : {}),
+        ...(mode === "cooldown-error-only" ? { "x-llm-gateway-error": encodeURIComponent(JSON.stringify({version:1,category:"unknown"})) } : {}),
       });
       res.end(JSON.stringify({ error: {
         code: mode === "attempt-not-crossed" ? "dispatch_constraint_rejected" : mode === "no-route" ? "no_route" : "route_cooldown",
@@ -120,6 +129,26 @@ after(async () => {
 const ask = (subject: string) => chatJson({ model: "default", purpose: "gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) });
 const askBackfill = (subject: string) => backfillContext.run({ runId: "fixture", models: backfillModels, beforeCall: async () => {} },
   () => chatJson({ model: "qwen3.8-flash", purpose: "backfill_gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) }));
+
+test("native and compatibility failure metadata persist safe details without changing unknown billing", async () => {
+  for (mode of ["failure-native", "failure-compat"]) {
+    const subject=tag(), before=hits;
+    await assert.rejects(ask(subject),ReceiptUnknownError);
+    const [row]=await sql`SELECT a.error_details,a.status,a.cost,a.error,a.request_id FROM receipt_attempts a JOIN receipts r ON r.id=a.receipt_id WHERE r.subject=${subject}`;
+    assert.deepEqual(row!.error_details,{version:1,httpStatus:400,providerCode:"1301",category:"content_policy_rejected",retryable:false,contentFilter:{role:"user",level:2}});
+    assert.equal(row!.status,"unknown"); assert.equal(row!.cost,null);
+    assert.ok(row!.request_id); assert.doesNotMatch(JSON.stringify(row),/must-not-persist/);
+    await assert.rejects(ask(subject),ReceiptUnknownError);
+    assert.equal(hits-before,1);
+  }
+});
+
+test("error metadata without attempt identity preserves the no-dispatch rejection",async()=>{
+  mode="cooldown-error-only";
+  const subject=tag();
+  await assert.rejects(ask(subject),GatewayNotDispatchedError);
+  assert.equal((await sql`SELECT status FROM receipts WHERE subject=${subject}`)[0]!.status,"failed");
+});
 
 async function restartedAsk(subject: string): Promise<void> {
   const code = `import { chatJson, ModelOutputError } from '@aihot/backend/providers/llm';
