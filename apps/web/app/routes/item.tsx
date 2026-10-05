@@ -125,7 +125,6 @@ export default function ItemPage() {
   const publishedIso = item.publishedAt ?? item.discoveredAt;
   const summaryOnly = item.readingMode === "summary-only";
   const showOutline = item.outline.length >= 3;
-  const originalLabel = isX ? "在 X 查看原推" : "打开原文";
 
   const related = item.relatedStories.filter((s) => s.publicId !== item.story?.publicId);
 
@@ -176,7 +175,7 @@ export default function ItemPage() {
         rel="noopener noreferrer"
         className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-ink-4 hover:text-ink"
       >
-        {originalLabel} <IconExternal size={13} />
+        阅读原文 <IconExternal size={13} />
       </a>
       <StarButton item={item} size={32} />
       {moreMenu}
@@ -255,7 +254,7 @@ export default function ItemPage() {
         <span className="flex-1" />
         <StarButton item={item} size={32} />
         <a href={item.links.original} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1 px-1.5 text-[14px] text-ink-2">
-          <IconExternal size={15} /> 原文
+          <IconExternal size={15} /> 阅读原文
         </a>
         <button type="button" aria-label="分享" onClick={share} className="inline-flex size-8 items-center justify-center rounded-full text-ink-3 hover:text-ink">
           <IconShare size={17} />
@@ -303,6 +302,13 @@ export default function ItemPage() {
           {!isX && <h1 className="text-[26px] font-bold leading-[1.38] tracking-[-0.01em] text-ink lg:text-[32px] lg:leading-[1.34] xl:text-[36px] xl:leading-[1.3]">{item.title}</h1>}
           {!isX && item.originalTitle && <p className="mt-2.5 text-[14px] leading-relaxed text-ink-4">{item.originalTitle}</p>}
 
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <a href={item.links.original} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink-2 transition-colors hover:border-ink-4 hover:text-ink">
+              阅读原文 <IconExternal size={14} />
+            </a>
+            {!bodyHtml && <p className="text-[13px] leading-relaxed text-ink-3">本站未展示全文，请前往来源网站阅读。</p>}
+          </div>
+
           {item.summary && (
             <section className={isX ? "mt-4" : "mt-7 xl:mt-8"}>
               <div className="mb-2 text-[12px] font-semibold text-accent">{summaryOnly ? "摘要" : "AI 导读"}</div>
@@ -322,8 +328,6 @@ export default function ItemPage() {
               <GroupSources group={item.group} parentId={item.id} />
             </div>
           )}
-
-          {summaryOnly && <p className="mt-7 rounded-control bg-bg-sunk px-4 py-3 text-[13.5px] leading-relaxed text-ink-3">应来源方要求，这里只提供摘要与原文入口。完整内容请阅读原文。</p>}
 
           {item.body && bodyHtml && (
             <section className="mt-9 border-t border-line pt-4 xl:mt-10">

@@ -85,7 +85,7 @@ flowchart LR
 - **安全阀**：`COLLECT_ENABLED`、`MODEL_CALLS_ENABLED`、`FEISHU_CONTENT_PUSH_ENABLED`、`FEISHU_INTERNAL_ENABLED`、`INDEXNOW_SUBMIT_ENABLED` 只决定“发不发出去”，不决定走哪套逻辑。开发和测试时关掉。
 - **公开内容匿名**：管理员和访客看到的一样；读者的收藏、已读存在浏览器里。后台只允许管理员。
 - **旧文不刷屏**：发现时已发布超过 48 小时的资料、新信源的存量、回灌的推送，按原文时间归档，不进“今天”、不推送。
-- **来源可追溯**：每条精选都链接原文；站内是否显示全文由信源的 `site_fulltext` 决定，默认只显示摘要。
+- **来源可追溯**：每条公开新闻详情都在阅读栏顶部提供“阅读原文”，所有来源共用 `ItemPage` 和 `links.original`，手机工具栏与桌面侧栏使用相同文案。没有可显示的正文时提示前往来源网站，不以 `readingMode="full"` 推断正文存在。站内是否显示全文由信源的 `site_fulltext` 等发布条件决定，默认只显示摘要。
 
 ## 行业包与实现的边界
 
