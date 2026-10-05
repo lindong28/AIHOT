@@ -2,6 +2,10 @@
 
 本文说明当前 AIHOT 框架的信源操作。旧 ai-radar 的来源覆盖与入口差异见[两项目对比](references/ai-radar-comparison.md)，后续接入边界见[融合开发指南](development.md)。
 
+公开文章的来源显示原始发布者或原文站点：公众号显示账号名，X 显示原帖账号，Hacker News 聚合显示原文域名和发现渠道。采集工具、归档集合和跟踪账号仍保留为内部来源身份。无法确认的历史公众号显示“微信公众号（账号未识别）”，不会根据正文猜测。规则与边界见[来源展示决定](references/20261005-source-labels.md)。
+
+部署后先运行数据库迁移，再用 `node scripts/repair-source-labels.ts` 预览已有公开投影的修复，确认输出后加 `--apply` 执行；`--json` 输出机器可读结果。脚本复用实时与 backfill 的来源生成规则，可重复运行；同步搜索、日报引用、当前热榜展示和 selected 增量更正，不重跑模型、不发送通知、不修改原始材料或公开资格。运行环境使用既有后端配置，例如腾讯云在当前 release 下执行 `/usr/local/bin/node --env-file=/home/ubuntu/aihot/shared/app.env scripts/repair-source-labels.ts --apply`。
+
 信源在后台“信源”页管理：新建、试抓一次看看抓到什么、改频率、启停、看失败原因和最近的条目。首次启动时，`industry/sources.json` 里的示范信源会被导入。
 
 2026-09-30 迁移配置保留原 18 个 RSS，新增 36 个公开来源和 109 个 X 账号。Google Research、Mistral 已有 RSS，不重复加网页；Sierra 使用新发现的官方 RSS。`scripts/seed.ts` 可重跑，只添加尚不存在的来源，不覆盖后台编辑。当前 3 个故障 RSS 与已暂停的 xAI 尚待处置，Mp2RSS 已明确排除；真实验证范围见[迁移记录](migration.md)。

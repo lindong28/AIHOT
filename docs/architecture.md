@@ -74,6 +74,8 @@ flowchart LR
 
 初始 schema 分布在 [0001_core.sql](../database/migrations/0001_core.sql) 和 [0002_events_reports.sql](../database/migrations/0002_events_reports.sql)，当前结构还要顺序叠加 [后续迁移](../database/migrations/)；例如 attempts、人工归组与重归组等待状态分别由后续迁移引入，不能只按初始建表文件理解运行库。
 
+`publications.source_label` 是文章级公开来源展示投影，实时与 backfill 通过同一发布函数生成；网页、API、RSS、日报引用与 selected 同步使用它。`source_id` 继续承载采集身份与策略，展示修复不改去重、热度参与者或全文授权。存量元数据修复入口见[信源说明](sources.md)。
+
 状态排查从 [queueProcessing / processArticle](../packages/backend/src/jobs/content.ts) 开始：正文使用 `body_status`，分析使用 `processing_state`、重试次数和下次重试时间，公开可见性使用 `publications` 的资格、精选和延迟字段，归组另看关联表与 `grouped_at`。定时 sweep 会补排到期或遗漏的内容任务；失败与未知付费回执不是正常的“未入选”结果。
 
 ## 几条不变的规则

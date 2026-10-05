@@ -50,12 +50,18 @@ export interface ItemRow {
   quoted_zh: string | null;
 }
 
+/** Article-level avatars must belong to the account on the linked post, not the collection source. */
+export const SOURCE_ICON = sql`CASE WHEN p.channel = 'x' THEN (
+  SELECT CASE WHEN lower(ltrim(xa.x_post->>'handle', '@')) = lower(substring(p.url from '(?i)^https?://(?:www[.])?(?:x[.]com|twitter[.]com)/([^/]+)/status/'))
+    THEN nullif(xa.x_post->>'avatarUrl', '') END FROM articles xa WHERE xa.id = p.article_id
+) ELSE s.icon_url END`;
+
 /** Columns every item listing selects. Internal judgement details never leave this layer. */
 export const ITEM_COLUMNS = sql`
   p.article_id AS id, p.revision, p.title, p.original_title, p.summary, p.reason, p.category, p.tags, p.score,
   p.selected, p.eligible, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at, p.first_party, p.visibility,
   p.body_mode, p.syndicate, p.indexable, p.visible_after, p.backfill, p.fact_id, p.story_id,
-  s.id AS source_id, s.name AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode, s.icon_url AS source_icon,
+  s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode, ${SOURCE_ICON} AS source_icon,
   a.x_post, a.author, a.language,
   st.public_id::text AS story_public_id, st.title AS story_title,
   CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text, qt.text_zh AS quoted_zh`;
@@ -63,7 +69,7 @@ export const ITEM_COLUMNS = sql`
 /** Public API listings never render article bodies, X media or story metadata. */
 export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason">;
 export const API_ITEM_COLUMNS = sql`
-  p.article_id AS id, p.title, p.original_title, p.summary, s.name AS source_name, p.url,
+  p.article_id AS id, p.title, p.original_title, p.summary, coalesce(p.source_label, s.name) AS source_name, p.url,
   p.published_at, p.discovered_at, p.category, p.score, p.selected, p.reason`;
 export const API_ITEM_FROM = sql`FROM publications p JOIN sources s ON s.id = p.source_id`;
 

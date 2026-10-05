@@ -2,6 +2,7 @@
 // listed; a missing date is a 404, never another day. Withdrawn citations are marked, not shown.
 import type { ReportCitation, ReportDetail, ReportIndexEntry, ReportNavigationEntry, ReportKind } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
+import { SOURCE_ICON } from "./items.ts";
 import { cached, type Cached } from "../lib/cache.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { dailyUrl, itemUrl, siteUrl } from "./links.ts";
@@ -23,6 +24,7 @@ interface Availability {
   available: boolean;
   firstParty: boolean;
   sourceId: string | null;
+  sourceName: string | null;
   sourceIcon: string | null;
   storyPublicId: string | null;
   publishedAt: Date | null;
@@ -31,8 +33,8 @@ interface Availability {
 async function availability(ids: string[]): Promise<Map<string, Availability>> {
   const out = new Map<string, Availability>();
   if (ids.length === 0) return out;
-  const rows = await sql<{ id: string; visibility: string; eligible: boolean; first_party: boolean; source_id: string; icon_url: string | null; story_public_id: string | null; at: Date | null }[]>`
-    SELECT p.article_id AS id, p.visibility, p.eligible, p.first_party, p.source_id, s.icon_url, st.public_id::text AS story_public_id,
+  const rows = await sql<{ id: string; visibility: string; eligible: boolean; first_party: boolean; source_id: string; source_name: string | null; icon_url: string | null; story_public_id: string | null; at: Date | null }[]>`
+    SELECT p.article_id AS id, p.visibility, p.eligible, p.first_party, p.source_id, coalesce(p.source_label, s.name) AS source_name, ${SOURCE_ICON} AS icon_url, st.public_id::text AS story_public_id,
       coalesce(p.published_at, p.discovered_at) AS at
     FROM publications p LEFT JOIN sources s ON s.id = p.source_id LEFT JOIN stories st ON st.id = p.story_id
     WHERE p.article_id IN ${sql(ids)}`;
@@ -41,6 +43,7 @@ async function availability(ids: string[]): Promise<Map<string, Availability>> {
       available: r.visibility === "public" && r.eligible,
       firstParty: r.first_party,
       sourceId: r.source_id,
+      sourceName: r.source_name,
       sourceIcon: r.icon_url,
       storyPublicId: r.story_public_id,
       publishedAt: r.at,
@@ -125,7 +128,7 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     itemId: id,
     title: String(raw.title ?? ""),
     summary: raw.summary ?? null,
-    sourceName: String(raw.sourceName ?? raw.source?.name ?? ""),
+    sourceName: String(a?.sourceName ?? raw.sourceName ?? raw.source?.name ?? ""),
     sourceUrl: String(raw.sourceUrl ?? raw.links?.original ?? ""),
     sourceId: raw.sourceId ?? a?.sourceId ?? null,
     sourceIconUrl: a?.sourceIcon ? proxiedImage(a.sourceIcon, "avatar") : null,
@@ -336,14 +339,14 @@ export async function v1Daily(date: string | "latest") {
         items: (s.items ?? []).filter(ok).map((i: any) => ({
           title: String(i.title),
           summary: String(i.summary ?? ""),
-          source: { name: String(i.sourceName ?? "") },
+          source: { name: String(avail.get(i.itemId)?.sourceName ?? i.sourceName ?? i.source?.name ?? "") },
           links: links(i),
           attribution: attribution(i.itemId ? itemUrl(i.itemId) : url),
         })),
       })),
       flashes: (c.flashes ?? []).filter(ok).map((i: any) => ({
         title: String(i.title),
-        source: { name: String(i.sourceName ?? "") },
+        source: { name: String(avail.get(i.itemId)?.sourceName ?? i.sourceName ?? i.source?.name ?? "") },
         links: links(i),
         publishedAt: new Date(i.publishedAt ?? r.generated_at).toISOString(),
         attribution: attribution(i.itemId ? itemUrl(i.itemId) : url),

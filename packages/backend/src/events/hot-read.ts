@@ -1,6 +1,7 @@
 // Reading the latest published hot ranking. The web shows heat values; machine exits only ranks.
 import type { HotParticipant, HotStripEntry } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
+import { stableJson } from "../lib/ids.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 
 export interface HotEntry {
@@ -57,6 +58,45 @@ async function queryLatestHotRanking(): Promise<HotRanking | null> {
   return { id: row.id, computedAt: row.computed_at.toISOString(), ruleVersion: row.rule_version, entries: row.entries, coverage: row.evidence };
 }
 
+/** Refresh only display labels in the current cached ranking, retaining its original window and all metrics. */
+export async function repairHotSourceLabels(): Promise<number> {
+  const ranking = await latestHotRanking();
+  if (!ranking || !ranking.entries.length) return 0;
+  const at = new Date(ranking.computedAt);
+  const ids = ranking.entries.map((e) => e.storyId);
+  const reps = ranking.entries.map((e) => e.representativeItemId).filter((id): id is string => !!id);
+  const [participants, labels] = await Promise.all([
+    sql<{ story_id: number; name: string; kind: "editorial" | "signal"; tier: string; at: Date }[]>`
+      SELECT DISTINCT ON (ss.story_id, ss.participant_key) ss.story_id, coalesce(p.source_label, s.name) AS name,
+        ss.kind, s.tier, ss.observed_at AS at
+      FROM story_signals ss JOIN sources s ON s.id = ss.source_id
+      LEFT JOIN publications p ON p.article_id = ss.article_id
+      WHERE ss.story_id = ANY(${ids}::bigint[]) AND ss.observed_at > ${at}::timestamptz - interval '48 hours' AND ss.observed_at <= ${at}
+      ORDER BY ss.story_id, ss.participant_key, (ss.kind = 'editorial') DESC, ss.observed_at DESC`,
+    sql<{ id: string; name: string }[]>`
+      SELECT p.article_id AS id, coalesce(p.source_label, s.name) AS name
+      FROM publications p JOIN sources s ON s.id = p.source_id WHERE p.article_id = ANY(${reps}::text[])`,
+  ]);
+  const names = new Map(labels.map((r) => [r.id, r.name]));
+  const entries = ranking.entries.map((entry) => {
+    const people = participants.filter((p) => Number(p.story_id) === Number(entry.storyId));
+    // Older imports may lack their original signals; keep that snapshot rather than emptying it.
+    if (!people.length) return { ...entry, representativeSource: names.get(entry.representativeItemId ?? "") ?? entry.representativeSource };
+    const reporting = people.filter((p) => p.kind === "editorial").sort((a, b) => b.at.getTime() - a.at.getTime());
+    return {
+      ...entry,
+      representativeSource: names.get(entry.representativeItemId ?? "") ?? entry.representativeSource,
+      sourceNames: [...new Set(reporting.map((p) => p.name))].slice(0, 8),
+      participants: people.sort((a, b) => Number(b.kind === "editorial") - Number(a.kind === "editorial") || tierRank(a.tier) - tierRank(b.tier) || b.at.getTime() - a.at.getTime())
+        .slice(0, 40).map(({ name, kind, tier }) => ({ name, kind, tier })),
+    };
+  });
+  if (stableJson(entries) === stableJson(ranking.entries)) return 0;
+  await sql`UPDATE hot_rankings SET entries = ${sql.json(entries as never)} WHERE id = ${ranking.id}`;
+  extrasCache = null;
+  return 1;
+}
+
 // Faces and words change only with the ranking, so they are read once per ranking.
 interface Extras {
   faces: Map<string, string | null>;
@@ -78,18 +118,25 @@ async function readExtras(ranking: HotRanking): Promise<Extras> {
 async function queryExtras(ranking: HotRanking): Promise<Extras> {
   const ids = ranking.entries.map((e) => e.storyId);
   const [faces, texts] = await Promise.all([
-    // A participant's face: the source's icon, else the avatar on that account's latest post in the story.
-    sql<{ name: string; icon_url: string | null; avatar: string | null }[]>`
-      SELECT DISTINCT ON (s.id) s.name, s.icon_url, a.x_post->>'avatarUrl' AS avatar
+    // Use the same participant window as the ranking; an X face must belong to the linked post.
+    sql<{ name: string; icon_url: string | null }[]>`
+      SELECT DISTINCT ON (coalesce(p.source_label, s.name)) coalesce(p.source_label, s.name) AS name,
+        CASE WHEN p.channel = 'x' OR s.kind = 'x_search' THEN
+          CASE WHEN lower(ltrim(a.x_post->>'handle', '@')) = lower(substring(a.url from '(?i)^https?://(?:www[.])?(?:x[.]com|twitter[.]com)/([^/]+)/status/'))
+            THEN nullif(a.x_post->>'avatarUrl', '') END
+          ELSE s.icon_url END AS icon_url
       FROM story_signals ss JOIN sources s ON s.id = ss.source_id
-      LEFT JOIN articles a ON a.id = ss.article_id AND a.x_post ? 'avatarUrl'
+      LEFT JOIN publications p ON p.article_id = ss.article_id
+      LEFT JOIN articles a ON a.id = ss.article_id
       WHERE ss.story_id = ANY(${ids}::bigint[])
-      ORDER BY s.id, (a.id IS NULL), a.discovered_at DESC`,
+        AND ss.observed_at > ${new Date(ranking.computedAt)}::timestamptz - interval '48 hours'
+        AND ss.observed_at <= ${new Date(ranking.computedAt)}
+      ORDER BY coalesce(p.source_label, s.name), ss.observed_at DESC`,
     sql<{ id: number; digest: string | null; summary: string | null; latest: string | null }[]>`
       SELECT id, digest, summary, latest FROM stories WHERE id = ANY(${ids}::bigint[])`,
   ]);
   const extras: Extras = {
-    faces: new Map(faces.map((f) => [f.name, f.icon_url ?? f.avatar])),
+    faces: new Map(faces.map((f) => [f.name, f.icon_url])),
     texts: new Map(texts.map((t) => [Number(t.id), { summary: t.digest ?? t.summary, latest: t.latest }])),
   };
   extrasCache = { rankingId: ranking.id, extras };

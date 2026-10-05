@@ -3,6 +3,7 @@
 import type { CategoryKey, ChannelKey } from "@aihot/contracts/taxonomy";
 import type { DevelopmentsResponse, GroupReportsResponse } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
+import { SOURCE_ICON } from "./items.ts";
 import { decodeCursor, encodeCursor, InvalidCursorError, queryBinding } from "../lib/cursor.ts";
 import { shortHash } from "../lib/ids.ts";
 import { proxiedImage } from "../media/imgproxy.ts";
@@ -34,7 +35,7 @@ export async function loadGroupReports(q: GroupReportsQuery, now = new Date()): 
     source_id: string; source_name: string; source_kind: string; first_party: boolean; icon_url: string | null;
   }[]>`
     SELECT p.article_id AS id, p.title, p.summary, p.timeline_at, p.url, p.selected,
-           s.id AS source_id, s.name AS source_name, s.kind AS source_kind, p.first_party, s.icon_url
+           s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind, p.first_party, ${SOURCE_ICON} AS icon_url
     FROM publications p JOIN sources s ON s.id = p.source_id
     WHERE p.article_id IN (SELECT article_id FROM fact_articles WHERE fact_id = ${fact.id}) AND p.visibility = 'public' AND p.eligible
       AND (NOT p.selected OR p.visible_after <= ${now}) ${filters}

@@ -97,7 +97,7 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
   for (const r of rows) {
     if (entries.length >= 10) break;
     const reports = await sql<{ id: string; url: string; title: string; source_name: string; first_party: boolean; selected: boolean; score: number | null; at: Date }[]>`
-      SELECT DISTINCT ON (p.article_id) p.article_id AS id, p.url, p.title, s.name AS source_name, p.first_party, p.selected, p.score,
+      SELECT DISTINCT ON (p.article_id) p.article_id AS id, p.url, p.title, coalesce(p.source_label, s.name) AS source_name, p.first_party, p.selected, p.score,
              coalesce(p.published_at, p.discovered_at) AS at
       FROM facts f JOIN fact_articles fa ON fa.fact_id = f.id JOIN publications p ON p.article_id = fa.article_id
       JOIN sources s ON s.id = p.source_id
@@ -106,8 +106,9 @@ export async function computeHotRanking(at = new Date()): Promise<{ id: number; 
     if (reports.length === 0) continue;
     const rep = [...reports].sort((x, y) => Number(y.first_party) - Number(x.first_party) || Number(y.selected) - Number(x.selected) || (Number(y.score ?? 0) - Number(x.score ?? 0)))[0]!;
     const participants = await sql<{ name: string; kind: "editorial" | "signal"; tier: string; at: Date }[]>`
-      SELECT DISTINCT ON (ss.participant_key) s.name, ss.kind, s.tier, ss.observed_at AS at
+      SELECT DISTINCT ON (ss.participant_key) coalesce(p.source_label, s.name) AS name, ss.kind, s.tier, ss.observed_at AS at
       FROM story_signals ss JOIN sources s ON s.id = ss.source_id
+      LEFT JOIN publications p ON p.article_id = ss.article_id
       WHERE ss.story_id = ${r.story_id} AND ss.observed_at > ${at}::timestamptz - make_interval(hours => ${WINDOW_HOURS}) AND ss.observed_at <= ${at}
       ORDER BY ss.participant_key, (ss.kind = 'editorial') DESC, ss.observed_at DESC`;
     // The reporting sources of the window, latest first (signal participants are counted separately).

@@ -58,7 +58,7 @@ function card(r: Row) {
 
 export async function pushSelected(articleId: string, now = new Date()): Promise<PushOutcome> {
   const [r] = await sql<Row[]>`
-    SELECT p.article_id, p.selected, p.visibility, p.title, p.summary, p.reason, p.category, s.name AS source_name, p.url,
+    SELECT p.article_id, p.selected, p.visibility, p.title, p.summary, p.reason, p.category, coalesce(p.source_label, s.name) AS source_name, p.url,
            p.timeline_at, p.discovered_at, p.visible_after, p.backfill, p.fact_id,
            coalesce((o.fields->>'silent')::boolean, false) AS silent
     FROM publications p JOIN sources s ON s.id = p.source_id LEFT JOIN editorial_overrides o ON o.article_id = p.article_id

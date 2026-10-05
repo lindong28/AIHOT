@@ -2,6 +2,7 @@
 // v1 / MCP / Skill only see ranks and counts.
 import type { HeatPoint, HotResponse, StoryDetail, StoryReportView } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
+import { SOURCE_ICON } from "./items.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { latestHotRanking, rankingExtras } from "../events/hot-read.ts";
 import { behindSources, sourceClocks } from "../events/hot.ts";
@@ -59,8 +60,8 @@ interface ReportRow {
 async function storyReports(storyId: number, now: Date): Promise<ReportRow[]> {
   return sql<ReportRow[]>`
     SELECT DISTINCT ON (p.article_id) p.article_id AS id, p.title, p.summary, p.url, p.selected,
-      coalesce(p.published_at, p.discovered_at) AS at, s.id AS source_id, s.name AS source_name, s.kind AS source_kind,
-      p.first_party, s.icon_url, f.public_id AS fact_public_id, f.id AS fact_id
+      coalesce(p.published_at, p.discovered_at) AS at, s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind,
+      p.first_party, ${SOURCE_ICON} AS icon_url, f.public_id AS fact_public_id, f.id AS fact_id
     FROM facts f JOIN fact_articles fa ON fa.fact_id = f.id JOIN publications p ON p.article_id = fa.article_id
     JOIN sources s ON s.id = p.source_id
     WHERE f.story_id = ${storyId} AND p.visibility = 'public' AND s.participation_mode = 'editorial'

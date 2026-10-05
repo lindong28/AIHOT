@@ -6,6 +6,7 @@ import { proxyBodyImages } from "../media/imgproxy.ts";
 import { textToHtml } from "../content/sanitize.ts";
 import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, toItemSummary, xView, type ItemRow } from "./items.ts";
 import { itemUrl } from "./links.ts";
+import { publicAuthor } from "./source-label.ts";
 import { hasItemPage } from "./rules.ts";
 import { SITE } from "@aihot/industry/site";
 
@@ -128,7 +129,7 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
   const detail: ItemDetail = {
     ...summary,
     readingMode: "full",
-    author: row.author,
+    author: publicAuthor(row.source_id, row.author, row.source_name),
     language: row.language,
     body,
     outline,

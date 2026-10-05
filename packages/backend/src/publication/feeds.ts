@@ -123,7 +123,7 @@ export async function itemFeed(kind: ItemFeedKind, category: PublicApiCategoryKe
       SELECT p.article_id FROM publications p WHERE ${scope}
       ORDER BY coalesce(p.published_at, p.discovered_at) DESC, p.article_id DESC LIMIT 50
     )
-    SELECT p.article_id AS id, p.title, p.summary, p.url, p.category, p.published_at, p.discovered_at, s.name AS source_name
+    SELECT p.article_id AS id, p.title, p.summary, p.url, p.category, p.published_at, p.discovered_at, coalesce(p.source_label, s.name) AS source_name
       ${includeContent ? sql`, p.channel, p.syndicate, a.language, a.x_post,
         CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text, qt.text_zh AS quoted_zh,
         a.body_html, tr.body_html AS tr_html, tr.complete AS tr_complete` : sql``}

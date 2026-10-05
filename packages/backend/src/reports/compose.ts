@@ -51,7 +51,7 @@ export async function candidates(start: Date, end: Date): Promise<Candidate[]> {
     id: string; title: string; summary: string | null; url: string; category: string | null; score: number | null; first_party: boolean;
     source_id: string; source_name: string; source_kind: string; fact_public_id: string | null; story_public_id: string | null; at: Date; backfill: boolean;
   }[]>`
-    SELECT p.article_id AS id, p.title, p.summary, p.url, p.category, p.score, p.first_party, s.id AS source_id, s.name AS source_name,
+    SELECT p.article_id AS id, p.title, p.summary, p.url, p.category, p.score, p.first_party, s.id AS source_id, coalesce(p.source_label, s.name) AS source_name,
            s.kind AS source_kind, f.public_id AS fact_public_id, st.public_id::text AS story_public_id, p.timeline_at AS at, p.backfill
     FROM publications p JOIN sources s ON s.id = p.source_id
     LEFT JOIN facts f ON f.id = p.fact_id LEFT JOIN stories st ON st.id = f.story_id

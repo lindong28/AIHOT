@@ -10,6 +10,7 @@
 | [migration.md](migration.md) | 维护者：当前迁移状态、阶段记录与剩余缺口 |
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
+| [references/20261005-source-labels.md](references/20261005-source-labels.md) | 开发者：文章级公开来源、历史聚合归属和批量修复验收 |
 | [operations/services.md](operations/services.md) | 维护者：生产、本机、旧站与 Wechat2RSS 服务入口 |
 | [operations/production.md](operations/production.md) | 部署维护者：腾讯云发布、服务与隧道起停、公网切换及回滚 |
 | [references/20261001-production-cutover.md](references/20261001-production-cutover.md) | 开发者：生产拓扑决定、停止旧链路与准备阶段记录 |
