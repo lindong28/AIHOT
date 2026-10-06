@@ -32,6 +32,12 @@ const codexVersion = cached(() => codexResetVersion(), { freshMs: 5_000, maxStal
 
 class BadRequest extends Error {}
 
+function newsScope(req: FastifyRequest, fallback: 'all' | 'selected') {
+  const tab = looseQuery(req).tab ?? fallback;
+  if (tab !== 'all' && tab !== 'selected') throw new BadRequest('invalid tab');
+  return tab;
+}
+
 /** Cache until the earliest pending release in scope (an absolute deadline shared with any proxy or CDN in front). */
 export function cacheUntil(reply: FastifyReply, defaultSeconds: number, refreshAt: string | null, now = Date.now()) {
   let seconds = defaultSeconds;
@@ -82,14 +88,13 @@ export async function parseFilters(q: Record<string, string>): Promise<FilterPar
 
 export function registerSite(app: FastifyInstance) {
   app.get("/api/site/sources", siteHandler(async (req, reply) => {
-    return sendJsonWithEtag(req, reply, await loadSourceDirectory(), { etagPrefix: "sources", cacheControl: "public, max-age=60, s-maxage=60" });
+    return sendJsonWithEtag(req, reply, await loadSourceDirectory(new Date(), newsScope(req, 'all')), { etagPrefix: "sources", cacheControl: "public, max-age=60, s-maxage=60" });
   }));
   for (const path of ["/api/site/sources/:group", "/api/site/sources/:group/:key"]) app.get(path, siteHandler(async (req, reply) => {
     const { group, key } = req.params as { group: string; key?: string };
     const q = looseQuery(req);
     if (q.page && (!/^[1-9][0-9]*$/.test(q.page) || !Number.isSafeInteger(Number(q.page)))) throw new BadRequest("invalid page");
-    if (q.tab && q.tab !== "all" && q.tab !== "selected") throw new BadRequest("invalid tab");
-    const body = await loadSourcePage(group, key ?? null, q.tab === "selected" ? "selected" : "all", Number(q.page || 1));
+    const body = await loadSourcePage(group, key ?? null, newsScope(req, 'all'), Number(q.page || 1));
     if (!body) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "source not found" });
     return sendJsonWithEtag(req, reply, body, { etagPrefix: "source", cacheControl: "public, max-age=60, s-maxage=60" });
   }));
@@ -188,13 +193,14 @@ export function registerSite(app: FastifyInstance) {
   }));
 
   app.get("/api/site/topics", siteHandler(async (req, reply) => {
-    return sendJsonWithEtag(req, reply, { topics: await listTopicSummaries() }, { etagPrefix: "topics", cacheControl: "public, max-age=300, s-maxage=300" });
+    return sendJsonWithEtag(req, reply, { topics: await listTopicSummaries(newsScope(req, 'selected')) }, { etagPrefix: "topics", cacheControl: "public, max-age=300, s-maxage=300" });
   }));
 
   app.get("/api/site/topics/:slug", siteHandler(async (req, reply) => {
     const slug = (req.params as { slug: string }).slug;
     const page = Number(looseQuery(req).page ?? 1);
-    const data = Number.isInteger(page) ? await loadTopicPage(slug, page) : null;
+    const tab = newsScope(req, 'selected');
+    const data = Number.isInteger(page) ? await loadTopicPage(slug, page, new Date(), tab) : null;
     if (!data) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "topic page not found", cacheControl: "public, max-age=60" });
     return sendJsonWithEtag(req, reply, data, { etagPrefix: "topic", cacheControl: "public, max-age=60, s-maxage=60" });
   }));

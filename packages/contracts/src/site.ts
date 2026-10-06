@@ -33,6 +33,7 @@ export interface SourceGroup {
   accounts: PublicSource[];
 }
 
+export type NewsScope = "all" | "selected";
 export interface SourceDirectory { groups: SourceGroup[] }
 export interface SourcePage {
   group: SourceGroup;

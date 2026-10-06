@@ -72,6 +72,8 @@ test('native and historical WeChat converge; unknown and ambiguous authors stay 
   assert.equal(page.source!.total, 2);
   assert.ok(page.items.every(i => i.source.href === `/sources/wechat/${mp}`));
   assert.equal((await loadSourcePage('wechat', mp, 'selected', 1, clock))!.total, 1);
+  const selectedDirectory = await loadSourceDirectory(clock, 'selected');
+  assert.equal(selectedDirectory.groups.find(g => g.key === 'wechat')!.accounts.find(a => a.href.endsWith('/' + mp))!.total, 1);
   const category = (await loadSourcePage('wechat', null, 'all', 1, clock))!;
   assert.equal(category.items.find(i => i.id === unknown)!.source.href, '/sources/wechat');
   await sql`UPDATE sources SET enabled=false WHERE id=${mp}`;
@@ -95,6 +97,9 @@ test('X canonical author wins over tracked source and overlaps with HN channel',
   assert.ok(hn.items.some(i => i.id === viaHn));
   assert.ok(!hn.items.some(i => i.id === native));
   assert.ok((await loadSourcePage('x', 'anotherauthor', 'all', 1, clock))!.items.some(i => i.id === retweet));
+  const selectedHn = (await loadSourcePage('hacker-news', null, 'selected', 1, clock))!;
+  assert.ok(!selectedHn.items.some(i => i.id === viaHn));
+  assert.equal(selectedHn.total, (await loadSourceDirectory(clock, 'selected')).groups.find(g => g.key === 'hacker-news')!.total);
 });
 
 test('source links on unlisted historical details resolve to empty source pages', async () => {

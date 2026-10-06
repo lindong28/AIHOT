@@ -6,6 +6,8 @@ import { pageMeta, titled } from "../lib/seo";
 import { SourceAvatar } from "../components/ui/SourceAvatar";
 import { DayList, Pagination } from "../features/feed/DayList";
 import { EmptyState } from "../components/ui/Page";
+import { NewsScopeToggle } from "../components/ui/NewsScopeToggle";
+import { scopeHref } from "../lib/news-scope";
 
 function queryString(values: Record<string, string | number | null>) {
   const params = new URLSearchParams();
@@ -35,8 +37,8 @@ export default function SourceNewsPage() {
   const accounts = group.accounts.filter(a => `${a.name} ${a.identifier ?? ''}`.toLowerCase().includes(q.toLowerCase()));
   return <div className="pb-6 pt-5 lg:pt-1">
     <nav aria-label="面包屑" className="mb-4 flex flex-wrap gap-2 text-[13px] text-ink-4">
-      <Link to="/sources" className="hover:text-accent">来源</Link><span>›</span>
-      {source ? <><Link to={group.href} className="hover:text-accent">{group.name}</Link><span>›</span><span aria-current="page">{source.name}</span></> : <span aria-current="page">{group.name}</span>}
+      <Link to={scopeHref('/sources', tab)} className="hover:text-accent">来源</Link><span>›</span>
+      {source ? <><Link to={scopeHref(group.href, tab)} className="hover:text-accent">{group.name}</Link><span>›</span><span aria-current="page">{source.name}</span></> : <span aria-current="page">{group.name}</span>}
     </nav>
     <header className="mb-5 flex items-center gap-3">
       {source && <SourceAvatar name={source.name} iconUrl={source.iconUrl} size={44} />}
@@ -44,6 +46,7 @@ export default function SourceNewsPage() {
         <p className="mt-1 text-[13px] text-ink-3">{source ? [source.identifier, group.name, !source.active ? '历史来源 · 当前未持续收录' : null].filter(Boolean).join(' · ') : group.description}</p>
       </div>
     </header>
+    <NewsScopeToggle value={tab} href={scope => scopeHref(path, scope, q)} />
     {group.accounts.length > 0 && <details className="mb-5 rounded-control border border-line bg-surface p-3" key={`${path}:${q}`} open={q ? true : undefined}>
       <summary className="cursor-pointer text-[13px] text-ink-2">{source ? '切换来源' : `按账号或来源筛选（${group.accounts.length}）`}</summary>
       <Form method="get" action={path} className="mt-3 flex gap-2" role="search">
@@ -60,9 +63,8 @@ export default function SourceNewsPage() {
         {accounts.length === 0 && <p className="p-2 text-[13px] text-ink-4">没有匹配的来源。</p>}
       </div>
     </details>}
-    <div className="mb-3 flex items-center justify-between border-b border-line">
-      <nav aria-label="新闻范围" className="flex gap-5">{(['all', 'selected'] as const).map(t => <Link key={t} to={href(1, t)} aria-current={t === tab ? 'page' : undefined} className={`border-b-2 py-3 text-[14px] ${t === tab ? 'border-accent font-semibold text-accent' : 'border-transparent text-ink-3'}`}>{t === 'all' ? '全部' : '精选'}</Link>)}</nav>
-      <span className="text-[12px] text-ink-4">{total.toLocaleString('zh-CN')} 条{tab === 'selected' ? '精选' : '公开新闻'} · 最新在前</span>
+    <div className="mb-3 border-b border-line pb-3">
+      <span className="text-[12px] text-ink-4">{total.toLocaleString('zh-CN')} 条{tab === 'selected' ? '精选' : 'AI 相关新闻'} · 最新在前</span>
     </div>
     {items.length ? <DayList items={items} /> : <EmptyState title={tab === 'selected' ? '暂无精选新闻' : '暂无公开新闻'} />}
     <Pagination page={page} pageCount={pageCount} href={href} />

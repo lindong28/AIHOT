@@ -1,10 +1,10 @@
-import type { FeedItemSummary } from "@aihot/contracts/site";
+import type { FeedItemSummary, NewsScope } from "@aihot/contracts/site";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "../config.ts";
 import { sql } from "../db.ts";
 import { cached } from "../lib/cache.ts";
-import { ITEM_COLUMNS, ITEM_FROM, selectedCondition, toFeedItemSummary, type ItemRow } from "./items.ts";
+import { ITEM_COLUMNS, ITEM_FROM, listedCondition, toFeedItemSummary, type ItemRow } from "./items.ts";
 
 export interface TopicRow {
   slug: string;
@@ -23,7 +23,12 @@ const topicsCache = cached(
   { freshMs: 60_000, maxStaleMs: 10 * 60_000 },
 );
 // Counts may lag by about a minute, like the public directory cache; item reads always check visibility.
-const countsCache = cached(queryTopicCounts, { freshMs: 60_000, maxStaleMs: 10 * 60_000 });
+const countsCache = {
+  selected: cached(() => queryTopicCounts('selected'), { freshMs: 60_000, maxStaleMs: 10 * 60_000 }),
+  all: cached(() => queryTopicCounts('all'), { freshMs: 60_000, maxStaleMs: 10 * 60_000 }),
+};
+const topicScope = (tab: NewsScope, now: Date) => sql`${listedCondition(now)} AND p.eligible
+  AND s.participation_mode = 'editorial' ${tab === 'selected' ? sql`AND p.selected` : sql``}`;
 
 /**
  * The topics (stable slugs, names, definitions, related topics) come from the industry pack
@@ -42,7 +47,8 @@ export async function seedTopics(): Promise<number> {
         tags = EXCLUDED.tags, definition = EXCLUDED.definition, related = EXCLUDED.related, position = EXCLUDED.position`;
   }
   topicsCache.clear();
-  countsCache.clear();
+  countsCache.selected.clear();
+  countsCache.all.clear();
   return data.topics.length;
 }
 
@@ -70,18 +76,20 @@ export async function loadTopicTags(slug: string): Promise<string[] | null> {
 export const TOPIC_PAGE_SIZE = 20;
 
 /** Topic pages exist for every topic; only topics with enough content are listed and indexed. */
-export function topicPageCounts(): Promise<TopicCount[]> {
-  return countsCache.get();
+export function topicPageCounts(tab: NewsScope = 'selected'): Promise<TopicCount[]> {
+  return countsCache[tab].get();
 }
 
 /**
- * One pass over the selected set (a few thousand rows from its partial index) instead of one
+ * One pass over the chosen public set instead of one
  * scan per topic; a topic counts an item when their tags overlap, as `p.tags && match` does.
  */
-async function queryTopicCounts(): Promise<TopicCount[]> {
+async function queryTopicCounts(tab: NewsScope): Promise<TopicCount[]> {
+  const now = new Date();
   const [topics, items] = await Promise.all([
     sql<Array<Pick<TopicRow, "slug" | "entity_id" | "tags">>>`SELECT slug, entity_id, tags FROM topics ORDER BY position`,
-    sql<{ tags: string[]; timeline_at: Date }[]>`SELECT p.tags, p.timeline_at FROM publications p WHERE p.visibility = 'public' AND p.selected`,
+    sql<{ tags: string[]; timeline_at: Date }[]>`SELECT p.tags, p.timeline_at FROM publications p
+      JOIN sources s ON s.id = p.source_id WHERE ${topicScope(tab, now)}`,
   ]);
   const recentFrom = Date.now() - 30 * 86400_000;
   return topics.map((t) => {
@@ -110,9 +118,9 @@ export interface TopicSummary {
   latestAt: string | null;
 }
 
-export async function listTopicSummaries(): Promise<TopicSummary[]> {
+export async function listTopicSummaries(tab: NewsScope = 'selected'): Promise<TopicSummary[]> {
   const topics = await listTopics();
-  const counts = new Map((await topicPageCounts()).map((c) => [c.slug, c]));
+  const counts = new Map((await topicPageCounts(tab)).map((c) => [c.slug, c]));
   return topics.map((t) => {
     const c = counts.get(t.slug);
     return { slug: t.slug, name: t.name, group: t.grp, definition: t.definition, total: c?.total ?? 0, recent: c?.recent ?? 0, indexable: c?.indexable ?? false, latestAt: c?.latest?.toISOString() ?? null };
@@ -126,19 +134,19 @@ export interface TopicPage {
   pageCount: number;
 }
 
-export async function loadTopicPage(slug: string, page: number, now = new Date()): Promise<TopicPage | null> {
+export async function loadTopicPage(slug: string, page: number, now = new Date(), tab: NewsScope = 'selected'): Promise<TopicPage | null> {
   const row = await loadTopic(slug);
   if (!row || page < 1) return null;
-  const topics = await listTopicSummaries();
+  const topics = await listTopicSummaries(tab);
   const topic = topics.find((t) => t.slug === slug);
   if (!topic) return null;
   const pageCount = Math.max(1, Math.ceil(topic.total / TOPIC_PAGE_SIZE));
   if (page < 1 || page > pageCount) return null;
-  // Page ids from the selected set first, then the joins for those rows only.
+  // Page ids from the chosen public set first, then the joins for those rows only.
   const rows = await sql<ItemRow[]>`
     WITH page AS (
-      SELECT p.article_id FROM publications p
-      WHERE ${selectedCondition(now)} AND p.tags && ${topicMatchTags(row)}::text[]
+      SELECT p.article_id FROM publications p JOIN sources s ON s.id = p.source_id
+      WHERE ${topicScope(tab, now)} AND p.tags && ${topicMatchTags(row)}::text[]
       ORDER BY p.timeline_at DESC, p.article_id DESC
       LIMIT ${TOPIC_PAGE_SIZE} OFFSET ${(page - 1) * TOPIC_PAGE_SIZE})
     SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE p.article_id IN (SELECT article_id FROM page)

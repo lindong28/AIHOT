@@ -1,4 +1,4 @@
-import type { PublicSource, SourceDirectory, SourceGroup, SourcePage } from "@aihot/contracts/site";
+import type { NewsScope, PublicSource, SourceDirectory, SourceGroup, SourcePage } from "@aihot/contracts/site";
 import { sql } from "../db.ts";
 import { proxiedImage } from "../media/imgproxy.ts";
 import { ITEM_COLUMNS, ITEM_FROM, listedCondition, toFeedItemSummary, type ItemRow } from "./items.ts";
@@ -27,16 +27,17 @@ function identifier(href: string, url: string | null): string | null {
 }
 
 /** The registry is authoritative for active zero-item accounts; publications supply historical ones. */
-export async function loadSourceDirectory(now = new Date()): Promise<SourceDirectory> {
+export async function loadSourceDirectory(now = new Date(), tab: NewsScope = 'all'): Promise<SourceDirectory> {
+  const where = sql`${publicWhere(now)} ${tab === 'selected' ? sql`AND p.selected` : sql``}`;
   const [registry, counts, hn] = await Promise.all([
     sql<RegistryRow[]>`SELECT s.name, ${SOURCE_HOME_PATH} AS href, s.enabled, s.icon_url,
       coalesce(s.config->>'url', s.config->>'feedUrl') AS public_url
       FROM sources s WHERE s.participation_mode <> 'isolated' ORDER BY s.enabled DESC, s.id`,
     sql<CountRow[]>`SELECT ${SOURCE_PATH} AS href, count(*) AS total, min(coalesce(p.source_label, s.name)) AS name
       FROM publications p JOIN sources s ON s.id = p.source_id JOIN articles a ON a.id = p.article_id
-      WHERE ${publicWhere(now)} GROUP BY 1`,
+      WHERE ${where} GROUP BY 1`,
     sql<{ total: number }[]>`SELECT count(*) AS total FROM publications p JOIN sources s ON s.id = p.source_id
-      WHERE ${publicWhere(now)} AND ${HN_SOURCE}`,
+      WHERE ${where} AND ${HN_SOURCE}`,
   ]);
   const accounts = new Map<string, PublicSource>();
   for (const row of registry) {
@@ -69,7 +70,7 @@ export async function loadSourceDirectory(now = new Date()): Promise<SourceDirec
 
 export async function loadSourcePage(groupKey: string, key: string | null, tab: 'all' | 'selected', page: number, now = new Date()): Promise<SourcePage | null> {
   if (!GROUPS.some(([g]) => g === groupKey)) return null;
-  const directory = await loadSourceDirectory(now);
+  const directory = await loadSourceDirectory(now, tab);
   const group = directory.groups.find(g => g.key === groupKey)!;
   const path = key ? `${group.href}/${encodeURIComponent(key)}` : group.href;
   let source = key ? group.accounts.find(a => a.href === path) : null;
@@ -93,11 +94,10 @@ export async function loadSourcePage(groupKey: string, key: string | null, tab: 
   const where = sql`${publicWhere(now)} AND ${membership}
     ${groupKey !== 'x' && groupKey !== 'hacker-news' ? sql`AND split_part(${SOURCE_HOME_PATH}, '/', 3) = ${groupKey}` : sql``}
     ${tab === 'selected' ? sql`AND p.selected` : sql``}`;
-  // The directory already counted this exact public scope. Only the selected subset needs
-  // another count. Non-X/HN categories can first filter the small source registry: only X URLs
+  // The directory already counted this exact scope, including the selected filter.
+  // Non-X/HN categories can first filter the small source registry: only X URLs
   // override that category, and the full membership check still excludes those articles.
-  const total = tab === 'all' ? (source ?? group).total : (await sql<{ total: number }[]>`SELECT count(*) AS total
-    FROM publications p JOIN sources s ON s.id = p.source_id JOIN articles a ON a.id = p.article_id WHERE ${where}`)[0]!.total;
+  const total = (source ?? group).total;
   const pageCount = Math.max(1, Math.ceil(Number(total) / PAGE_SIZE));
   if (page > pageCount) return null;
   const rows = await sql<ItemRow[]>`SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE ${where}
