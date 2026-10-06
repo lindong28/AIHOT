@@ -6,6 +6,8 @@
 
 公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。
 
+2026-10-06 已增至 41 个公众号：新增火山引擎、生数科技、卡尔的AI沃茨、千问APP、百度智能云、通义实验室、昆仑万维集团、可灵AI、美团技术团队、龙猫LongCat。10 个账号均已创建上游订阅、登记生产来源并完成 worker 首轮 RSS 读取；部分账号最近文章早于初始 7 天窗口，未导入这些旧文。具体读数见[视频来源生产接入](../references/20261006-video-sources.md#生产接入2026-10-06)。未运行历史 backfill。
+
 新增时先从文章页核对公众号名称与 `bizId`，通过上游 `/list` 完整分页确认是否已有订阅；仅缺项调用 `/add/:bizId`，从返回订阅地址的 `/feed/<feedId>.xml` 取得 `feedId`。认证使用机器上的私有 RSS token，不把带 token 的 URL 输出或提交。接口契约见[上游 API 文档](https://github.com/ttttmr/wechat2rss/blob/master/deploy/api.md)。把账号按既有 `mp_account` / `provider=wechat2rss` 结构加入清单后，将该文件部署至 `/home/ubuntu/aihot/current/industry/sources.json`，再在生产 release 根目录执行：
 
 ```bash
