@@ -1,6 +1,913 @@
 {
   "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。",
   "sources": [
+    {
+      "id": "radar-pytorch",
+      "name": "PyTorch Blog",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://pytorch.org/feed/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-exponential",
+      "name": "Exponential View",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.exponentialview.co/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-404media",
+      "name": "404 Media",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.404media.co/rss/",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-chinatalk",
+      "name": "ChinaTalk",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.chinatalk.media/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-googleai-dev",
+      "name": "Google AI：DEV 作者专属",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://dev.to/feed/googleai",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-redwood",
+      "name": "Redwood Research Blog",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://blog.redwoodresearch.org/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-understandingai",
+      "name": "Understanding AI",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.understandingai.org/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-amazon-science",
+      "name": "Amazon Science",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.amazon.science/index.rss",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-codex-releases",
+      "name": "Codex GitHub Releases",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://github.com/openai/codex/releases.atom",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-factory",
+      "name": "Factory 研究 / 产品",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://factory.com/news/rss",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-claude-youtube",
+      "name": "Claude YouTube",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=UCV03SRZXJEz-hchIAogeJOg",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-artificial-intelligence-news",
+      "name": "Artificial Intelligence News",
+      "kind": "json_list",
+      "config": {
+        "url": "https://www.artificialintelligence-news.com/wp-json/wp/v2/posts?per_page=20&_fields=id,link,yoast_head_json.og_title,yoast_head_json.description,yoast_head_json.article_published_time",
+        "headers": {
+          "user-agent": "Mozilla/5.0"
+        },
+        "titlePaths": [
+          "yoast_head_json.og_title"
+        ],
+        "summaryPaths": [
+          "yoast_head_json.description"
+        ],
+        "publishedAtPath": "yoast_head_json.article_published_time",
+        "urlTemplate": "{raw:link}",
+        "externalIdPath": "id",
+        "sortByPublishedAt": true,
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-chips-and-cheese",
+      "name": "Chips and Cheese",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://chipsandcheese.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-epoch-gradient-updates",
+      "name": "Epoch AI：Gradient Updates",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://epochai.substack.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-recode-china-ai",
+      "name": "Recode China AI",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.recodechinaai.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-semianalysis",
+      "name": "SemiAnalysis 长文",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://newsletter.semianalysis.com/feed",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-canary-data-centers",
+      "name": "Canary Media：Data Centers",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://www.canarymedia.com/rss.rss",
+        "allowUrlPrefixes": [
+          "https://www.canarymedia.com/articles/data-centers/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T2",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-openclaw-blog",
+      "name": "OpenClaw Blog",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://openclaw.ai/rss.xml",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-replit-blog",
+      "name": "Replit Blog",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://replit.com/blog/feed.xml",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-cohere-blog",
+      "name": "Cohere 产品与研究博客",
+      "kind": "web_list",
+      "config": {
+        "url": "https://cohere.com/blog",
+        "itemSelector": "main a[href^=\"/blog/\"]:has(p.text-balance)",
+        "titleSelector": "p.text-balance",
+        "publishedAtSelector": "p.font-eyebrow",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-liquid-blog",
+      "name": "Liquid AI 模型与工程博客",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.liquid.ai/news",
+        "itemSelector": "div[class~=\"group/row\"]:has(a[href^=\"/blog/\"]):has(> span:contains(Models)), div[class~=\"group/row\"]:has(a[href^=\"/blog/\"]):has(> span:contains(Engineering))",
+        "titleSelector": "a[href^=\"/blog/\"]",
+        "linkSelector": "a[href^=\"/blog/\"]",
+        "publishedAtSelector": "time",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-llamaindex-blog",
+      "name": "LlamaIndex：产品、工程与评测",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.llamaindex.ai/blog",
+        "itemSelector": ".Post:has(.PostDate)",
+        "linkSelector": ".PostTitle a",
+        "titleSelector": ".PostTitle",
+        "publishedAtSelector": ".PostDate",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-preferred-networks-news",
+      "name": "Preferred Networks：AI 研究与产品",
+      "kind": "web_list",
+      "config": {
+        "url": "https://www.preferred.jp/ja/news",
+        "itemSelector": "div:has(> time):has(> h2)",
+        "linkSelector": "h2 a",
+        "titleSelector": "h2",
+        "publishedAtSelector": "time",
+        "allowUrlPrefixes": [
+          "https://www.preferred.jp/ja/news/"
+        ],
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-promptarmor-threat-intelligence",
+      "name": "PromptArmor：Threat Intelligence",
+      "kind": "json_list",
+      "config": {
+        "url": "https://www.promptarmor.com/resources",
+        "mode": "html_json_key",
+        "jsonKey": "articles",
+        "titlePaths": [
+          "fields.title"
+        ],
+        "summaryPaths": [
+          "fields.description"
+        ],
+        "publishedAtPath": "fields.publishedAt",
+        "urlTemplate": "https://www.promptarmor.com/resources/{fields.slug}",
+        "externalIdPath": "id",
+        "requireBoolean": {
+          "path": "fields.isDraft",
+          "equals": false
+        },
+        "_aihot": {
+          "initialBackfillLimit": 8
+        },
+        "sortByPublishedAt": true,
+        "requireValue": {
+          "path": "fields.category",
+          "equals": "threat-intelligence"
+        }
+      },
+      "tier": "T1",
+      "first_party": true,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-dair-ai",
+      "name": "X：DAIR.AI (@dair_ai)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:dair_ai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-cursor-ai",
+      "name": "X：Cursor (@cursor_ai)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:cursor_ai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x--philschmid",
+      "name": "X：Philipp Schmid（Google DeepMind 开发者体验） (@_philschmid)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:_philschmid -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-cognition",
+      "name": "X：Cognition (@cognition)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:cognition -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-elevenlabs",
+      "name": "X：ElevenLabs (@elevenlabs)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:elevenlabs -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-fal",
+      "name": "X：fal (@fal)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:fal -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-figure-robot",
+      "name": "X：Figure AI (@Figure_robot)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:figure_robot -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-khazix0918",
+      "name": "X：卡兹克 (@Khazix0918)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:khazix0918 -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-pixverse-current",
+      "name": "X：PixVerse (@PixVerse)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:pixverse -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-arcprize",
+      "name": "X：ARC Prize (@arcprize)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:arcprize -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-arena",
+      "name": "X：Arena (@arena)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:arena -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-hailuo-ai",
+      "name": "X：MiniMax Design (H3) (@Hailuo_AI)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:hailuo_ai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-higgsfield",
+      "name": "X：Higgsfield AI (@higgsfield)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:higgsfield -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-manusai",
+      "name": "X：Manus (@ManusAI)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:manusai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-meshyai",
+      "name": "X：Meshy (@MeshyAI)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:meshyai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-arthurmensch",
+      "name": "X：Arthur Mensch（Mistral CEO） (@arthurmensch)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:arthurmensch -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-gemini-notebook",
+      "name": "X：Gemini Notebook (@Gemini_Notebook)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:gemini_notebook -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-ggerganov",
+      "name": "X：Georgi Gerganov（llama.cpp） (@ggerganov)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:ggerganov -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-lisasu",
+      "name": "X：Lisa Su（AMD CEO） (@LisaSu)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:lisasu -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-sensetime-ai",
+      "name": "X：商汤 SenseTime (@SenseTime_AI)",
+      "kind": "x_search",
+      "config": {
+        "query": "from:sensetime_ai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
+      "id": "radar-x-tripoai",
+      "name": "Tripo（官方 X）",
+      "kind": "x_search",
+      "config": {
+        "query": "from:tripoai -filter:replies",
+        "searchType": "Latest",
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1_5",
+      "first_party": false,
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "enabled": true,
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
     {"id":"radar-mp-3247557295","name":"火山引擎","kind":"mp_account","config":{"provider":"wechat2rss","bizId":"3247557295","feedId":"3d476be12577728d6db1b6827f408be8b5ea2193"},"tier":"T1_5","first_party":false,"participation_mode":"editorial","interval_minutes":15,"enabled":true,"site_fulltext":false,"syndicate_fulltext":false},
     {"id":"radar-mp-3930495401","name":"生数科技","kind":"mp_account","config":{"provider":"wechat2rss","bizId":"3930495401","feedId":"3f6f1d0bc7315c8b22d1d0a435ace167d1139d22"},"tier":"T1_5","first_party":false,"participation_mode":"editorial","interval_minutes":15,"enabled":true,"site_fulltext":false,"syndicate_fulltext":false},
     {"id":"radar-mp-3871977637","name":"卡尔的AI沃茨","kind":"mp_account","config":{"provider":"wechat2rss","bizId":"3871977637","feedId":"66d54a048176fb3c29535962d7ea50c80edcbe06"},"tier":"T1_5","first_party":false,"participation_mode":"editorial","interval_minutes":15,"enabled":true,"site_fulltext":false,"syndicate_fulltext":false},

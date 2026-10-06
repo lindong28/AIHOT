@@ -39,6 +39,8 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 
 每种信源认哪些配置项写在 `packages/backend/src/sources/config-keys.ts`。填了不认识的配置项，保存会被拒绝、抓取会直接失败并在后台显示原因，不会悄悄退回通用解析。
 
+2026-10-06 的 [48 小时缺口补齐](references/20261006-source-gap-fill.md) 新增 21 个 X 账号和 24 个网站／频道，普通首次采集每源最多 8 篇，后续按调度更新，不运行历史 backfill。以后发现新缺口可复用[来源审计脚本](operations/source-gap-audit.md)。
+
 ### rss
 
 ```json
@@ -62,6 +64,10 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 - `parseMode`：`html`（默认，用选择器）、`markdown`（经 Jina 渲染后按 Markdown 读）、`docusaurus_changelog`。
 - `detail`：列表缺日期、标题或摘要时抓详情页补齐（`publishedAtSelector`、`titleSelector`、`summarySelector` 等）。
 - `allowUrlPrefixes` / `denyUrlPrefixes`：只收某些路径下的文章。
+
+### json_list
+
+使用 `url`、`titlePaths`、`publishedAtPath` 和 `urlTemplate` 映射列表字段。网页内嵌 JSON 可使用 `mode: "html_json_key"` 与 `jsonKey`。可选 `requireValue: { "path": "fields.category", "equals": "threat-intelligence" }` 只保留指定栏目；`equals` 支持字符串、数字、布尔值和 null，按严格相等比较，不转换类型，缺失字段不等同 null。与 `requireBoolean` 同时配置时必须同时满足两项，例如再排除草稿。合法过滤后没有条目会返回空列表；配置格式错误会被拒绝。
 
 ### x_search
 

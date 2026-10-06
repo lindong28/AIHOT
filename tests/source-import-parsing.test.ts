@@ -6,6 +6,7 @@ import { after, test } from "node:test";
 import { config } from "@aihot/backend/config";
 import { fetchJsonList } from "@aihot/backend/sources/json-list";
 import { fetchWebList } from "@aihot/backend/sources/web-list";
+import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 import type { SourceRow } from "@aihot/backend/sources/types";
 
 const posts = [
@@ -14,6 +15,16 @@ const posts = [
 ];
 const flight = (value: unknown) => `<script>self.__next_f.push(${JSON.stringify([1, `8:${JSON.stringify(value)}\n`])})</script>`;
 const pages: Record<string, string> = {
+  "/filtered": flight({ posts: [
+    { title: "Published threat", slug: "threat", fields: { category: "threat-intelligence", isDraft: false } },
+    { title: "Draft threat", slug: "draft", fields: { category: "threat-intelligence", isDraft: true } },
+    { title: "Blog", slug: "blog", fields: { category: "blog", isDraft: false } },
+    { title: "Number", slug: "number", fields: { category: 1 } },
+    { title: "String", slug: "string", fields: { category: "1" } },
+    { title: "Boolean", slug: "boolean", fields: { category: false } },
+    { title: "Null", slug: "null", fields: { category: null } },
+    { title: "Missing", slug: "missing", fields: {} },
+  ] }),
   "/flight": flight(["$", "$L6", null, { posts, other: [1, 2] }]),
   "/plain": `<script type="application/json">${JSON.stringify({ props: { posts } })}</script>`,
   "/missing": flight({ other: posts }),
@@ -51,4 +62,25 @@ test("release-note date headings exclude copy buttons and anchor decoration", as
     ["September 27, 2026", new Date("September 27, 2026").toISOString(), "Another release."],
   ]);
   assert.notEqual(items[0]!.identityKey, items[1]!.identityKey);
+});
+
+test("JSON value filter is strict, distinguishes missing from null, and combines with draft filter", async () => {
+  for (const [equals, expected] of [["threat-intelligence", ["Published threat", "Draft threat"]], [1, ["Number"]], ["1", ["String"]], [false, ["Boolean"]], [null, ["Null"]], ["absent", []]] as const) {
+    const s = source("/filtered");
+    s.config.requireValue = { path: "fields.category", equals };
+    assertSupportedConfig(s.kind, s.config);
+    assert.deepEqual((await fetchJsonList(s)).map((x) => x.title), expected);
+  }
+  const s = source("/filtered");
+  s.config.requireValue = { path: "fields.category", equals: "threat-intelligence" };
+  s.config.requireBoolean = { path: "fields.isDraft", equals: false };
+  assert.deepEqual((await fetchJsonList(s)).map((x) => x.title), ["Published threat"]);
+  delete s.config.requireValue;
+  assert.deepEqual((await fetchJsonList(s)).map((x) => x.title), ["Published threat", "Blog"]);
+});
+
+test("JSON value filter rejects malformed configuration", () => {
+  for (const requireValue of [null, [], "category", {}, { path: "" , equals: "blog" }, { path: "fields.category" }, { path: "fields.category", equals: [] }, { path: "fields.category", equals: {} }, { path: "fields.category", equals: "blog", typo: true }]) {
+    assert.throws(() => assertSupportedConfig("json_list", { requireValue }), /requireValue/);
+  }
 });

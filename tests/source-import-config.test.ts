@@ -20,7 +20,7 @@ test("imported sources use implemented configurations and unique identities", ()
 
 test("all migrated X accounts fit native shard collection without duplicate handles", () => {
   const accounts = sources.filter((s: any) => s.kind === "x_search");
-  assert.equal(accounts.length, 113); // 109 migrated accounts plus four added from the video-source audit.
+  assert.equal(accounts.length, 134); // 109 migrated, four video-audit accounts, and 21 recent-news gaps.
   const handles = accounts.map((s: any) => s.config.query.toLowerCase());
   assert.equal(new Set(handles).size, accounts.length);
   assert.deepEqual(planXShards(accounts), [], "first imports stay individual until each has a watermark");

@@ -176,6 +176,7 @@ export async function fetchJsonList(source: SourceRow): Promise<Candidate[]> {
   const out: Candidate[] = [];
   for (const item of items) {
     if (c.requireBoolean && getPath(item, c.requireBoolean.path) !== c.requireBoolean.equals) continue;
+    if (c.requireValue && getPath(item, c.requireValue.path) !== c.requireValue.equals) continue;
     if (c.minNumeric && !(Number(getPath(item, c.minNumeric.path)) >= Number(c.minNumeric.min))) continue;
     const title = firstString(item, c.titlePaths);
     const url = (c.urlTemplate && renderTemplate(c.urlTemplate, item)) || (c.urlTemplateFallback && renderTemplate(c.urlTemplateFallback, item));
@@ -196,6 +197,6 @@ export async function fetchJsonList(source: SourceRow): Promise<Candidate[]> {
       raw: { externalId: externalId ?? null },
     });
   }
-  if (items.length > 0 && out.length === 0 && !c.requireBoolean && !c.minNumeric) throw new FetchError("no items mapped (check title/url paths)");
+  if (items.length > 0 && out.length === 0 && !c.requireBoolean && !c.requireValue && !c.minNumeric) throw new FetchError("no items mapped (check title/url paths)");
   return out;
 }

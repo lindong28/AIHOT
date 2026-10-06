@@ -15,7 +15,7 @@ const KEYS: Record<SourceRow["kind"], string[]> = {
   json_list: [
     ...COLLECTED, "url", "mode", "method", "headers", "bodyJson", "jsonKey", "windowVar", "itemsPath", "itemsObjectValues",
     "titlePaths", "summaryPaths", "summaryIsBody", "authorPaths", "publishedAtPath", "publishedAtUnit", "externalIdPath",
-    "urlTemplate", "urlTemplateFallback", "rawDropKeys", "requireBoolean", "minNumeric",
+    "urlTemplate", "urlTemplateFallback", "rawDropKeys", "requireBoolean", "requireValue", "minNumeric",
   ],
   // X accounts are mostly read in shards, which apply only these.
   x_search: ["_aihot", "ingestNoiseFilter", "itemUrlPrefixRewrite", "query", "searchType"],
@@ -29,6 +29,7 @@ const NESTED: Record<string, string[]> = {
   ingestNoiseFilter: ["dropMarkers", "dropMarkersTitleOnly", "keepIfMatches"],
   itemUrlPrefixRewrite: ["from", "to"],
   requireBoolean: ["path", "equals"],
+  requireValue: ["path", "equals"],
   minNumeric: ["path", "min"],
   detail: [
     "maxFetches", "publishedAtSelector", "publishedAtRegex", "publishedAtUtcOffset", "publishedAtAuthoritative", "upgradeDatePrecision",
@@ -48,6 +49,11 @@ export function unsupportedConfig(kind: SourceRow["kind"], config: Record<string
   const out: string[] = [];
   for (const [key, value] of Object.entries(config ?? {})) {
     if (!allowed.has(key)) out.push(key);
+    else if (key === "requireValue" && (!value || typeof value !== "object" || Array.isArray(value) ||
+      typeof (value as any).path !== "string" || !(value as any).path.trim() ||
+      !Object.hasOwn(value, "equals") || !((value as any).equals === null || ["string", "number", "boolean"].includes(typeof (value as any).equals)))) {
+      out.push("requireValue needs a nonempty path and a scalar equals value");
+    }
     else if (key === "reportImages" && typeof value !== "boolean") out.push("reportImages must be boolean");
     else if (VALUES[key] && !VALUES[key]!.includes(String(value))) out.push(`${key}=${String(value)}`);
     else if (NESTED[key] && value && typeof value === "object") {
