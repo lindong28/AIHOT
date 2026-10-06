@@ -2,6 +2,31 @@
   "$comment": "示范信源：首次启动时导入（scripts/seed.ts），已存在的不会被覆盖。之后在后台“信源”里增删改。字段说明见 docs/customize.md。",
   "sources": [
     {
+      "id": "rss-xai-news",
+      "name": "xAI：News",
+      "kind": "rss",
+      "config": {
+        "feedUrl": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_xainews.xml",
+        "allowUrlPrefixes": [
+          "https://x.ai/news/"
+        ],
+        "fetchPublicContent": true,
+        "_aihot": {
+          "initialBackfillLimit": 8
+        }
+      },
+      "tier": "T1",
+      "first_party": true,
+      "owner_entity_id": "xai",
+      "participation_mode": "editorial",
+      "interval_minutes": 120,
+      "tags": [
+        "官方"
+      ],
+      "site_fulltext": false,
+      "syndicate_fulltext": false
+    },
+    {
       "id": "rss-openai-news",
       "name": "OpenAI News",
       "kind": "rss",

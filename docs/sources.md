@@ -12,9 +12,17 @@
 
 信源在后台“信源”页管理：新建、试抓一次看看抓到什么、改频率、启停、看失败原因和最近的条目。首次启动时，`industry/sources.json` 里的示范信源会被导入。
 
-2026-09-30 迁移配置保留原 18 个 RSS，新增 36 个公开来源和 109 个 X 账号。Google Research、Mistral 已有 RSS，不重复加网页；Sierra 使用新发现的官方 RSS。`scripts/seed.ts` 可重跑，只添加尚不存在的来源，不覆盖后台编辑。当前 3 个故障 RSS 与已暂停的 xAI 尚待处置，Mp2RSS 已明确排除；真实验证范围见[迁移记录](migration.md)。
+2026-09-30 迁移配置保留原 18 个 RSS，新增 36 个公开来源和 109 个 X 账号。Google Research、Mistral 已有 RSS，不重复加网页；Sierra 使用新发现的官方 RSS。`scripts/seed.ts` 可重跑，只添加尚不存在的来源，不覆盖后台编辑。3 个故障 RSS 的处置沿用[迁移记录](migration.md)，Mp2RSS 已明确排除；xAI 的后续 RSS 接入见下节。
 
 X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL_DATA_API_KEY`，同时配置时前者优先。只把所需凭据放进本机 `.env` 或 `AIHOT_CREDENTIALS_DIR/collectors.env`，不要把整个个人凭据文件复制进仓库。账号首次回灌单独采集，取得水位后自动分组搜索。每页保存后更新断点，未读区间持续保留；每轮最多两页新内容和两次旧区间请求，积压续采约一分钟后重新调度，正常轮询频率不变。预算耗尽等到实际滚动窗口释放再调度；游标失效时用已保存的 ID 边界续采，没有可恢复边界的旧区间保留错误供排查。Wechat2RSS 部署与原生 RSS 登记见[运维说明](operations/wechat2rss.md)。
+
+## xAI 官网 News
+
+`industry/sources.json` 已加入 `rss-xai-news`，名称为“xAI：News”，采集 [xAI 官网 News](https://x.ai/news/) 文章。发现入口是 [Olshansk/rss-feeds 提供的第三方 RSS](https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_xainews.xml)，不是 xAI 官方 RSS；仅接收 `https://x.ai/news/` 下的原文链接。此来源使用原生 `rss` 采集与正文提取，不需要 X API 或 SocialData key，也不替代已有 X 账号来源。
+
+配置的首次回灌上限为 8 篇，初始抓取间隔为 120 分钟；`fetchPublicContent` 用于提取原文供后端处理，`site_fulltext` 与 `syndicate_fulltext` 仍为 false，不开放站内或订阅全文。通用提取器已知会遗漏原文示例代码块，不保证完整保留页面内容。
+
+既有站点要应用这份配置，需在包含它的部署版本中、使用部署原有环境运行 `scripts/seed.ts`；例如原环境文件为 `.env` 时执行 `node --env-file=.env scripts/seed.ts`。信源只补不存在的 ID；同 ID 的启停、频率和其他后台设置不会被覆盖，需在后台调整。seed 也会按既有逻辑更新主题，并在模型榜启用时补目录，不是单源导入命令。本次仓库配置变更不表示已部署或已在生产登记；已有本机三篇样本的采集、日期、正文与去重证据及未验范围见[2026-10-06 接入记录](migration.md#2026-10-06-xai-news-本地接入)。
 
 ## 六种信源
 
