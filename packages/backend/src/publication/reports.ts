@@ -167,24 +167,27 @@ export function leadItemOf(leadTitle: string | undefined, highlights: ReportCita
 
 /**
  * A picture for the front page's lead item: its own first sizeable image, else one from another public
- * report of the same event (first-hand first). Items shown as summaries only lend no pictures.
+ * report of the same event (first-hand first). Report media permission is separate from full text.
  */
-async function leadCover(itemId: string): Promise<{ url: string; srcSet?: string; width: number | null; height: number | null } | null> {
-  const [row] = await sql<{ m: { url: string; width?: number; height?: number } }[]>`
-    SELECT img.m
+async function leadCover(itemId: string): Promise<{ url: string; srcSet?: string; width: number | null; height: number | null; sourceName: string } | null> {
+  const [row] = await sql<{ m: { url: string; width?: number; height?: number }; source_name: string }[]>`
+    SELECT img.m, coalesce(p.source_label, s.name) AS source_name
     FROM publications p JOIN articles a ON a.id = p.article_id
+    JOIN sources s ON s.id = p.source_id
     CROSS JOIN LATERAL (
       SELECT m FROM jsonb_array_elements(coalesce(a.media, '[]'::jsonb)) m
       WHERE m->>'kind' = 'image' AND coalesce((m->>'width')::numeric, 800) >= 480 LIMIT 1
     ) img
     WHERE (p.article_id = ${itemId} OR p.story_id = (SELECT story_id FROM publications WHERE article_id = ${itemId}))
-      AND p.visibility = 'public' AND p.eligible AND p.body_mode <> 'summary'
+      AND p.visibility = 'public' AND p.eligible AND (NOT p.selected OR p.visible_after <= now())
+      AND CASE WHEN s.config ? 'reportImages' THEN s.config->'reportImages' = 'true'::jsonb
+        ELSE p.channel = 'x' OR p.body_mode = 'full' END
     ORDER BY (p.article_id = ${itemId}) DESC, p.first_party DESC, coalesce(p.score, 0) DESC, p.article_id
     LIMIT 1`;
   if (!row) return null;
   const url = proxiedImage(row.m.url, "full");
   if (!url) return null;
-  return { url, ...(proxiedImageSet(row.m.url, "hero") ? { srcSet: proxiedImageSet(row.m.url, "hero")! } : {}), width: typeof row.m.width === "number" ? row.m.width : null, height: typeof row.m.height === "number" ? row.m.height : null };
+  return { url, ...(proxiedImageSet(row.m.url, "hero") ? { srcSet: proxiedImageSet(row.m.url, "hero")! } : {}), width: typeof row.m.width === "number" ? row.m.width : null, height: typeof row.m.height === "number" ? row.m.height : null, sourceName: row.source_name };
 }
 
 function readingMinutes(text: string): number {
@@ -229,7 +232,10 @@ export async function loadReport(kind: ReportKind, key: string): Promise<ReportD
   // A weekly or monthly's picture comes from its first highlight and is captioned with that story.
   const leadItem = kind === "daily" ? leadItemOf(c.lead?.title, highlights, all) : (highlights[0] ?? all[0]);
   const [{ prev, next }, picture] = await Promise.all([neighbors(kind, key), leadItem?.itemId && leadItem.available ? leadCover(leadItem.itemId) : null]);
-  const cover = picture && leadItem ? { ...picture, caption: kind === "daily" ? null : leadItem.title } : null;
+  const cover = picture && leadItem ? {
+    url: picture.url, ...(picture.srcSet ? { srcSet: picture.srcSet } : {}), width: picture.width, height: picture.height,
+    caption: `${kind === "daily" ? "" : `${leadItem.title} · `}图片来源：${picture.sourceName}`,
+  } : null;
   const headline = kind === "daily" ? null : periodicHeadline(c);
   const title = kind === "daily" ? `${withSubject("日报")} · ${key}` : String(c.title ?? (kind === "weekly" ? `${SITE.name} 周报 · ${key}` : `${SITE.name} 月报 · ${key}`));
   return {

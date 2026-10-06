@@ -44,10 +44,11 @@ const VALUES: Record<string, string[]> = {
 
 /** The config entries a source of this kind would ignore or cannot run, e.g. ["adapter=site_cards", "detail.titleFoo"]. */
 export function unsupportedConfig(kind: SourceRow["kind"], config: Record<string, unknown>): string[] {
-  const allowed = new Set(KEYS[kind] ?? []);
+  const allowed = new Set([...(KEYS[kind] ?? []), "reportImages"]);
   const out: string[] = [];
   for (const [key, value] of Object.entries(config ?? {})) {
     if (!allowed.has(key)) out.push(key);
+    else if (key === "reportImages" && typeof value !== "boolean") out.push("reportImages must be boolean");
     else if (VALUES[key] && !VALUES[key]!.includes(String(value))) out.push(`${key}=${String(value)}`);
     else if (NESTED[key] && value && typeof value === "object") {
       for (const sub of Object.keys(value)) if (!NESTED[key]!.includes(sub)) out.push(`${key}.${sub}`);

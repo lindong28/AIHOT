@@ -77,6 +77,7 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 - **参与方式** `participation_mode`：`editorial` 进精选和全部动态；`hot_signal` 不单独展示，只作为“大家在讨论什么”的热度证据；`isolated` 不进任何公开页面。
 - **一手** `first_party`：来源是当事方自己。事件页会优先展示一手报道。
 - **全文**：`site_fulltext` 决定站内能不能显示全文，`syndicate_fulltext` 决定全文 RSS 能不能带正文。两者**默认都关**，只显示摘要和原文链接；来源明确允许时再打开。公众号、付费墙内容不会因为技术上抓得到就获得全文展示。
+- **刊物配图**：来源的 config JSON 可独立设置 `"reportImages": true` 或 `false`，适用于日报、周报和月报封面；后台“信源 → 配置”编辑，也可写入 `industry/sources.json` 中来源的 config。未配置时沿用 X 图片及全文文章的配图资格；false 优先禁止，true 允许摘要文章提供图片。普通媒体、公众号在确认允许配图后可单独开启，不需开放正文或全文 RSS。只选头条或同事件已公开文章的合尺寸图片，并标记实际供图来源。无图或加载失败时使用紧凑布局；历史刊物读取时生效，已有页面可能仍受缓存影响，无需重生成日报。规则见[刊物配图决定](references/20261006-report-images.md)。
 
 ## 抓取频率
 

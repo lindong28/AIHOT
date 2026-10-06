@@ -193,6 +193,7 @@ function LeadPicture({ cover, onError, priority = false, className = "" }: { cov
     <figure className={className}>
       <div className="overflow-hidden well rounded-panel" style={{ aspectRatio: shown }}>
         <img src={cover.url} srcSet={cover.srcSet}
+          ref={(image) => { if (image?.complete && image.naturalWidth === 0) onError(); }}
           sizes={priority ? "(min-width: 1700px) 780px, (min-width: 1580px) calc(100vw - 920px), (min-width: 1420px) calc(100vw - 880px), (min-width: 1024px) calc(100vw - 540px), (min-width: 640px) 608px, calc(100vw - 32px)" : "auto, (min-width: 1180px) 300px, (min-width: 640px) 608px, calc(100vw - 32px)"}
           width={cover.width ?? undefined} height={cover.height ?? undefined}
           alt="" loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} decoding="async" onError={onError} className="size-full object-cover" />
@@ -218,8 +219,8 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
   const index = [...pages.map((p) => ({ id: p.id, label: p.label, n: `${p.items.length} 件` })), ...(report.flashes.length > 0 ? [{ id: "s-flash", label: "快讯", n: `${report.flashes.length} 条` }] : [])];
 
   return (
-    <section aria-label="头版" className="grid @[880px]:grid-cols-[minmax(0,1fr)_300px] @[1040px]:grid-cols-[minmax(0,1fr)_340px]">
-      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className="min-w-0 scroll-mt-6 py-7 @[880px]:border-r @[880px]:border-line @[880px]:py-10 @[880px]:pr-10">
+    <section aria-label="头版" className={cover ? "grid @[880px]:grid-cols-[minmax(0,1fr)_300px] @[1040px]:grid-cols-[minmax(0,1fr)_340px]" : ""}>
+      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className={`min-w-0 scroll-mt-6 py-7 @[880px]:py-10 ${cover ? "@[880px]:border-r @[880px]:border-line @[880px]:pr-10" : ""}`}>
         <Kicker>{daily ? "头条" : "本期导读"}</Kicker>
         {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="mt-5" />}
         <h2 className="mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
@@ -231,9 +232,9 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
             title
           )}
         </h2>
-        {dek && (
+        {(dek || (cover && !wide)) && (
           <div className={cover && !wide ? "mt-6 grid gap-6 @[640px]:grid-cols-[minmax(0,1fr)_minmax(0,38%)] @[880px]:mt-7" : ""}>
-            <p className={`text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>
+            {dek && <p className={`text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>}
             {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} />}
           </div>
         )}
@@ -245,9 +246,9 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
         )}
       </div>
 
-      <aside className="min-w-0 border-t border-line py-7 @[880px]:border-t-0 @[880px]:py-10 @[880px]:pl-8">
+      <aside className={`min-w-0 border-t border-line py-7 ${cover ? "@[880px]:border-t-0 @[880px]:py-10 @[880px]:pl-8" : "grid gap-8 @[760px]:grid-cols-2"}`}>
         {highlights.length > 0 && (
-          <>
+          <div className="min-w-0">
             <Kicker>{period}看点</Kicker>
             <ol className="mt-2">
               {highlights.map((h, i) => {
@@ -266,10 +267,10 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
                 );
               })}
             </ol>
-          </>
+          </div>
         )}
         {index.length > 0 && (
-          <nav aria-label="本期版面" className={highlights.length > 0 ? "mt-8" : ""}>
+          <nav aria-label="本期版面" className={cover && highlights.length > 0 ? "mt-8" : ""}>
             <Kicker>本期版面</Kicker>
             <ol className="mt-3">
               {index.map((p, i) => (
