@@ -19,6 +19,8 @@
 | [references/20261001-production-cutover.md](references/20261001-production-cutover.md) | 开发者：生产拓扑决定、停止旧链路与准备阶段记录 |
 | [references/20261002-socialdata-recovery.md](references/20261002-socialdata-recovery.md) | 开发者：SocialData 增量分页、预算恢复及验证记录 |
 | [operations/wechat2rss.md](operations/wechat2rss.md) | 维护者：Wechat2RSS 数据迁移、部署与原生 RSS 接入 |
+| [operations/source-gap-audit.md](operations/source-gap-audit.md) | 维护者与 Agent：查询官方近期全部公开动态、对比生产来源并复用离线快照 |
+| [references/20261006-source-gap-audit.md](references/20261006-source-gap-audit.md) | 维护者与 Agent：48 小时来源缺口、完整来源表和同域不同项目的复核 |
 | [references/20261004-wechat-colocate.md](references/20261004-wechat-colocate.md) | 开发者：Wechat2RSS 与 X ingest 同机、统一启停与迁移验收 |
 | [references/20261004-wechat-portable.md](references/20261004-wechat-portable.md) | 开发者：双仓恢复所需配置、数据库边界与外部专用探针验收 |
 | [operations/backfill.md](operations/backfill.md) | 维护者：原文审核、模型接入、有界执行与逐日进度 |
