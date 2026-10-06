@@ -4,19 +4,20 @@ import type { FeedItemSummary, MediaView } from "@aihot/contracts/site";
 import { IconBookmark } from "../../components/icons";
 import { SourceAvatar } from "../../components/ui/SourceAvatar";
 import { toggleStar, useIsStarred } from "../../lib/local-state";
+import { SourceLink } from "./SourceLink";
 
 /** "TechCrunch（RSS）" or, for X, avatar + display name + @handle. */
 export function SourceLine({ item, avatarSize = 16, className = "" }: { item: Pick<FeedItemSummary, "source" | "x" | "channel">; avatarSize?: number; className?: string }) {
   if (item.channel === "x" && item.x) {
     return (
-      <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+      <SourceLink source={item.source} className={`flex min-w-0 items-center gap-1.5 ${className}`}>
         <SourceAvatar name={item.x.authorName} avatarUrl={item.x.avatarUrl} avatarSrcSet={item.x.avatarSrcSet} size={avatarSize} />
         <span className="truncate text-ink-3">{item.x.authorName}</span>
         <span className="hidden shrink-0 text-ink-4 min-[400px]:inline">@{item.x.handle}</span>
-      </span>
+      </SourceLink>
     );
   }
-  return <span className={`min-w-0 truncate ${className}`}>{item.source.name}</span>;
+  return <SourceLink source={item.source} className={`min-w-0 truncate ${className}`} />;
 }
 
 /** Up to four media thumbnails, kept small in lists (the detail page shows them larger). Videos are stills. */

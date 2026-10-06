@@ -5,6 +5,7 @@ import type { FeedItemSummary, ItemSummary, MediaView, SourceKind, XPostView } f
 import { sql, type Db } from "../db.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { displayTags } from "./rules.ts";
+import { SOURCE_PATH } from "./source-path.ts";
 
 export interface ItemRow {
   id: string;
@@ -40,6 +41,7 @@ export interface ItemRow {
   /** Participation mode of the source now (editorial, hot_signal, isolated). */
   source_mode: string;
   source_icon: string | null;
+  source_path?: string;
   x_post: Record<string, any> | null;
   author: string | null;
   language: string | null;
@@ -62,7 +64,7 @@ export const ITEM_COLUMNS = sql`
   p.selected, p.eligible, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at, p.first_party, p.visibility,
   p.body_mode, p.syndicate, p.indexable, p.visible_after, p.backfill, p.fact_id, p.story_id,
   s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode, ${SOURCE_ICON} AS source_icon,
-  a.x_post, a.author, a.language,
+  ${SOURCE_PATH} AS source_path, a.x_post, a.author, a.language,
   st.public_id::text AS story_public_id, st.title AS story_title,
   CASE WHEN p.channel = 'x' THEN tr.body_text END AS zh_text, qt.text_zh AS quoted_zh`;
 
@@ -170,6 +172,7 @@ export function toItemSummary(row: ItemRow): ItemSummary {
       kind: row.source_kind,
       firstParty: row.first_party,
       iconUrl: proxiedImage(row.source_icon, "avatar"),
+      ...(row.source_path ? { href: row.source_path } : {}),
       ...(proxiedImageSet(row.source_icon, "avatar") ? { iconSrcSet: proxiedImageSet(row.source_icon, "avatar")! } : {}),
     },
     links: { aihot: `/items/${row.id}`, original: row.url },
@@ -191,7 +194,7 @@ export function toFeedItemSummary(row: ItemRow): FeedItemSummary {
   const item = toItemSummary(row);
   return {
     id: item.id, title: item.title, summary: item.summary, reason: item.reason,
-    source: { name: item.source.name }, publishedAt: item.publishedAt, timelineAt: item.timelineAt,
+    source: { name: item.source.name, ...(item.source.href ? { href: item.source.href } : {}) }, publishedAt: item.publishedAt, timelineAt: item.timelineAt,
     category: item.category, tags: item.tags, score: item.score, selected: item.selected, channel: item.channel,
     x: item.x ? {
       authorName: item.x.authorName, handle: item.x.handle, avatarUrl: item.x.avatarUrl,

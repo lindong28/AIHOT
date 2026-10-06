@@ -16,6 +16,7 @@ import { loadContact, loadMakerAvatar } from "@aihot/backend/site/contact";
 import { loadSiteStats } from "@aihot/backend/site/stats";
 import { itemAvailability } from "@aihot/backend/publication/availability";
 import { listTopicSummaries, loadTopicPage } from "@aihot/backend/publication/topics";
+import { loadSourceDirectory, loadSourcePage } from "@aihot/backend/publication/sources";
 import { registerFeedback } from "./feedback.ts";
 
 import { loadHot, loadStoryDetail, resolveStory } from "@aihot/backend/publication/stories";
@@ -80,6 +81,18 @@ export async function parseFilters(q: Record<string, string>): Promise<FilterPar
 }
 
 export function registerSite(app: FastifyInstance) {
+  app.get("/api/site/sources", siteHandler(async (req, reply) => {
+    return sendJsonWithEtag(req, reply, await loadSourceDirectory(), { etagPrefix: "sources", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
+  for (const path of ["/api/site/sources/:group", "/api/site/sources/:group/:key"]) app.get(path, siteHandler(async (req, reply) => {
+    const { group, key } = req.params as { group: string; key?: string };
+    const q = looseQuery(req);
+    if (q.page && (!/^[1-9][0-9]*$/.test(q.page) || !Number.isSafeInteger(Number(q.page)))) throw new BadRequest("invalid page");
+    if (q.tab && q.tab !== "all" && q.tab !== "selected") throw new BadRequest("invalid tab");
+    const body = await loadSourcePage(group, key ?? null, q.tab === "selected" ? "selected" : "all", Number(q.page || 1));
+    if (!body) return sendProblem(req, reply, { status: 404, code: "not_found", detail: "source not found" });
+    return sendJsonWithEtag(req, reply, body, { etagPrefix: "source", cacheControl: "public, max-age=60, s-maxage=60" });
+  }));
   app.get("/api/site/meta", siteHandler(async (req, reply) => {
     return sendJsonWithEtag(req, reply, siteMeta(), { etagPrefix: "meta", cacheControl: "public, max-age=60, s-maxage=60" });
   }));

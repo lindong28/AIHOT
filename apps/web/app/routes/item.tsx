@@ -13,6 +13,7 @@ import { PillTabs } from "../components/ui/Tabs";
 import { ArticleLayout, RailSection } from "../components/ui/Page";
 import { Menu, MenuItem } from "../components/ui/Menu";
 import { StarButton } from "../features/feed/parts";
+import { SourceLink } from "../features/feed/SourceLink";
 import { GroupSources } from "../features/feed/ReadingGroup";
 import { StoryFollowups } from "../features/item/StoryFollowups";
 import { MediaGallery } from "../features/item/MediaGallery";
@@ -192,7 +193,7 @@ export default function ItemPage() {
   // under the facts (or under the notes when only the right rail shows).
   const facts = (
     <RailSection title="来源">
-      <div className="text-[14px] font-semibold leading-snug text-ink">{isX ? item.x!.authorName : item.source.name}</div>
+      <SourceLink source={item.source} className="text-[14px] font-semibold leading-snug text-ink">{isX ? item.x!.authorName : item.source.name}</SourceLink>
       <div className="mt-1 text-[12.5px] leading-relaxed text-ink-3">
         {isX ? `@${item.x!.handle} · X` : item.author ?? hostOf(item.links.original)}
       </div>
@@ -282,7 +283,7 @@ export default function ItemPage() {
         <div className="hidden lg:block 2xl:hidden">{backButton}</div>
         <article className="pb-6 pt-6 lg:pt-2 2xl:pt-1">
           <div className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-ink-3 2xl:hidden ${isX ? "" : "mb-3"}`}>
-            <span className="font-semibold text-ink-2">{isX ? item.x!.authorName : item.source.name}</span>
+            <SourceLink source={item.source} className="font-semibold text-ink-2">{isX ? item.x!.authorName : item.source.name}</SourceLink>
             {isX && <span>· @{item.x!.handle} · X</span>}
             {item.author && !isX && <span>· {item.author}</span>}
             <span>·</span>
@@ -358,9 +359,9 @@ export default function ItemPage() {
 
           <p className="mt-8 text-[13px] text-ink-4">
             来源：
-            <a href={item.links.original} target="_blank" rel="noopener noreferrer" className="text-ink-3 hover:text-accent">
+            <SourceLink source={item.source} className="text-ink-3 hover:text-accent">
               {isX ? item.x!.authorName : item.source.name}
-            </a>
+            </SourceLink>
             <span> · {hostOf(item.links.original)}</span>
           </p>
 

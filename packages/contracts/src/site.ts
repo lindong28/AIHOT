@@ -11,6 +11,37 @@ export interface SourceRef {
   firstParty: boolean;
   iconUrl: string | null;
   iconSrcSet?: string;
+  /** Internal source page; distinct from the article's original URL. */
+  href?: string;
+}
+
+export interface PublicSource {
+  name: string;
+  identifier: string | null;
+  href: string;
+  iconUrl: string | null;
+  active: boolean;
+  total: number;
+}
+
+export interface SourceGroup {
+  key: string;
+  name: string;
+  description: string;
+  href: string;
+  total: number;
+  accounts: PublicSource[];
+}
+
+export interface SourceDirectory { groups: SourceGroup[] }
+export interface SourcePage {
+  group: SourceGroup;
+  source: PublicSource | null;
+  items: FeedItemSummary[];
+  tab: "all" | "selected";
+  page: number;
+  pageCount: number;
+  total: number;
 }
 
 export interface MediaView {
@@ -63,7 +94,7 @@ export interface ItemSummary {
 
 /** The fields rendered by a site feed card; full original text lives in the item detail. */
 export interface FeedItemSummary extends Pick<ItemSummary, "id" | "title" | "summary" | "reason" | "publishedAt" | "timelineAt" | "category" | "tags" | "score" | "selected" | "channel"> {
-  source: Pick<SourceRef, "name">;
+  source: Pick<SourceRef, "name" | "href">;
   x: (Pick<XPostView, "authorName" | "handle" | "avatarUrl" | "avatarSrcSet" | "media"> & {
     quoted: Omit<NonNullable<XPostView["quoted"]>, "url"> | null;
   }) | null;

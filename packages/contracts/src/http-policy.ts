@@ -57,7 +57,6 @@ export const REDIRECTS: RedirectRule[] = [
   { match: "exact", path: "/leaderboard/methodology", status: 308, location: "/leaderboard/sources" },
   { match: "regex", path: "^/leaderboard/category/(aesthetics|writing)$", status: 307, location: "/leaderboard", why: "data-layer categories not yet public" },
   { match: "exact", path: "/leaderboard/category/overall", status: 404, why: "the overall board lives at /leaderboard" },
-  { match: "prefix", path: "/sources", status: 302, location: "/admin/sources*", why: "admin bookmarks" },
 ];
 
 export interface RedirectDecision {

@@ -34,6 +34,8 @@ flowchart LR
 
 业务代码在 [packages/backend/](../packages/backend/)，前后端共用类型和常量在 [packages/contracts/](../packages/contracts/)，行业定义在 [industry/](../industry/)。PostgreSQL 同时保存业务数据与 pg-boss 队列状态；Node.js 24 直接运行后端 TypeScript，网页有独立构建步骤。API 接收采集推送或后台操作后交给后端入库、排队，读者请求不承担生成工作。
 
+公开来源目录和分类、账号列表通过 `/api/site/sources` 读取 `publication/sources.ts`。`publication/source-path.ts` 统一派生目录身份及文章 `source.href`，合并同账号的原生采集与历史聚合，不修改采集 `source_id`。Hacker News 作为发现渠道可与 X 发布者类别重叠，类别数量不可相加作为去重总数；目录列当前启用来源，新闻计数和筛选沿用公开资格。网页入口与边界见[来源目录设计](references/20261006-source-directory.md)。
+
 ## 业务阶段与调用边界
 
 按业务职责可以拆成七个主环节，结构抽取是评分旁边的并行支路。阶段数是阅读口径，并非七个独立服务或七个模型请求；实际编排由 [jobs/content.ts](../packages/backend/src/jobs/content.ts)、[jobs/events.ts](../packages/backend/src/jobs/events.ts) 和 [worker 定时表](../apps/worker/src/schedules.ts) 完成。

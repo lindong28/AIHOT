@@ -11,6 +11,7 @@
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
 | [references/20261005-source-labels.md](references/20261005-source-labels.md) | 开发者：文章级公开来源、历史聚合归属和批量修复验收 |
+| [references/20261006-source-directory.md](references/20261006-source-directory.md) | 开发者：两级公开来源目录、历史账号归属、网页与部署验收 |
 | [references/20261006-report-images.md](references/20261006-report-images.md) | 开发者：刊物配图资格、来源开关和无图布局 |
 | [operations/services.md](operations/services.md) | 维护者：生产、本机、旧站与 Wechat2RSS 服务入口 |
 | [operations/production.md](operations/production.md) | 部署维护者：腾讯云发布、服务与隧道起停、公网切换及回滚 |
