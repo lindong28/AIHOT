@@ -1,7 +1,7 @@
 import { Link, useLoaderData } from "react-router";
 import { apiGet } from "../lib/api.server";
 import { pageMeta } from "../lib/seo";
-import { NewsScopeToggle } from "../components/ui/NewsScopeToggle";
+import { DirectoryToolbar } from "../components/ui/DirectoryToolbar";
 import { newsScope, scopeHref } from "../lib/news-scope";
 
 interface TopicSummary {
@@ -17,7 +17,8 @@ interface TopicSummary {
 
 export async function loader({ request }: { request: Request }) {
   const tab = newsScope(request.url, 'selected');
-  return { ...await apiGet<{ topics: TopicSummary[] }>(scopeHref('/api/site/topics', tab), { signal: request.signal }), tab };
+  const q = new URL(request.url).searchParams.get('q')?.trim().slice(0, 100) ?? '';
+  return { ...await apiGet<{ topics: TopicSummary[] }>(scopeHref('/api/site/topics', tab), { signal: request.signal }), tab, q };
 }
 
 export function meta() {
@@ -35,8 +36,10 @@ const GROUPS = [
 ] as const;
 
 export default function TopicsPage() {
-  const { topics, tab } = useLoaderData<typeof loader>();
+  const { topics, tab, q } = useLoaderData<typeof loader>();
   const label = tab === 'selected' ? '精选' : 'AI 相关新闻';
+  const matches = topics.filter(t => `${t.name} ${t.slug} ${t.definition}`.toLocaleLowerCase().includes(q.toLocaleLowerCase()));
+  const groups = GROUPS.filter(g => !q || matches.some(t => t.group === g.key));
   return (
     <div className="pb-10">
       <header className="pb-2 pt-5 lg:pt-1">
@@ -45,9 +48,10 @@ export default function TopicsPage() {
           按公司与模型、技术方向、内容形态浏览 <span className="num">{topics.length}</span> 个主题，持续汇集近期焦点与精选。
         </p>
       </header>
-      <NewsScopeToggle value={tab} href={scope => scopeHref('/topics', scope)} />
-      {GROUPS.map((g) => (
-        <section key={g.key} aria-labelledby={`topics-${g.key}`} className="pt-8">
+      <DirectoryToolbar path="/topics" q={q} tab={tab} label="搜索主题" placeholder="搜索主题名称或关键词" />
+      {q && <p role="status" className="text-[13px] text-ink-3">{matches.length ? `找到 ${matches.length} 个主题` : `没有找到“${q}”。试试主题名称或关键词。`}</p>}
+      {groups.map((g) => (
+        <section key={g.key} aria-labelledby={`topics-${g.key}`} className="pt-5">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <h2 id={`topics-${g.key}`} className="text-[15px] font-bold text-ink">
               {g.name}
@@ -55,7 +59,7 @@ export default function TopicsPage() {
             <p className="text-[12px] text-ink-4">{g.blurb}</p>
           </div>
           <ul className="mt-3.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {topics
+            {matches
               .filter((t) => t.group === g.key)
               .map((t) => (
                 <li key={t.slug}>
