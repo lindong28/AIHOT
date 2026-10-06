@@ -10,6 +10,7 @@
 | [migration.md](migration.md) | 维护者：当前迁移状态、阶段记录与剩余缺口 |
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
+| [references/20261006-video-sources.md](references/20261006-video-sources.md) | 维护者：官方 AI 视频来源补充、配置覆盖范围和待接入公众号 |
 | [references/20261005-source-labels.md](references/20261005-source-labels.md) | 开发者：文章级公开来源、历史聚合归属和批量修复验收 |
 | [references/20261006-source-directory.md](references/20261006-source-directory.md) | 开发者：两级公开来源目录、历史账号归属、网页与部署验收 |
 | [references/20261006-report-images.md](references/20261006-report-images.md) | 开发者：刊物配图资格、来源开关和无图布局 |

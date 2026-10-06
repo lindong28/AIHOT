@@ -26,6 +26,8 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 
 ## 六种信源
 
+2026-10-06 根据官方 AI 视频主题的来源清点，配置新增 14 个网站／开发者渠道和 4 个 X 账号，保留既有 xAI News RSS。新增名单、配置覆盖范围、尚缺 Wechat2RSS 订阅的公众号和需要进一步处理的 OpenMOSS 日期问题见[视频来源补充记录](references/20261006-video-sources.md)。这是仓库配置变更，不代表已在生产登记或启动采集；既有数据库需通过 seed 或后台新增来源。
+
 | 类型 | 适合 | 需要 |
 |---|---|---|
 | `rss` | 有 RSS / Atom 的博客、媒体、Substack、公众号转 RSS 服务 | 无 |
