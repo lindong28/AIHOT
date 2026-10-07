@@ -65,7 +65,7 @@ bash /home/ubuntu/aihot/current/deploy/production/service.sh status
 
 ### Gateway 未知回执核对
 
-`unknown` 表示结果或派发状态未确认，不表示已扣费。Gateway 精确 `422` 且无 attempt companion 的 `route_cooldown` / `no_route` 拒绝不再误入 unknown；后续调用通过原有任务退避和预算重试。HTTP 502、断流、缺失账本或不可用响应仍需核对，不能据此写成“未计费”。`no_route` 只说明本次没有派发，不表示模型已经恢复，仍须检查 Gateway 的部署状态。
+`unknown` 表示结果或派发状态未确认，不表示已扣费。Gateway 精确 `422` 且无 attempt companion 的 `route_cooldown` / `no_route` 拒绝不再误入 unknown；后续调用通过原有任务退避和预算重试。新版 AIHOT 默认启用 recovery v1，在配套 Gateway、SDK、迁移和 worker 生效后，有有效恢复指令的暂态 HTTP／网络错误可按原 UUID 和持久化上限自动恢复；本说明不表示生产已完成该升级。协议停止、次数耗尽或缺少恢复依据时仍须核对，HTTP 502、断流、缺失账本或不可用响应都不能据此写成“未计费”。旧协议暂态积压可经授权使用 `--transient-only` 筛选冻结，升级顺序、命令与边界见[回执恢复](receipt-recovery.md)。`no_route` 只说明本次没有派发，不表示模型已经恢复，仍须检查 Gateway 的部署状态。
 
 积压核对工具默认预览，仅对个人 Gateway 实账本证实零 attempt 的本地拒绝放行。以权限 0600 保存中间 JSON；stdout 供脚本、stderr 提供完整摘要。先在生产 release 目录导出身份（不含凭据和正文）：
 
@@ -115,7 +115,7 @@ sudo -n -u postgres psql -X -d aihot -v ON_ERROR_STOP=1 -P pager=off < scripts/s
 
 输出最近一小时请求、重复返回、空页和估计金额，以及待初始化来源、未完成区间和监控积压。`estimated_usd` 是本地估计，不是供应商账单；新空页按每次 0–0.0002 USD 的上界计入，旧空页记录保留旧估计。`attempts_without_cost` 非零表示金额不完整。分片游标在多个来源中保存，分别展示来源条目数与去重后的断点数；缺少恢复边界的区间需要维护者检查。
 
-服务日志在 journald，可用 `journalctl -u aihot-worker.service -n 100 --no-pager`，API/Web 换相应 unit；向外提供日志前先去除凭据和私有 URL。后台“运行”页查看任务与未知回执；未知模型结果先核对 Gateway 账本再恢复，不因进程重启自动重复请求。
+服务日志在 journald，可用 `journalctl -u aihot-worker.service -n 100 --no-pager`，API/Web 换相应 unit；向外提供日志前先去除凭据和私有 URL。后台“运行”页查看任务与未知回执；新协议只按持久化身份与额度恢复，进程重启不重置额度；不符合自动恢复条件的未知模型结果仍先核对 Gateway 账本或取得业务重放授权，见[回执恢复](receipt-recovery.md)。
 
 所有者明确接受可能再次计费后，可以用[统一回执恢复脚本](receipt-recovery.md)冻结旧异常并受控重放，业务成功后自动结案。它保留原费用未知状态，不能替代供应商核账；同一批次续跑不会自动放行后来新产生的失败。
 
@@ -169,6 +169,10 @@ sudo systemctl reload nginx
 Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。旧数据库与 Web 保留；Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
 
 用户要求停旧采集，公网回滚不改变这一决定。若另行恢复旧链路，维护者须先核对备份与届时 crontab 的差异，只恢复获授权的任务，并单独决定是否启用旧库应用服务；不要用整份旧 crontab 覆盖后来新增的任务。
+
+## 2026-10-07 暂态恢复发布
+
+2026-10-07 暂态恢复版本已发布到 `/home/ubuntu/aihot/releases/transient-recovery-20261007-971dee99`，个人 Gateway 已配套升级，迁移 0047 已应用；API、Web、worker 与回填定时器恢复运行，公网 smoke 及实时／回填实际模型请求取得成功读数。模型和 provider 配置保持原样，历史回执按固定授权批次恢复；版本、测试和费用边界见[本次记录](../references/20261007-transient-recovery.md#部署与验证记录)。
 
 ## 离线测试环境
 

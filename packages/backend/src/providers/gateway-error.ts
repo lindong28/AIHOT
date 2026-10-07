@@ -10,7 +10,25 @@ export interface GatewayFailure {
   contentFilter?: { role: "user" | "assistant"; level: number };
 }
 const CODES = new Set(["1301", "content_filtered", "insufficient_quota"]);
-const GATEWAY_CODES = new Set(["ledger_unavailable", "route_cooldown", "no_route", "dispatch_constraint_rejected", "http_error", "timeout", "transport_error"]);
+const GATEWAY_CODES = new Set(["ledger_unavailable", "ledger_busy", "route_cooldown", "no_route", "dispatch_constraint_rejected", "http_error", "timeout", "transport_error"]);
+
+export interface GatewayRecovery {
+  version: 1;
+  logical_request_id: string;
+  action: "retry_same_request" | "retry_new_request" | "stop";
+  retry_after_s: number;
+}
+
+/** Recovery authority must be bound to the exact request we sent. */
+export function gatewayRecovery(value: unknown, requestId: string): GatewayRecovery | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (v.version !== 1 || v.logical_request_id !== requestId ||
+      !["retry_same_request", "retry_new_request", "stop"].includes(String(v.action)) ||
+      !Number.isSafeInteger(v.retry_after_s) || Number(v.retry_after_s) < 0 ||
+      !Number.isFinite(new Date(Date.now() + Number(v.retry_after_s) * 1000).getTime())) return null;
+  return { version: 1, logical_request_id: requestId, action: v.action as GatewayRecovery["action"], retry_after_s: Number(v.retry_after_s) };
+}
 
 export function safeGatewayFailure(value: unknown): GatewayFailure | null {
   if (!value || typeof value !== "object") return null;
@@ -48,10 +66,12 @@ export function gatewayFailure(body: unknown, headers: Headers, status: number):
 
 export class GatewayResponseError extends Error {
   readonly details: GatewayFailure;
-  constructor(status: number, requestId: string, details: GatewayFailure, gatewayCode?: unknown) {
+  readonly recovery: GatewayRecovery | null;
+  constructor(status: number, requestId: string, details: GatewayFailure, gatewayCode?: unknown, recovery?: unknown) {
     const code = details.providerCode ?? (typeof gatewayCode === "string" && GATEWAY_CODES.has(gatewayCode) ? gatewayCode : null);
     super(`Gateway HTTP ${status}${code ? ` (${code})` : ""}; reconcile request ${requestId} before retrying`);
     this.details = details;
+    this.recovery = gatewayRecovery(recovery, requestId);
   }
 }
 

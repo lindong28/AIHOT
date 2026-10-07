@@ -19,7 +19,7 @@ import { discardFilteredContent } from "../content/retention.ts";
 import { sql, type Db } from "../db.ts";
 import { newShortId, newUuid, sha256 } from "../lib/ids.ts";
 import { chatJson } from "../providers/llm.ts";
-import { BudgetExceededError, ReceiptBusyError, completeReceipt } from "../providers/receipts.ts";
+import { BudgetExceededError, ReceiptBusyError, ReceiptRetryError, completeReceipt } from "../providers/receipts.ts";
 import { embeddingsAvailable, ensureEmbeddings } from "../providers/embeddings.ts";
 import { isHistorical, STALE_ON_DISCOVERY_MS } from "../content/materials.ts";
 import { enqueue, QUEUES } from "../jobs/queue.ts";
@@ -708,6 +708,7 @@ async function decide(articleId: string, opts: GroupOptions): Promise<GroupResul
         }
       }
     } catch (error) {
+      if (error instanceof ReceiptRetryError) throw error;
       // A failed identity call must not block publication: the report stays standalone for now.
       await markGrouped(articleId);
       await publishArticle(articleId);

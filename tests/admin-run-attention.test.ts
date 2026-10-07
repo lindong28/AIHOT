@@ -51,6 +51,22 @@ test("navigation and receipt issues agree without changing historical billing", 
   }
 });
 
+test("scheduled receipt recovery is not manual attention; exhausted or overdue recovery is", async () => {
+  const baseline = (await get("nav-counts")).runs;
+  const [row] = await sql`INSERT INTO receipts(logical_key,service,purpose,status,retry_after)
+    VALUES (${tag()},'test','score_article','unknown',now()+interval '1 minute') RETURNING id`;
+  try {
+    assert.equal((await get("nav-counts")).runs,baseline);
+    assert.equal((await get("runs")).receipts.issues.some((r:{id:number})=>r.id===Number(row!.id)),false);
+    await sql`UPDATE receipts SET recovery_exhausted=true WHERE id=${row!.id}`;
+    assert.equal((await get("nav-counts")).runs,baseline+1);
+    await sql`UPDATE receipts SET recovery_exhausted=false,retry_after=now()-interval '16 minutes' WHERE id=${row!.id}`;
+    assert.equal((await get("nav-counts")).runs,baseline+1);
+    const [unchanged] = await sql`SELECT status,cost FROM receipts WHERE id=${row!.id}`;
+    assert.equal(unchanged!.status,'unknown'); assert.equal(unchanged!.cost,null);
+  } finally { await sql`DELETE FROM receipts WHERE id=${row!.id}`; }
+});
+
 test("navigation includes the same delivery states as the runs page", async () => {
   const baseline = (await get("nav-counts")).runs;
   const target = tag();

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { after, before, test, mock } from "node:test";
 import { sql, closeDb } from "@aihot/backend/db";
 import { logicalKeyFor, paidRequest } from "@aihot/backend/providers/receipts";
-import { createReceiptRecoveryBatch, advanceReceiptRecoveryBatch, settleReceiptRecoveryBatch, receiptRecoveryStatus } from "@aihot/backend/admin/receipt-batch-recovery";
+import { createReceiptRecoveryBatch, advanceReceiptRecoveryBatch, settleReceiptRecoveryBatch, receiptRecoveryStatus, legacyTransientReceiptIds } from "@aihot/backend/admin/receipt-batch-recovery";
 import { stopBoss, enqueue, QUEUES, getBoss } from "@aihot/backend/jobs/queue";
 import { publishArticle } from "@aihot/backend/publication/publish";
 import { runsOverview, autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
@@ -31,6 +31,27 @@ async function success(id: string, revision = 1) {
   await sql`UPDATE articles SET processing_state='analyzed' WHERE id=${id}`;
   await publishArticle(id);
 }
+
+test('legacy transient migration excludes fresh, opted, exhausted and permanent failures', async () => {
+  const expected: number[] = [], all: number[] = [];
+  for (const kind of ['ledger','transport','fresh','opted','exhausted','permanent']) {
+    const r = await receipt(`article:${await article()}@1`); all.push(r.id);
+    await sql`UPDATE receipts SET updated_at=now()-interval '11 minutes' WHERE id=${r.id}`;
+    await sql`UPDATE receipt_attempts SET error=${`Error: Gateway HTTP 503 (ledger_unavailable); reconcile request ${r.req.gatewayRequestId} before retrying`} WHERE receipt_id=${r.id}`;
+    if (kind === 'ledger' || kind === 'transport') expected.push(r.id);
+    if (kind === 'transport') await sql`UPDATE receipt_attempts SET error_details='{"version":1,"category":"transport_error","retryable":true}' WHERE receipt_id=${r.id}`;
+    if (kind === 'fresh') await sql`UPDATE receipts SET updated_at=now() WHERE id=${r.id}`;
+    if (kind === 'opted') await sql`UPDATE receipts SET request='{"gateway":{"recoveryVersion":1}}' WHERE id=${r.id}`;
+    if (kind === 'exhausted') {
+      await sql`UPDATE receipts SET attempts=3 WHERE id=${r.id}`;
+      await sql`UPDATE receipt_attempts SET attempt=3 WHERE receipt_id=${r.id}`;
+    }
+    if (kind === 'permanent') await sql`UPDATE receipt_attempts SET error_details='{"version":1,"category":"content_policy_rejected","retryable":false}' WHERE receipt_id=${r.id}`;
+  }
+  assert.deepEqual((await legacyTransientReceiptIds(3)).filter(id=>all.includes(id)),expected);
+  await createReceiptRecoveryBatch(tag(),'authorized legacy transient replay',expected);
+  assert.deepEqual((await legacyTransientReceiptIds(3)).filter(id=>all.includes(id)),[]);
+});
 
 test('a completed current revision settles an old blocked incident without rewriting billing or enqueuing', async () => {
   const id=await article(), r=await receipt(`article:${id}@1`), batch=tag();

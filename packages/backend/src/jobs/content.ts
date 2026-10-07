@@ -9,7 +9,7 @@ import { extractArticleBody, pageFetchable } from "../content/extract.ts";
 import { analyzeArticle, AnalysisInterruptedError } from "../editorial/analyze.ts";
 import { isHistorical } from "../content/materials.ts";
 import { publishArticle } from "../publication/publish.ts";
-import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptUnknownError } from "../providers/receipts.ts";
+import { BudgetExceededError, ProviderRejectedError, ReceiptBusyError, ReceiptRetryError, ReceiptRecoveryStoppedError, ReceiptUnknownError } from "../providers/receipts.ts";
 import { ModelOutputError } from "../providers/llm.ts";
 import { ensureQueue, enqueue, QUEUES, shutdownSignal } from "./queue.ts";
 import { backfillContext } from "../backfill/context.ts";
@@ -150,14 +150,14 @@ async function afterFailure(articleId: string, error: unknown): Promise<{ state:
   const message = String(error instanceof Error ? error.message : error).slice(0, 500);
   if (error instanceof ReceiptBusyError || error instanceof BudgetExceededError) {
     // Not the article's fault: the same request is in flight, or the budget window is full.
-    const seconds = error instanceof BudgetExceededError ? error.retryAfterSeconds : 60;
+    const seconds = error instanceof BudgetExceededError || error instanceof ReceiptRetryError ? error.retryAfterSeconds : 60;
     const retryAt = new Date(Date.now() + seconds * 1000);
     await sql`UPDATE articles SET processing_state = 'new', processing_error = ${message}, processing_retry_at = ${retryAt}, processing_queued_at = NULL WHERE id = ${articleId}`;
     return { state: "waiting", retryAt };
   }
   const [a] = await sql<{ processing_attempts: number }[]>`SELECT processing_attempts FROM articles WHERE id = ${articleId}`;
   const attempts = (a?.processing_attempts ?? 0) + 1;
-  const refused = error instanceof ProviderRejectedError && !error.retryable;
+  const refused = error instanceof ReceiptRecoveryStoppedError || error instanceof ProviderRejectedError && !error.retryable;
   const exhausted = attempts > RETRY_MINUTES.length || (error instanceof ModelOutputError && attempts >= MAX_OUTPUT_FAILURES);
   if (refused || exhausted) {
     await sql`UPDATE articles SET processing_state = 'failed', processing_error = ${message}, processing_attempts = ${attempts},

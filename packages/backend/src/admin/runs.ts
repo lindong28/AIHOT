@@ -13,6 +13,7 @@ const STALE_HEARTBEAT_MS = 3 * 60_000;
 // Shared by the issue lists and navigation totals; callers use receipt alias r.
 export function receiptIssueCondition() {
   return sql`(r.status = 'unknown' OR (r.status = 'failed' AND r.updated_at > now() - interval '3 days') OR (r.status = 'pending' AND r.updated_at < now() - interval '15 minutes'))
+    AND NOT (r.status='unknown' AND r.retry_after IS NOT NULL AND NOT r.recovery_exhausted AND r.retry_after>now()-interval '15 minutes')
     AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')`;
 }
 

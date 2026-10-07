@@ -219,12 +219,13 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
           requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens, ...(generation ? { gateway: generation.summary } : {}) },
           attemptTag: opts.attemptTag,
           gatewayRequestId: generation?.requestId,
+          gatewayRecovery: generation?.recoveryEnabled,
         },
-        async () => {
+        async (requestId) => {
           const started = Date.now();
           if (generation) {
-            const json = await generation.send("chat/completions", body);
-            return { response: { ...json, _latencyMs: Date.now() - started }, requestId: generation.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
+            const json = await generation.send("chat/completions", body, requestId);
+            return { response: { ...json, _latencyMs: Date.now() - started }, requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
           }
           let res: Response;
           try {

@@ -1,8 +1,18 @@
 # 付费回执的业务恢复
 
-后台“需要核对的付费回执”包含结果未知、近期失败及长时间未返回的请求。业务恢复和供应商核账是两件事：新闻处理成功可以结案，但不能因此推断旧调用没有计费。统一入口为 `scripts/recover-receipts.ts`，恢复关联保存在 PostgreSQL `receipt_recoveries`；原 `receipt_attempts` 和费用字段保留。
+后台“需要核对的付费回执”包含结果未知、近期失败及长时间未返回的请求。业务恢复和供应商核账是两件事：新闻处理成功可以结案，但不能因此推断旧调用没有计费。历史异常的授权恢复入口为 `scripts/recover-receipts.ts`，恢复关联保存在 PostgreSQL `receipt_recoveries`；原 `receipt_attempts` 和费用字段保留。新请求的有界自动恢复见下一节。
 
-## 预览、执行与续跑
+## 新请求的暂态自动恢复
+
+新版本支持 Gateway request recovery v1：AIHOT 默认启用，可用 `LLM_GATEWAY_REQUEST_RECOVERY_ENABLED=false` 关闭。须先升级支持该能力的 Gateway 和配套 SDK，再运行 AIHOT 的 `0047_receipt_transient_recovery.sql` 增量迁移与新版 worker；能力协商不通过时不会派发模型请求。2026-10-07 已完成生产部署，验证范围见[部署记录](../references/20261007-transient-recovery.md#部署与验证记录)。
+
+收到有效恢复指令的 `ledger_unavailable`、暂态网络错误等，由任务按持久化退避时间再进入；同一个 Gateway UUID 最多发送三次（含首次），worker 重启不会重置计数。Gateway 优先返回已保存的答案并补齐账本；尚无答案时，只能在原请求的 provider attempt 预算内继续。实时任务走原队列退避，回填 item 保持 pending 并设置 `retry_after`，不要求为每次暂态失败另建人工恢复批次。
+
+只有 `retry_new_request` 才允许为暂态恢复创建新 UUID；它与 JSON 校验失败共享 `LLM_JSON_MAX_ATTEMPTS` 生成额度（默认三次），不能各自再取三次。默认每次生成最多三个 provider attempt，因此总上限为九次 provider attempt，同 UUID 的三次 HTTP 发送不会把它再乘三。恢复沿用既有模型、provider、funding 与路由约束，不扩大授权路线。
+
+`stop` 或恢复额度耗尽会停止该回执的自动业务恢复；费用仍可能未知，保留原 attempt。无有效恢复指令、身份不符和未启用协议的旧 unknown 继续走核账或下文授权重放。旧 UUID 没有 Gateway fingerprint 时不能凭升级自动进入新协议。关闭开关也不清除回执或放行旧 unknown。协议、计数与验证边界见[暂态恢复说明](../references/20261007-transient-recovery.md)。
+
+## 历史异常的预览、执行与续跑
 
 在装好依赖并完成迁移的发布目录执行。生产连接使用 Node 的 env-file，不能 shell source 配置，也不要输出密钥。
 
@@ -12,7 +22,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts
 node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts --json
 ```
 
-默认只读预览，不调用模型。自动恢复候选为全部 unknown 和最近三天的 failed；尚在 pending 的调用不自动放行。执行必须先取得覆盖本批可能重复计费的授权，再选择一个唯一批次名并记录授权说明：
+默认只读预览，不修改数据、不调用模型。不加筛选参数时，候选为全部 unknown 和最近三天的 failed；尚在 pending 的调用不自动放行。执行必须先取得覆盖本批可能重复计费的授权，再选择一个唯一批次名并记录授权说明：
 
 ```bash
 node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
@@ -38,9 +48,33 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 `--status` 核验业务结果并结案，不放行或排新任务。退出码 `0` 表示预览完成或该批全部结案；`2` 表示还有待排队、处理中或未解决项；`1` 表示执行错误。`--json` 提供逐条剩余目标和原 attempt，供 Codex／Claude 定向诊断。不能把“脚本正常退出了”或“已经排队”当作全部恢复。
 
+## 仅筛选旧协议暂态异常
+
+`--transient-only` 用于一次性筛选旧协议的暂态积压，不把旧 UUID 冒充 recovery v1 请求。候选须同时满足：主回执为 unknown 且有 Gateway UUID、`updated_at` 早于十分钟前、原请求未记录 recovery v1、累计 generation 次数小于 `LLM_JSON_MAX_ATTEMPTS`（默认三次），并且当前 attempt 尚未被任何恢复批次冻结。
+
+错误证据只接受安全详情中明确可重试的 timeout／upstream_unavailable／transport_error／rate_limited，或旧版 AIHOT 自己生成的固定 Gateway 暂态 HTTP／网络错误格式；审核拒绝、未知格式和缺少暂态依据的记录不因这个开关获得重放资格。筛选上限只限制入选回执，不是批次内新闻条数或总费用承诺。
+
+在已升级的 release 目录先预览；该命令不修改数据、不调用模型：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
+  --transient-only --json
+```
+
+取得覆盖本批可能再次计费的授权后，将下面批次名占位符替换为本次唯一的固定名称，授权说明按实际批准内容填写；以下是操作示例，不表示已在生产执行：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
+  --transient-only --apply --batch '<本次授权的固定批次名>' \
+  --note '站点所有者授权本批旧协议暂态异常进行业务重放；保留原费用未知，接受可能再次计费' \
+  --limit 4 --wait-seconds 900
+```
+
+首次 apply 重新筛选并冻结当时符合条件的 ID、原 attempt 和业务目标，之后沿用同一批次名、筛选参数与授权说明续跑，不吸收新的失败。预览不是冻结，预览到执行之间候选可能变化。批次仍走既有恢复、预算和结案路径，旧 attempt 与费用证据保留；`--transient-only` 不是零计费证明，也不是无限重放授权。查看与结案使用 `--status --batch '<本次授权的固定批次名>' --json`，不必加筛选开关；status 会核验并记录业务结案，不能当成只读预览。
+
 ## 恢复边界
 
-后台侧栏“运行”的数字统计尚未结案的回执与待核实投递，复用运行页列表的筛选条件：回执包含结果未知、近三天失败及超过十五分钟未完成，排除当前 attempt 已恢复的记录；投递包含结果未知、失败及超过十五分钟仍在发送的记录。侧栏统计完整数量，列表各最多展示 40 条。结案不会清除历史费用未知状态，旧 attempt 的恢复也不会隐藏新 attempt 的失败。
+后台侧栏“运行”的数字统计尚未结案的回执与待核实投递，复用运行页列表的筛选条件：回执包含结果未知、近三天失败及超过十五分钟未完成，排除当前 attempt 已恢复的记录；投递包含结果未知、失败及超过十五分钟仍在发送的记录。尚在自动恢复窗口内的 unknown 暂不列为人工核对项；超过 `retry_after` 十五分钟或恢复额度耗尽后重新显示。侧栏统计完整数量，列表各最多展示 40 条。结案不会清除历史费用未知状态，旧 attempt 的恢复也不会隐藏新 attempt 的失败。
 
 新版业务结果可以结案旧版本异常：必须是同一 article_id，当前文章版本不小于捕获版本，publication 引用的 analysis.input_revision 等于当前文章版本，且文章已完成分析或过滤。只有 revision 增长、旧分析仍留在 publication，均不能结案。证据中的 `superseded_revision` 会记录捕获版本和成功版本，后台显示“新版已替代”。原调用状态、attempt 与未知费用保留；后续新 failed/unknown attempt 仍会显示。
 
@@ -68,7 +102,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ## 核账与人工后续
 
-新调用的自动 JSON 恢复与本页历史批次重放分开：`LLM_JSON_MAX_ATTEMPTS` 限定同一回执的生成次数，`receipt_attempts.response` 保留每次响应，`output_validation_error` 记录应用校验失败。业务成功后主回执完成，后台不再把它当待核对；旧失败 attempt 仍是失败事实。额度耗尽仍显示失败，网络 unknown 仍需核账。参数与升级顺序见[部署说明](../deploy.md#使用个人-llm-gateway)。安装这项能力不会自动解除历史 unknown，也不会重新开启已结束的恢复批次。
+新调用的自动 JSON 恢复、暂态恢复与本页历史批次重放分开：`LLM_JSON_MAX_ATTEMPTS` 限定同一回执的生成次数，JSON 校验失败与 `retry_new_request` 共用这份额度；`receipt_attempts.response` 保留每次已收到的响应，`output_validation_error` 记录应用校验失败。业务成功后主回执完成，后台不再把它当待核对；旧失败或 unknown generation 的 attempt 和费用未知状态保留。同 UUID 的再次发送只增加 `recovery_sends`，provider 的各次实际调用由 Gateway attempt 账本保存。协议停止、额度耗尽或缺少恢复依据时仍须定向核对，不能据业务成功推断旧费用为零。JSON 参数见[部署说明](../deploy.md#使用个人-llm-gateway)，暂态恢复升级顺序见本页前节。安装能力不会自动解除历史 unknown，也不会重新开启已结束的恢复批次。
 
 有完整 Gateway 账本且能证明零 attempt、未派发时，继续使用 `reconcile-gateway-receipts.ts` 的证据路径；它与本页的“接受可能再次计费后重放”不同。missing ledger、HTTP 502、断连或缺 usage 都不构成免费证明。
 

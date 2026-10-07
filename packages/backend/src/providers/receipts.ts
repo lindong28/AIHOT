@@ -3,9 +3,9 @@
 // 1. A logical request has a stable key bound to task, input revision, provider, model, prompt and config.
 // 2. Before calling, a placeholder row and an attempt row are persisted; budgets count attempts.
 // 3. The raw response is saved before any business write; recovery reuses a received response.
-// 4. A request whose outcome is unknown (timeout after sending, crash mid-flight) is not re-sent by the
-//    caller. Gateway requests require reconciliation; legacy direct-provider requests may be
-//    released once after 30 minutes by ops.recover (admin/runs.ts).
+// 4. Opted-in Gateway recovery reuses the original UUID with durable, bounded sends.
+//    A fresh generation requires explicit recovery authority and shares the JSON attempt budget.
+//    Other unknown calls still require reconciliation or the legacy direct-provider policy.
 import { sql, type Db } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { GatewayResponseError, safeGatewayFailure } from "./gateway-error.ts";
@@ -21,6 +21,16 @@ export class BudgetExceededError extends Error {
 }
 
 export class ReceiptBusyError extends Error {}
+
+export class ReceiptRetryError extends ReceiptBusyError {
+  readonly receiptId: number;
+  readonly retryAfterSeconds: number;
+  constructor(receiptId: number, retryAfterSeconds: number) {
+    super(`Receipt ${receiptId} will recover after ${retryAfterSeconds}s`);
+    this.receiptId = receiptId;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 export class ReceiptOutputExhaustedError extends Error {
   readonly receiptId: number;
@@ -49,6 +59,19 @@ export class ProviderRejectedError extends Error {
     this.status = status;
     this.retryable = retryable;
   }
+}
+
+/** A recovery stop says nothing about whether earlier provider work was charged. */
+export class ReceiptRecoveryStoppedError extends Error {
+  readonly receiptId: number;
+  constructor(receiptId: number, reason = "stopped") {
+    super(`Receipt ${receiptId} automatic recovery ${reason}; prior usage and unknown costs are retained`);
+    this.receiptId = receiptId;
+  }
+}
+
+export class ReceiptRecoveryExhaustedError extends ReceiptRecoveryStoppedError {
+  constructor(receiptId: number) { super(receiptId, "exhausted"); }
 }
 
 /** A whole Gateway logical request was rejected before any provider attempt. */
@@ -80,6 +103,8 @@ export interface ReceiptRequest {
   attemptTag?: string;
   /** Gateway UUID, persisted before dispatch; unknown outcomes require reconciliation. */
   gatewayRequestId?: string;
+  /** Versioned Gateway recovery; callers must negotiate before dispatch. */
+  gatewayRecovery?: boolean;
   /** Application generation budget; persisted invalid outputs count across worker restarts. */
   outputMaxAttempts?: number;
 }
@@ -92,6 +117,7 @@ export interface ReceiptResult {
 }
 
 const PENDING_STALE_MS = 10 * 60 * 1000;
+const MAX_RECOVERY_SENDS = 3;
 
 export function logicalKeyFor(req: ReceiptRequest): string {
   const identity = sha256(stableJson(req.identity));
@@ -128,10 +154,10 @@ async function checkBudget(tx: Db, service: string): Promise<void> {
 }
 
 /**
- * Runs a paid request at most once per logical key and returns its raw response.
+ * Reuses settled results and bounds opted-in recovery of the same logical key.
  * The caller parses the response and commits business results, then calls completeReceipt.
  */
-export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallOutcome>): Promise<ReceiptResult> {
+export async function paidRequest(req: ReceiptRequest, call: (requestId?: string) => Promise<CallOutcome>): Promise<ReceiptResult> {
   const logicalKey = logicalKeyFor(req);
   if (req.outputMaxAttempts !== undefined && (!Number.isSafeInteger(req.outputMaxAttempts) || req.outputMaxAttempts < 1)) {
     throw new Error("outputMaxAttempts must be a positive integer");
@@ -140,8 +166,9 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
   const claimed = await sql.begin(async (tx) => {
     // Serialise budget checks per service so concurrent workers cannot overshoot.
     await tx`SELECT pg_advisory_xact_lock(hashtext(${"budget:" + req.service}))`;
-    const [existing] = await tx<ReceiptRow[]>`
-      SELECT id, status, response, created_at, updated_at FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
+    const [existing] = await tx<(ReceiptRow & { attempts: number; request_id: string | null; retry_after: Date | null; recovery_exhausted: boolean })[]>`
+      SELECT id, status, response, created_at, updated_at, attempts, request_id, retry_after, recovery_exhausted
+      FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
     if (existing) {
       if (existing.status === "received" || existing.status === "completed") {
         const [attempt] = await tx<{ id: number }[]>`SELECT id FROM receipt_attempts WHERE receipt_id = ${existing.id} ORDER BY attempt DESC LIMIT 1`;
@@ -151,9 +178,28 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
       if (existing.status === "pending") {
         if (Date.now() - existing.updated_at.getTime() < PENDING_STALE_MS) return { kind: "busy" as const, row: existing };
         await markUnknown(tx, existing.id, "placeholder went stale without a recorded result");
-        return { kind: "unknown" as const, row: existing };
+        existing.status = "unknown";
       }
-      if (existing.status === "unknown") return { kind: "unknown" as const, row: existing };
+      if (req.gatewayRecovery && existing.recovery_exhausted) throw new ReceiptRecoveryExhaustedError(existing.id);
+      if (req.gatewayRecovery && existing.retry_after && existing.retry_after.getTime() > Date.now()) {
+        throw new ReceiptRetryError(existing.id, Math.max(1, Math.ceil((existing.retry_after.getTime()-Date.now())/1000)));
+      }
+      if (existing.status === "unknown") {
+        const [prior] = await tx<{ id: number; recovery_action: string | null; recovery_sends: number }[]>`
+          SELECT id,recovery_action,recovery_sends FROM receipt_attempts WHERE receipt_id=${existing.id} AND attempt=${existing.attempts}`;
+        if (req.gatewayRecovery && prior?.recovery_action === "stop") throw new ReceiptRecoveryStoppedError(existing.id);
+        if (!req.gatewayRecovery || !prior || !existing.request_id ||
+            !["retry_same_request", "retry_new_request"].includes(prior.recovery_action ?? "")) return { kind: "unknown" as const, row: existing };
+        if (prior.recovery_action === "retry_same_request") {
+          if (prior.recovery_sends >= MAX_RECOVERY_SENDS) throw new ReceiptRecoveryExhaustedError(existing.id);
+          await tx`UPDATE receipts SET status='pending',retry_after=NULL,updated_at=now() WHERE id=${existing.id}`;
+          await tx`UPDATE receipt_attempts SET recovery_sends=recovery_sends+1 WHERE id=${prior.id}`;
+          return { kind: "call" as const, id: existing.id, attemptId: prior.id, requestId: existing.request_id };
+        }
+        // A fresh generation is allowed only by explicit Gateway evidence. The
+        // earlier attempt remains unknown, including any unknown provider cost.
+      }
+      if (req.gatewayRecovery && existing.attempts >= (req.outputMaxAttempts ?? 3)) throw new ReceiptRecoveryExhaustedError(existing.id);
       if (req.outputMaxAttempts !== undefined) {
         const [invalid] = await tx<{ count: number }[]>`SELECT count(*)::int AS count FROM receipt_attempts
           WHERE receipt_id = ${existing.id} AND output_validation_error IS NOT NULL`;
@@ -163,10 +209,10 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
       await checkBudget(tx, req.service);
       const [r] = await tx<{ attempts: number }[]>`
         UPDATE receipts SET status = 'pending', attempts = attempts + 1, error = NULL,
-          request_id = ${req.gatewayRequestId ?? null}, request = ${tx.json((req.requestSummary ?? {}) as never)}, updated_at = now()
+          request_id = ${req.gatewayRequestId ?? null}, request = ${tx.json((req.requestSummary ?? {}) as never)}, retry_after=NULL, updated_at = now()
         WHERE id = ${existing.id} RETURNING attempts`;
       const attemptId = await startAttempt(tx, existing.id, r!.attempts, req);
-      return { kind: "call" as const, id: existing.id, attemptId };
+      return { kind: "call" as const, id: existing.id, attemptId, requestId: req.gatewayRequestId };
     }
     await checkBudget(tx, req.service);
     const [row] = await tx<{ id: number }[]>`
@@ -175,7 +221,7 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
               ${tx.json((req.requestSummary ?? {}) as never)}, ${req.gatewayRequestId ?? null}, 1)
       RETURNING id`;
     const attemptId = await startAttempt(tx, row!.id, 1, req);
-    return { kind: "call" as const, id: row!.id, attemptId };
+    return { kind: "call" as const, id: row!.id, attemptId, requestId: req.gatewayRequestId };
   });
 
   if (claimed.kind === "reuse") return { receiptId: claimed.row.id, response: claimed.row.response, reused: true, attemptId: claimed.attemptId };
@@ -184,23 +230,39 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     throw new ReceiptUnknownError(claimed.row.id, `Receipt ${claimed.row.id} has an unknown outcome; reconcile it before retrying`);
   }
 
-  const { id: receiptId, attemptId } = claimed;
+  const { id: receiptId, attemptId, requestId } = claimed;
   const started = Date.now();
   let outcome: CallOutcome;
   try {
-    outcome = await call();
+    outcome = await call(requestId ?? undefined);
   } catch (error) {
-    const rejected = req.gatewayRequestId
-      ? error instanceof GatewayNotDispatchedError && error.requestId === req.gatewayRequestId
+    const rejected = requestId
+      ? error instanceof GatewayNotDispatchedError && error.requestId === requestId
       : error instanceof ProviderRejectedError;
     const status = rejected ? "failed" : "unknown";
     // "unknown": the request may have reached the provider (timeout, reset): do not re-send automatically.
     const message = (error instanceof ProviderRejectedError ? error.message : String(error)).slice(0, 2000);
+    let retrySeconds: number | null = null;
+    let exhausted = false;
+    let stopped = false;
     await sql.begin(async (tx) => {
-      await tx`UPDATE receipts SET status = ${status}, error = ${message}, updated_at = now() WHERE id = ${receiptId}`;
+      const recovery = req.gatewayRecovery && error instanceof GatewayResponseError && error.recovery?.logical_request_id === requestId ? error.recovery : null;
+      stopped = recovery?.action === "stop";
+      const [attempt] = await tx`SELECT recovery_sends,attempt FROM receipt_attempts WHERE id=${attemptId}`;
+      if (recovery && recovery.action !== 'stop') {
+        exhausted = recovery.action === 'retry_same_request' ? attempt!.recovery_sends >= MAX_RECOVERY_SENDS : attempt!.attempt >= (req.outputMaxAttempts ?? 3);
+        if (!exhausted) retrySeconds = Math.max(recovery.retry_after_s, 3 * 2 ** (attempt!.recovery_sends-1));
+      }
+      await tx`UPDATE receipts SET status = ${status}, error = ${message},
+        retry_after=${retrySeconds === null ? null : new Date(Date.now()+retrySeconds*1000)},
+        recovery_exhausted=${exhausted}, updated_at = now() WHERE id = ${receiptId}`;
       const details = error instanceof GatewayResponseError ? safeGatewayFailure(error.details) : null;
-      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, error_details = ${tx.json(details as never)}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
+      await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, error_details = ${tx.json(details as never)},
+        recovery_action=${recovery?.action ?? null}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
     });
+    if (exhausted) throw new ReceiptRecoveryExhaustedError(receiptId);
+    if (stopped) throw new ReceiptRecoveryStoppedError(receiptId);
+    if (retrySeconds !== null) throw new ReceiptRetryError(receiptId, retrySeconds);
     if (req.gatewayRequestId && !rejected) throw new ReceiptUnknownError(receiptId, `Gateway request ${req.gatewayRequestId}: ${message}`);
     throw error;
   }
@@ -209,6 +271,7 @@ export async function paidRequest(req: ReceiptRequest, call: () => Promise<CallO
     await tx`
       UPDATE receipts SET
         status = 'received',
+        error = NULL, retry_after = NULL, recovery_exhausted = false,
         response = ${tx.json((outcome.response ?? null) as never)},
         request_id = ${outcome.requestId ?? null},
         usage = ${outcome.usage ? tx.json(outcome.usage as never) : null},
@@ -238,8 +301,15 @@ async function startAttempt(tx: Db, receiptId: number, attempt: number, req: Rec
 }
 
 async function markUnknown(tx: Db, receiptId: number, reason: string) {
-  await tx`UPDATE receipts SET status = 'unknown', error = ${reason}, updated_at = now() WHERE id = ${receiptId}`;
-  await tx`UPDATE receipt_attempts SET status = 'unknown', error = ${reason}, finished_at = now() WHERE receipt_id = ${receiptId} AND status = 'pending'`;
+  const [row] = await tx`UPDATE receipts SET status='unknown',error=${reason},updated_at=now()
+    WHERE id=${receiptId} AND status='pending' AND updated_at<${new Date(Date.now()-PENDING_STALE_MS)}
+    RETURNING attempts, request->'gateway'->>'recoveryVersion' AS recovery_version`;
+  if (!row) return false;
+  // Both worker re-entry and the periodic sweeper preserve the original replay identity.
+  await tx`UPDATE receipt_attempts SET status='unknown',error=${reason},finished_at=now(),
+    recovery_action=CASE WHEN ${row.recovery_version === '1'} AND recovery_action IS NULL THEN 'retry_same_request' ELSE recovery_action END
+    WHERE receipt_id=${receiptId} AND attempt=${row.attempts} AND status IN ('pending','unknown')`;
+  return true;
 }
 
 /**
@@ -248,8 +318,9 @@ async function markUnknown(tx: Db, receiptId: number, reason: string) {
  */
 export async function markStalePendingReceipts(): Promise<number> {
   const stale = await sql<{ id: number }[]>`SELECT id FROM receipts WHERE status = 'pending' AND updated_at < ${new Date(Date.now() - PENDING_STALE_MS)}`;
-  for (const r of stale) await sql.begin((tx) => markUnknown(tx, r.id, "placeholder went stale without a recorded result"));
-  return stale.length;
+  let marked = 0;
+  for (const r of stale) if (await sql.begin((tx) => markUnknown(tx, r.id, "placeholder went stale without a recorded result"))) marked++;
+  return marked;
 }
 
 export async function completeReceipt(db: Db, receiptId: number): Promise<void> {

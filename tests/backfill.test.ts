@@ -30,14 +30,22 @@ const models: BackfillBindings = {
 };
 const requests: Array<{ model: string; route: string | undefined; stage: string; user: string; thinking: unknown; maxTokens: number; temperature: number; timeout: number; reasoningEffort?: string; topP?: number }> = [];
 let pauseOnPrefilter: string | null = null, malformed = false, healthRevision = "test-revision";
+let transientOnce = false;
 let waiting: ReturnType<typeof gate> | null = null, entered: ReturnType<typeof gate> | null = null;
 let healthWait: ReturnType<typeof gate> | null = null, healthEntered: ReturnType<typeof gate> | null = null;
 const server = createServer(async (req,res) => {
-  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1] })); return; }
+  if (req.url === "/api/capabilities") { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ retry_policy_versions: [1], request_recovery_versions: [1] })); return; }
   if (req.headers["x-llm-retry-policy"]) res.setHeader("X-LLM-Retry-Policy", String(req.headers["x-llm-retry-policy"]));
   if (req.url === "/health") { if (healthWait) { healthEntered?.open(undefined); await healthWait.promise; } res.setHeader("content-type","application/json"); res.end(JSON.stringify({ status:"ok",file_registry_revision:healthRevision,loaded_registry_revision:healthRevision })); return; }
   const chunks: Buffer[] = []; for await (const c of req) chunks.push(Buffer.from(c));
   const body = JSON.parse(Buffer.concat(chunks).toString());
+  if (transientOnce) {
+    transientOnce = false;
+    res.writeHead(503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { code: "ledger_unavailable", recovery: {
+      version: 1, logical_request_id: req.headers["x-llm-request-id"], action: "retry_same_request", retry_after_s: 3,
+    } } })); return;
+  }
   const system = String(body.messages[0]?.role === "system" ? body.messages[0].content : "");
   const user = JSON.stringify(body.messages.at(-1).content);
   const stage = system.includes("宽召回的AI相关性预筛") ? "prefilter" : system.includes("事件注意力评分器") ? "score" : system.includes("内容理解编辑") ? "understand" : system.includes("资料结构化助手") ? "structure" : "summarize";
@@ -79,6 +87,24 @@ async function batch(entries:ManifestEntry[]) {
   const r=await importBackfill({label:`本机模拟回填 ${T}`,startDay:"2026-06-01",endDay:"2026-06-02",entries});
   await configureBackfill(r.id,models);await controlBackfill(r.id,"resume","test");return r.id;
 }
+
+test("transient Gateway failure leaves a scheduled backfill item and resumes without operator release", async () => {
+  process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED = "true";
+  try {
+    const id = await batch([entry("TRANSIENT"),entry("TRANSIENT2","2026-06-02")]);
+    transientOnce = true;
+    assert.equal((await runBackfill(id,{concurrency:1,maxItems:1})).state,"ready");
+    const [pending] = await sql`SELECT state,retry_after FROM backfill_items WHERE run_id=${id} AND retry_after IS NOT NULL`;
+    assert.equal(pending!.state,"pending"); assert.ok(pending!.retry_after > new Date());
+    const [receipt] = await sql`SELECT r.id,r.request_id FROM receipts r JOIN articles a ON r.subject LIKE 'article:' || a.id || '%' WHERE a.managed_backfill_id=${id} AND r.status='unknown'`;
+    assert.ok(receipt);
+    await sql`UPDATE receipts SET retry_after=now()-interval '1 second' WHERE id=${receipt!.id}`;
+    await sql`UPDATE backfill_items SET retry_after=now()-interval '1 second' WHERE run_id=${id} AND retry_after IS NOT NULL`;
+    assert.equal((await runBackfill(id,{concurrency:1,maxItems:10})).state,"complete");
+    const attempts = await sql`SELECT request_id,recovery_sends FROM receipt_attempts WHERE receipt_id=${receipt!.id}`;
+    assert.deepEqual(attempts.map(a=>[a.request_id,a.recovery_sends]),[[receipt!.request_id,2]]);
+  } finally { process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED = "false"; transientOnce = false; }
+});
 
 test("manifest rejects stale completeness evidence, duplicate identities and gaps after cleaning",()=>{
   const first=entry("valid"), second=entry("valid2","2026-06-02");

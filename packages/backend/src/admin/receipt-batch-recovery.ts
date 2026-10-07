@@ -3,7 +3,28 @@ import { sql, type Db } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "../backfill/history-input.ts";
 import { recoverTask, type Receipt } from "./receipt-recovery.ts";
-import { contentPolicyRejected } from "../providers/gateway-error.ts";
+import { contentPolicyRejected, safeGatewayFailure } from "../providers/gateway-error.ts";
+
+/** One-time migration of legacy transient failures, within the shared generation budget.
+ * This authorizes business replay, never a claim that the old attempt was free.
+ */
+export async function legacyTransientReceiptIds(maxGenerations: number): Promise<number[]> {
+  if (!Number.isSafeInteger(maxGenerations) || maxGenerations < 1) throw new Error("maxGenerations must be positive");
+  const rows = await sql`SELECT r.id,a.error,a.error_details FROM receipts r
+    JOIN receipt_attempts a ON a.receipt_id=r.id AND a.attempt=r.attempts
+    WHERE r.status='unknown' AND r.request_id IS NOT NULL AND r.attempts<${maxGenerations}
+      AND r.updated_at<now()-interval '10 minutes'
+      AND r.request->'gateway'->>'recoveryVersion' IS DISTINCT FROM '1'
+      AND NOT EXISTS(SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
+    ORDER BY r.id`;
+  return rows.filter(r => {
+    const details = safeGatewayFailure(r.error_details);
+    if (details) return details.retryable === true && ["timeout","upstream_unavailable","transport_error","rate_limited"].includes(details.category);
+    // Match only historical AIHOT writer formats, never free-text provider messages.
+    return /^Error: Gateway HTTP (408|429|500|502|503|504)( \(ledger_unavailable\))?; reconcile request [0-9a-f-]{36} before retrying$/.test(r.error ?? "") ||
+      /^Error: Gateway network failure \((ECONNREFUSED|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR_SOCKET|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|CALLER_DEADLINE)\); reconcile request [0-9a-f-]{36} before retrying$/.test(r.error ?? "");
+  }).map(r => Number(r.id));
+}
 
 type Item = { runId: string; key: string };
 export type RecoveryTarget =
@@ -81,9 +102,10 @@ async function targetFor(r: Receipt, backfill: ReturnType<typeof backfillTargets
 }
 
 /** No writes, no model calls. The same selection as the administration incident table. */
-export async function previewReceiptRecovery() {
+export async function previewReceiptRecovery(receiptIds?: number[]) {
   const receipts = await sql<Receipt[]>`SELECT r.* FROM receipts r
     WHERE (r.status='unknown' OR (r.status='failed' AND r.updated_at > now()-interval '3 days'))
+      ${receiptIds ? sql`AND r.id = ANY(${receiptIds}::bigint[])` : sql``}
       AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
     ORDER BY r.id`;
   const rows = [];

@@ -9,7 +9,7 @@ import { bindingsSchema, preflightBackfill } from "./gateway.ts";
 import { entryIdentity, validateManifest, type ManifestEntry } from "./manifest.ts";
 import { prepareHistoryItem, preparationIdentity, retryablePreparationError } from "./preparation.ts";
 import { discardBackfillContent } from "../content/retention.ts";
-import { BudgetExceededError } from "../providers/receipts.ts";
+import { BudgetExceededError, ReceiptRetryError } from "../providers/receipts.ts";
 import { stableJson } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "./history-input.ts";
 
@@ -216,7 +216,7 @@ export async function runBackfill(id: string, options: { concurrency: number; ma
           processed++;
         } catch (e) {
           const retry = retryablePreparationError(e);
-          const retryAt = retry && !(e instanceof BackfillPaused) ? new Date(Date.now() + (e instanceof BudgetExceededError ? e.retryAfterSeconds : 60) * 1000) : null;
+          const retryAt = retry && !(e instanceof BackfillPaused) ? new Date(Date.now() + (e instanceof BudgetExceededError || e instanceof ReceiptRetryError ? e.retryAfterSeconds : 60) * 1000) : null;
           await sql`UPDATE backfill_items SET state=${retry ? "pending" : "failed"},retry_after=${retryAt},reason=${String(e).slice(0,500)},updated_at=now() WHERE run_id=${id} AND identity_key=${key}`;
           if (e instanceof BackfillPaused) return;
         }

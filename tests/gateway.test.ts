@@ -9,7 +9,7 @@ import { config } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { chatJson, ModelOutputError } from "@aihot/backend/providers/llm";
 import { prepareGatewayRequest } from "@aihot/backend/providers/gateway";
-import { completeReceipt, GatewayNotDispatchedError, ReceiptUnknownError } from "@aihot/backend/providers/receipts";
+import { completeReceipt, GatewayNotDispatchedError, ReceiptUnknownError, ReceiptRetryError } from "@aihot/backend/providers/receipts";
 import { autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
 import { backfillContext, type BackfillBindings } from "@aihot/backend/backfill/context";
 
@@ -22,8 +22,9 @@ const binding = { model: "gpu-qwen", route: "personal_gpu/qwen/stream", actualMo
 const backfillModels: BackfillBindings = { prefilter: binding, structure: binding, score: binding, understand: binding, summarize: binding };
 const server = createServer(async (req, res) => {
   if (req.url === "/api/capabilities") {
+    if (mode === "capability-temporary-failure") { res.writeHead(503); res.end("temporarily unavailable"); return; }
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ retry_policy_versions: [1] }));
+    res.end(JSON.stringify({ retry_policy_versions: [1], request_recovery_versions: [1] }));
     return;
   }
   hits++;
@@ -48,6 +49,13 @@ const server = createServer(async (req, res) => {
     assert.equal(body.api_key, undefined);
     if (mode === "disconnect") { req.socket.destroy(); return; }
     if (mode === "http-error") { res.writeHead(503); res.end("upstream uncertain"); return; }
+    if (mode === "recoverable") {
+      assert.equal(req.headers["x-llm-request-recovery"], "1");
+      res.writeHead(503, { "content-type": "application/json", "retry-after": "3" });
+      res.end(JSON.stringify({ error: { code: "ledger_unavailable", recovery: {
+        version: 1, logical_request_id: id, action: "retry_same_request", retry_after_s: 3,
+      } } })); return;
+    }
     if (mode.startsWith("failure-")) {
       const failure = { version: 1, httpStatus: 400, providerCode: "1301", category: "content_policy_rejected", retryable: false,
         contentFilter: { role: "user", level: 2, secret: "must-not-persist" }, message: "must-not-persist", secret: "must-not-persist" };
@@ -129,6 +137,49 @@ after(async () => {
 const ask = (subject: string) => chatJson({ model: "default", purpose: "gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) });
 const askBackfill = (subject: string) => backfillContext.run({ runId: "fixture", models: backfillModels, beforeCall: async () => {} },
   () => chatJson({ model: "qwen3.8-flash", purpose: "backfill_gateway_test", subject, promptVersion: "1", system: "return JSON", user: subject, schema: z.object({ ok: z.boolean() }) }));
+
+test("negotiated recovery crosses HTTP and preserves UUID for realtime and pinned backfill", async () => {
+  process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED = "true";
+  try {
+    for (const run of [ask, askBackfill]) {
+      const subject = tag(); mode = "recoverable";
+      await assert.rejects(run(subject), ReceiptRetryError);
+      const [first] = await sql`SELECT id,request_id FROM receipts WHERE subject=${subject}`;
+      mode = "ok";
+      await sql`UPDATE receipts SET retry_after=now()-interval '1 second' WHERE id=${first!.id}`;
+      const result = await run(subject);
+      assert.equal(result.data.ok, true); assert.equal(result.receiptId, first!.id);
+      const attempts = await sql`SELECT request_id,recovery_sends FROM receipt_attempts WHERE receipt_id=${result.receiptId}`;
+      assert.deepEqual(attempts.map(a => [a.request_id,a.recovery_sends]), [[first!.request_id,2]]);
+    }
+  } finally { process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED = "false"; mode = "ok"; }
+});
+
+test("capability failure during recovery cannot discard the previous UUID or authorize a generation", async () => {
+  process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED = "true";
+  const subject=tag();
+  try {
+    mode="recoverable";
+    await assert.rejects(ask(subject),ReceiptRetryError);
+    const [first]=await sql`SELECT id,request_id FROM receipts WHERE subject=${subject}`;
+    // Construct another instance, then restore the caller to force fresh negotiation.
+    process.env.LLM_GATEWAY_PROJECT="unused-no-dispatch";
+    prepareGatewayRequest("fixture-model",1000);
+    process.env.LLM_GATEWAY_PROJECT="aihot-test";
+    mode="capability-temporary-failure";
+    await sql`UPDATE receipts SET retry_after=now()-interval '1 second' WHERE id=${first!.id}`;
+    const before=hits;
+    await assert.rejects(ask(subject),ReceiptRetryError);
+    assert.equal(hits,before,"failed negotiation sends no model HTTP request");
+    const [waiting]=await sql`SELECT status,recovery_action FROM receipt_attempts WHERE receipt_id=${first!.id}`;
+    assert.equal(waiting!.status,"unknown"); assert.equal(waiting!.recovery_action,"retry_same_request");
+    mode="ok";
+    await sql`UPDATE receipts SET retry_after=now()-interval '1 second' WHERE id=${first!.id}`;
+    assert.equal((await ask(subject)).data.ok,true);
+    const attempts=await sql`SELECT request_id,recovery_sends FROM receipt_attempts WHERE receipt_id=${first!.id}`;
+    assert.deepEqual(attempts.map(a=>[a.request_id,a.recovery_sends]),[[first!.request_id,3]]);
+  } finally { process.env.LLM_GATEWAY_PROJECT="aihot-test"; process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED="false"; mode="ok"; }
+});
 
 test("native and compatibility failure metadata persist safe details without changing unknown billing", async () => {
   for (mode of ["failure-native", "failure-compat"]) {

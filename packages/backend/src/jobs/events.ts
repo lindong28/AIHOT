@@ -2,7 +2,7 @@
 import type { PgBoss } from "pg-boss";
 import { groupArticle } from "../events/group.ts";
 import { composeStoryDigest } from "../events/digest.ts";
-import { BudgetExceededError, ReceiptBusyError } from "../providers/receipts.ts";
+import { ReceiptRetryError } from "../providers/receipts.ts";
 import { settleNonEditorial } from "./content.ts";
 import { ensureQueue, enqueue, QUEUES } from "./queue.ts";
 
@@ -20,13 +20,22 @@ export async function registerEventJobs(boss: PgBoss) {
       }
       return result;
     } catch (error) {
-      if (error instanceof BudgetExceededError || error instanceof ReceiptBusyError) throw error;
+      if (error instanceof ReceiptRetryError) {
+        await enqueue(QUEUES.group, job.data, { singletonKey: `receipt:${error.receiptId}`, startAfter: error.retryAfterSeconds });
+        return { verdict: "waiting-receipt", receiptId: error.receiptId };
+      }
       throw error;
     }
   });
   await ensureQueue(QUEUES.digest);
   await boss.work<{ storyId: number; afterCorrection?: boolean }>(QUEUES.digest, { localConcurrency: 3, pollingIntervalSeconds: 5 }, async ([job]) => {
     if (!job) return;
-    return composeStoryDigest(job.data.storyId, { afterCorrection: job.data.afterCorrection });
+    try {
+      return await composeStoryDigest(job.data.storyId, { afterCorrection: job.data.afterCorrection });
+    } catch (error) {
+      if (!(error instanceof ReceiptRetryError)) throw error;
+      await enqueue(QUEUES.digest, job.data, { singletonKey: `receipt:${error.receiptId}`, startAfter: error.retryAfterSeconds });
+      return { state: "waiting-receipt", receiptId: error.receiptId };
+    }
   });
 }

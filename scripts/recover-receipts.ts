@@ -3,10 +3,13 @@ import { setTimeout } from "node:timers/promises";
 import { sql, closeDb } from "../packages/backend/src/db.ts";
 import { stopBoss } from "../packages/backend/src/jobs/queue.ts";
 import { previewReceiptRecovery, createReceiptRecoveryBatch, advanceReceiptRecoveryBatch, settleReceiptRecoveryBatch, receiptRecoveryStatus } from "../packages/backend/src/admin/receipt-batch-recovery.ts";
+import { legacyTransientReceiptIds } from "../packages/backend/src/admin/receipt-batch-recovery.ts";
+import { jsonMaxAttempts } from "../packages/backend/src/providers/gateway.ts";
 
 const { values } = parseArgs({ options: {
   batch: { type: "string" }, apply: { type: "boolean", default: false }, note: { type: "string" },
   status: { type: "boolean", default: false }, json: { type: "boolean", default: false },
+  "transient-only": { type: "boolean", default: false },
   limit: { type: "string", default: "4" }, "backfill-limit": { type: "string" }, "wait-seconds": { type: "string", default: "0" },
 } });
 let lock: Awaited<ReturnType<typeof sql.reserve>> | undefined;
@@ -15,8 +18,9 @@ try {
   const backfillLimit = values["backfill-limit"] === undefined ? undefined : Number(values["backfill-limit"]);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isFinite(wait) || wait < 0 || wait > 86400) throw new Error("limit 须为 1..100，wait-seconds 须为 0..86400");
   if (backfillLimit !== undefined && (!Number.isInteger(backfillLimit) || backfillLimit < 1 || backfillLimit > 100)) throw new Error("backfill-limit 须为 1..100");
+  const receiptIds = values["transient-only"] && !values.status ? await legacyTransientReceiptIds(jsonMaxAttempts()) : undefined;
   if (!values.apply && !values.status) {
-    const rows = await previewReceiptRecovery();
+    const rows = await previewReceiptRecovery(receiptIds);
     if (values.json) console.log(JSON.stringify({ mode: "preview", receipts: rows }));
     else console.log(`预览：${rows.length} 条旧异常，${new Set(rows.map(r => JSON.stringify(r.target))).size} 个业务目标；${rows.filter(r => r.target.kind === 'unsupported').length} 条暂不支持自动恢复。未修改数据、未调用模型。\n执行时指定 --apply --batch <批次名> --note <授权说明>；重放可能再次计费，原费用未知仍保留。`);
   } else {
@@ -26,7 +30,7 @@ try {
     if (!held?.locked) throw new Error("已有恢复脚本运行，请等待该进程结束");
     if (values.apply) {
       if (!values.note) throw new Error("--apply 必须提供 --note，说明这批重放已获授权，可能再次计费");
-      await createReceiptRecoveryBatch(values.batch, values.note);
+      await createReceiptRecoveryBatch(values.batch, values.note, receiptIds);
     }
     const deadline = Date.now() + wait * 1000;
     let result;

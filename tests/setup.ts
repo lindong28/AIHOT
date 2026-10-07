@@ -15,6 +15,8 @@ process.env.IMG_PROXY_SIGN_SECRET ??= "test-img-secret-0123456789";
 process.env.FEISHU_CONTENT_PUSH_ENABLED = "false";
 process.env.INDEXNOW_SUBMIT_ENABLED = "false";
 process.env.LOG_LEVEL ??= "error";
+// Legacy fixtures exercise non-opted callers; recovery tests enable the new protocol explicitly.
+process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED ??= "false";
 // The tests were written against the named model presets AIHOT assigns to each step (each provider is
 // pointed at a local stub by the test that needs it). The open-source default is one model for every
 // step, which tests/default-model.test.ts covers.

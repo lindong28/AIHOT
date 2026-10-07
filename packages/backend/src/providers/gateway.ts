@@ -8,6 +8,8 @@ import { GatewayResponseError, gatewayFailure } from "./gateway-error.ts";
 const CONNECT_RETRY_CODES = new Set(["ECONNREFUSED", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
 const NETWORK_CODES = new Set([...CONNECT_RETRY_CODES, "ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "EPIPE",
   "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID"]);
+const TRANSIENT_NETWORK_CODES = new Set([...CONNECT_RETRY_CODES, "ECONNRESET", "ETIMEDOUT", "EPIPE",
+  "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "CALLER_DEADLINE"]);
 
 function networkCodes(error: unknown, depth = 0): string[] {
   if (!error || typeof error !== "object" || depth > 3) return ["UNKNOWN"];
@@ -39,9 +41,10 @@ function gatewayClient(baseUrl: string, project: string, mode: "stream" | "batch
     initialBackoffMs: Number(process.env.LLM_GATEWAY_INITIAL_BACKOFF_MS ?? 3000),
   };
   const jsonRetry = { maxAttempts: jsonMaxAttempts() };
-  const key = JSON.stringify({ baseUrl, project, mode, retry, jsonRetry });
+  const requestRecovery = process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED !== "false";
+  const key = JSON.stringify({ baseUrl, project, mode, retry, jsonRetry, requestRecovery });
   if (cachedClient?.key === key) return cachedClient.client;
-  const client = new GatewayClient({ baseUrl, project, mode, retry, jsonRetry });
+  const client = new GatewayClient({ baseUrl, project, mode, retry, jsonRetry, requestRecovery });
   // Each generation must finish before the ten-minute pending receipt lease.
   if (client.deadlineMs > 9 * 60 * 1000) throw new Error("Gateway retry policy exceeds the 9-minute receipt waiting limit");
   cachedClient = { key, client };
@@ -73,9 +76,13 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
   return {
     requestId,
     client,
+    recoveryEnabled: process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED !== "false",
     identity,
-    summary: { ...identity, retry: client.retry, jsonRetry: client.jsonRetry, ...(pin ? { routes } : {}), ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
-    async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    summary: { ...identity, retry: client.retry, jsonRetry: client.jsonRetry,
+      ...(process.env.LLM_GATEWAY_REQUEST_RECOVERY_ENABLED !== "false" ? { recoveryVersion: 1 } : {}),
+      ...(pin ? { routes } : {}), ...(pin?.registryRevision ? { registryRevision: pin.registryRevision } : {}), logicalRequestId: requestId },
+    async send(endpoint: "chat/completions" | "embeddings", body: Record<string, unknown>, persistedRequestId: string = requestId): Promise<Record<string, unknown>> {
+      const requestId = persistedRequestId;
       let res: { body: unknown; headers: Headers; status: number };
       try {
         res = await client.request(`/v1/${endpoint}`, { ...body, model }, { requestId, headers: {
@@ -83,10 +90,28 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
           ...(pin?.registryRevision ? { "X-LLM-Allowed-Routes": JSON.stringify(routes.map((r) => r.route)), "X-LLM-Registry-Revision": pin.registryRevision } : {}),
         } });
       } catch (error) {
-        if (error instanceof GatewayCapabilityError) throw new GatewayNotDispatchedError(requestId, "Gateway does not support the configured retry policy; no model request dispatched");
+        if (error instanceof GatewayCapabilityError) {
+          if (!this.recoveryEnabled) throw new GatewayNotDispatchedError(requestId, "Gateway does not support the configured retry policy; no model request dispatched");
+          // Negotiation proves only this HTTP invocation was not sent. An earlier
+          // invocation of this UUID may already have produced a paid answer.
+          const cause = error.cause;
+          const transient = cause instanceof GatewayHTTPError
+            ? cause.status === 408 || cause.status === 429 || cause.status >= 500
+            : networkCodes(cause).every(code => TRANSIENT_NETWORK_CODES.has(code));
+          throw new GatewayResponseError(503, requestId,
+            { version: 1, httpStatus: null, providerCode: null, category: transient ? "transport_error" : "invalid_request", retryable: transient },
+            undefined, { version: 1, logical_request_id: requestId, action: transient ? "retry_same_request" : "stop", retry_after_s: transient ? 3 : 0 });
+        }
         if (error instanceof GatewayProtocolError) throw new Error(`Gateway response identity or protocol mismatch; reconcile request ${requestId} before retrying`);
         if (error instanceof GatewayHTTPError) res = error;
-        else throw new Error(`Gateway network failure (${[...new Set(networkCodes(error))].join(",")}); reconcile request ${requestId} before retrying`);
+        else {
+          const codes = [...new Set(networkCodes(error))];
+          if (this.recoveryEnabled && codes.every(code => TRANSIENT_NETWORK_CODES.has(code))) {
+            throw new GatewayResponseError(503, requestId, { version: 1, httpStatus: null, providerCode: null, category: "transport_error", retryable: true },
+              "transport_error", { version: 1, logical_request_id: requestId, action: "retry_same_request", retry_after_s: 3 });
+          }
+          throw new Error(`Gateway network failure (${codes.join(",")}); reconcile request ${requestId} before retrying`);
+        }
       }
       const json = res.body as Record<string, unknown> | null;
       const error = json?.error as Record<string, unknown> | undefined;
@@ -101,7 +126,7 @@ export function prepareGatewayRequest(model: string, timeoutMs: number, pin?: Ba
           throw new GatewayNotDispatchedError(requestId, `Gateway ${error.code}: 未派发模型请求，等待任务退避重试；request ${requestId}`);
         }
         // Persist codes, not upstream messages: those can contain credentials or private URLs.
-        throw new GatewayResponseError(res.status, requestId, gatewayFailure(json, res.headers, res.status), error?.code);
+        throw new GatewayResponseError(res.status, requestId, gatewayFailure(json, res.headers, res.status), error?.code, error?.recovery);
       }
       // Compressed provider JSON is passed through: Gateway identity then lives
       // in percent-encoded headers, even though fetch has decompressed the body.

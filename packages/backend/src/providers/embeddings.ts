@@ -40,12 +40,12 @@ async function embedBatch(texts: string[], subject: string): Promise<{ vectors: 
   const key = gateway ? null : own ? credential("models", "EMBEDDING_API_KEY") : credential("models", "DASHSCOPE_API_KEY");
   if (!gateway && !key) throw new Error("EMBEDDING_API_KEY (or DASHSCOPE_API_KEY) missing");
   const receipt = await paidRequest(
-    { service: SERVICE, model: EMBEDDING_MODEL, purpose: "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)), ...(gateway ? { gateway: gateway.identity } : {}) }, requestSummary: { count: texts.length, ...(gateway ? { gateway: gateway.summary } : {}) }, gatewayRequestId: gateway?.requestId },
-    async () => {
+    { service: SERVICE, model: EMBEDDING_MODEL, purpose: "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)), ...(gateway ? { gateway: gateway.identity } : {}) }, requestSummary: { count: texts.length, ...(gateway ? { gateway: gateway.summary } : {}) }, gatewayRequestId: gateway?.requestId, gatewayRecovery: gateway?.recoveryEnabled },
+    async (requestId) => {
       const body = { model: EMBEDDING_MODEL, input: texts, ...(EMBEDDING_DIMS > 0 ? { dimensions: EMBEDDING_DIMS } : {}), encoding_format: "float" };
       if (gateway) {
-        const json = await gateway.send("embeddings", body);
-        return { response: json, requestId: gateway.requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
+        const json = await gateway.send("embeddings", body, requestId);
+        return { response: json, requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
       }
       const res = await fetch(`${base!.replace(/\/$/, "")}/embeddings`, {
         method: "POST",
