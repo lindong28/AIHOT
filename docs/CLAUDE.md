@@ -9,6 +9,7 @@
 | [deploy.md](deploy.md) | 站点运营者：环境配置、本机和 Docker 部署 |
 | [migration.md](migration.md) | 维护者：当前迁移状态、阶段记录与剩余缺口 |
 | [customize.md](customize.md) | 站点定制者：调整行业、品牌、主题与模块 |
+| [references/20261007-topic-chronicle.md](references/20261007-topic-chronicle.md) | 开发者：主题大事记的事实身份、日期、月度选材、人工历史及本地验收 |
 | [sources.md](sources.md) | 站点运营者：信源配置、参与方式、抓取和外部推送 |
 | [references/20261006-video-sources.md](references/20261006-video-sources.md) | 维护者：官方 AI 视频来源补充、配置覆盖范围和待接入公众号 |
 | [references/20261005-source-labels.md](references/20261005-source-labels.md) | 开发者：文章级公开来源、历史聚合归属和批量修复验收 |

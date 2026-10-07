@@ -417,3 +417,22 @@ export interface StoryFollowupsResponse { items: StoryFollowup[]; more: boolean 
 
 /** All issue keys keep numbering and calendars stable; closed daily months omit their titles. */
 export interface ReportNavigationEntry { key: string; title?: string | null; count?: number }
+/** Topic chronicle is a selected-content projection, independent of the news-list tab. */
+export interface TopicKind { label: string; above?: true; launch?: true }
+export interface TopicEvent { id: string; title: string; at: string; kind: string; href: string }
+export interface TopicMonth { month: string; events: TopicEvent[] }
+export interface TopicMilestone {
+  date: string;
+  kind: string;
+  title: string;
+  summary: string | null;
+  href: string | null;
+  external: boolean;
+  major: boolean;
+}
+export interface TopicChronicle {
+  kinds: Record<string, TopicKind>;
+  months: TopicMonth[];
+  milestones: TopicMilestone[];
+  curated: boolean;
+}

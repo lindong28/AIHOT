@@ -1,13 +1,14 @@
 import { SITE, withSubject } from "@aihot/industry/site";
 import { Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/topic";
-import type { FeedItemSummary } from "@aihot/contracts/site";
+import type { FeedItemSummary, TopicChronicle } from "@aihot/contracts/site";
 import { loadOr404 } from "../lib/api.server";
 import { breadcrumbLd, pageMeta, titled } from "../lib/seo";
 import { DayList, Pagination } from "../features/feed/DayList";
 import { EmptyState, MoreLink } from "../components/ui/Page";
 import { NewsScopeToggle } from "../components/ui/NewsScopeToggle";
 import { newsScope, scopeHref } from "../lib/news-scope";
+import { ChronicleBand, ChronicleRail } from "../features/topic/Chronicle";
 
 /** Selected items of a topic: shared caches keep the page as long as its api answer (one minute). */
 export function headers() {
@@ -15,6 +16,7 @@ export function headers() {
 }
 
 interface TopicPageData {
+  chronicle: TopicChronicle | null;
   topic: { slug: string; name: string; group: string; definition: string; total: number; indexable: boolean; related: Array<{ slug: string; name: string }> };
   items: FeedItemSummary[];
   page: number;
@@ -48,7 +50,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function TopicPage() {
   const { data, tab } = useLoaderData<typeof loader>();
-  const { topic, items, page, pageCount } = data;
+  const { topic, items, page, pageCount, chronicle } = data;
   const href = (p: number) => scopeHref(p <= 1 ? `/topics/${topic.slug}` : `/topics/${topic.slug}/page/${p}`, tab);
   const first = (page - 1) * 20 + 1;
   const last = first + items.length - 1;
@@ -79,6 +81,14 @@ export default function TopicPage() {
           )}
         </div>
       </header>
+
+      {chronicle && (
+        <div className="mb-5">
+          {topic.group === "company"
+            ? <ChronicleBand milestones={chronicle.milestones} kinds={chronicle.kinds} curated={chronicle.curated} />
+            : <ChronicleRail months={chronicle.months} kinds={chronicle.kinds} />}
+        </div>
+      )}
 
       <div className="mb-1 mt-2 flex items-baseline justify-between">
         <h2 className="text-[18px] font-bold text-ink">{tab === 'selected' ? '最新精选' : '最新 AI 相关新闻'}</h2>

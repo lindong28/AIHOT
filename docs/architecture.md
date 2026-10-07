@@ -93,6 +93,8 @@ flowchart LR
 
 ## 行业包与实现的边界
 
+主题大事记从 `publication/topic-chronicle-read.ts` 读取现有公开精选，`topic-chronicle.ts` 按事实身份归并、按发生时间选月度节点，`industry/chronicle.ts` 提供行业门槛。历史回填可用 `analyses.output.fact` 参与，只做读取，不补建事件或热度。`chronicles.ts` 接入可选的公司人工历史并保留日期精度。主题 API 第一页返回 `chronicle`，Web 使用公司横轴／方向纵轴；详见[设计、算法及验收](references/20261007-topic-chronicle.md)。
+
 [industry/](../industry/) 提供站名品牌、分类与主题、示范来源、prompt、入选门槛及 AI 专属模块开关。它适合承载 AI Radar 的行业内容与选择标准；队列、归组、热度、公开读取和支付恢复等运行机制仍在后端。更换行业包不会自动把另一套项目的选择器或事件算法接进来。
 
 模型由 [editorial/models.ts](../packages/backend/src/editorial/models.ts) 按能力选择，支持后台配置、环境变量与代码默认值；实际部署可覆盖仓库默认值。改模型路由看这里，改送给模型的材料看 [editorial/input.ts](../packages/backend/src/editorial/input.ts)，改标准看 [industry/prompts/](../industry/prompts/)，改评分合成或任务关系看 `analyze.ts` 与 `jobs/`。改任一公开出口的内容资格，应先查 [publication/rules.ts](../packages/backend/src/publication/rules.ts) 和 `publish.ts`，避免各渠道各自定义精选。

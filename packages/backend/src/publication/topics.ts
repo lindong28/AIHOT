@@ -1,10 +1,11 @@
-import type { FeedItemSummary, NewsScope } from "@aihot/contracts/site";
+import type { FeedItemSummary, NewsScope, TopicChronicle } from "@aihot/contracts/site";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "../config.ts";
 import { sql } from "../db.ts";
 import { cached } from "../lib/cache.ts";
 import { ITEM_COLUMNS, ITEM_FROM, listedCondition, toFeedItemSummary, type ItemRow } from "./items.ts";
+import { loadTopicChronicle } from "./topic-chronicle-read.ts";
 
 export interface TopicRow {
   slug: string;
@@ -128,6 +129,7 @@ export async function listTopicSummaries(tab: NewsScope = 'selected'): Promise<T
 }
 
 export interface TopicPage {
+  chronicle: TopicChronicle | null;
   topic: TopicSummary & { related: Array<{ slug: string; name: string }> };
   items: FeedItemSummary[];
   page: number;
@@ -152,5 +154,6 @@ export async function loadTopicPage(slug: string, page: number, now = new Date()
     SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE p.article_id IN (SELECT article_id FROM page)
     ORDER BY p.timeline_at DESC, p.article_id DESC`;
   const related = row.related.map((r) => topics.find((t) => t.slug === r)).filter((t): t is TopicSummary => !!t).map((t) => ({ slug: t.slug, name: t.name }));
-  return { topic: { ...topic, related }, items: rows.map(toFeedItemSummary), page, pageCount };
+  const chronicle = page === 1 ? await loadTopicChronicle(row, now) : null;
+  return { topic: { ...topic, related }, items: rows.map(toFeedItemSummary), page, pageCount, chronicle };
 }

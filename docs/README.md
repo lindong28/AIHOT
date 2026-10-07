@@ -6,6 +6,7 @@
 |---|---|
 | 了解项目、安装并运行 | [根 README](../README.md) → [部署](deploy.md) |
 | 配置站点品牌、行业和分类 | [行业定制](customize.md) |
+| 调整主题大事记与公司人工历史 | [大事记配置](customize.md#主题大事记)；[设计与验收](references/20261007-topic-chronicle.md) |
 | 添加信源、试抓、调整参与方式 | [信源](sources.md) |
 | 查询官方近期新闻来源、对比接入缺口 | [来源缺口审计脚本](operations/source-gap-audit.md) |
 | 运行服务、迁移 Wechat2RSS | [服务运维](operations/services.md) |
