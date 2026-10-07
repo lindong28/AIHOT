@@ -8,6 +8,8 @@
 
 2026-10-04 首次公众号接入后，release `wechat-colocate-20261004` 已将 Wechat2RSS 迁到腾讯，与调用 SocialData 的 worker 同机。后端私有 `WECHAT2RSS_BASE_URL` 改为 `http://127.0.0.1:18480`，token 保持，22 个来源继续由 worker 的 mp 队列采集。`deploy/production/service.sh` 统一管理 API/Web/worker 和已配置的 Wechat2RSS 容器；Mac mini 旧容器与隧道已停，仅保留外部健康探针。私有目录、起停、验证与迁移边界见[公众号运维](wechat2rss.md)及[同机部署记录](../references/20261004-wechat-colocate.md)。
 
+2026-10-07 主题大事记已发布，`current` 指向 `topic-chronicle-20261007-56e1bbb`，API/Web 运行功能提交 `56e1bbb`。本次只重启 API/Web，worker 与在途回填未重启；无新增迁移、seed 或模型配置变更。公网视频、OpenAI、模型发布三个主题 API 已返回大事记，页面交互与站点 smoke 已检查。旧 release `source-gaps-20261006` 保留供代码回切，部署身份、验证范围和选材局限见[发布记录](../references/20261007-topic-chronicle.md#生产发布记录2026-10-07)。
+
 ## 环境与持久数据
 
 生产模板使用 `LLM_GATEWAY_ATTEMPT_TIMEOUT_MS=60000`，在线 worker 与 backfill 的 Gateway 客户端实例均读取它；共享 SDK 缺省仍为 30000。次数预算仍默认 3 次（含首次），backoff 仍为 3 秒、6 秒，每次请求派发后独立计算最多 60 秒，backoff 与路由冷却不扣该时间。修改 `app.env` 后需让 worker 和 backfill 在途任务结算退出，再启动新进程；以新回执的 `request.gateway.retry.attemptTimeoutMs` 和 Gateway attempt 关联核对实际值。更长超时不保证每条新闻成功，也不自动清除历史 unknown 回执。
