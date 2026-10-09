@@ -7,6 +7,7 @@ import {
 import type { ReactNode } from "react";
 import type { Route } from "./+types/root";
 import "./app.css";
+import "./reader.css";
 import { Sidebar } from "./components/shell/Sidebar";
 import { MobileTabBar } from "./components/shell/MobileTabBar";
 import { BackToTop, NavigationProgress } from "./components/shell/Chrome";
@@ -70,7 +71,7 @@ export function meta({ error }: Route.MetaArgs) {
 function SiteShell({ changelogVersion, children }: { changelogVersion: string | null; children: ReactNode }) {
   const navigation = useNavigation();
   return (
-    <div className="flex min-h-dvh">
+    <div className="public-site flex min-h-dvh">
       <NavigationProgress active={navigation.state === "loading"} />
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-control focus:bg-surface focus:px-3 focus:py-2">
         跳到正文

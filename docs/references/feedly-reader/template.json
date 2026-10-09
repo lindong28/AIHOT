@@ -1,0 +1,128 @@
+{
+  "id": "style:feedly-reader",
+  "slug": "feedly-reader",
+  "name": "Feedly 清爽阅读器",
+  "reuse_mode": "style",
+  "status": "approved",
+  "description": "白色阅读画布、浅灰导航、克制的绿色强调，以清晰的标题、摘要和来源层级组织信息；弱化卡片包装，让内容成为视觉中心。",
+  "scope": "适合资讯流、订阅阅读、知识更新与内容列表的浅色视觉风格；保留目标产品已有结构和业务行为，可用于整个产品或指定页面。",
+  "risks": "本模板根据 Feedly 官方公开产品展示提炼，不是官方设计系统或像素复刻；深色主题未定义。缺图条目应保持自然文字排版，不为套风格补造封面。",
+  "evidence": "2026-10-09 用户明确选择：“我喜欢 Feedly 的风格，就用 Feedly 创建视觉风格模板”。认可范围是这个视觉风格的创建，不代表已认可本地示例成品或 AIHOT 应用效果。",
+  "source": "Feedly News Reader 官方公开产品展示：https://feedly.com/news-reader 。本地原创示例使用合成资讯，不复制 Feedly 标志、截图、代码或素材；未登录核验完整阅读器。",
+  "tags": [
+    "阅读器",
+    "信息流",
+    "资讯",
+    "浅色",
+    "极简",
+    "绿色"
+  ],
+  "layouts": [],
+  "components": [
+    {
+      "name": "信息条目",
+      "description": "标题为首要入口，摘要为第二层，来源、时间及项目已有标签为第三层；同角色共用对齐线。文字条目以留白和细线分隔，避免每段再套圆角卡片。已有缩略图可使用，缺图不留空白图槽；长标题可换行，完整内容仍可访问。"
+    },
+    {
+      "name": "导航与筛选",
+      "description": "已有导航用浅灰表面，普通项为中性色，选中项用淡绿底和深绿文字；已有页内筛选或视图切换使用紧凑按钮与清楚选中态，不把示例导航项目当成功能要求。"
+    },
+    {
+      "name": "操作与反馈",
+      "description": "主动作或选中态使用绿色，次要动作使用中性色与轻边线；hover、键盘焦点、禁用与展开状态可区分。图标保持同一笔画和尺寸，文字标签或可访问名称解释操作。"
+    },
+    {
+      "name": "详情与长文",
+      "description": "详情继续沿用白色阅读表面和相同字体层级，正文保持适合阅读的行宽与段落间距；引用、推荐理由等已有辅助内容以细线或浅底分组，不改变其语义或默认展开策略。"
+    }
+  ],
+  "overrides": "保留项目名称、标志、路由、数据、筛选与收藏语义。品牌色有明确约束时映射到强调色角色并记录例外。仅应用浅色范围；已有深色主题沿项目定义，不静默关闭或声称已覆盖。",
+  "theme": {
+    "name": "Feedly-inspired reader",
+    "description": "以内容为中心的浅色阅读视觉。以下数值为本模板的适配基线，不声称来自 Feedly 官方 token。",
+    "options": [
+      "保留现有任务结构，仅应用阅读器视觉"
+    ],
+    "tokens": {
+      "canvas": "#ffffff",
+      "navigation": "#f7f8f7",
+      "surface_subtle": "#f4f6f4",
+      "text": "#202521",
+      "text_secondary": "#59635d",
+      "text_muted": "#66716a",
+      "border": "#e6eae6",
+      "accent": "#187b3c",
+      "accent_surface": "#edf7ef",
+      "accent_hover": "#126431",
+      "font_family": "-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif",
+      "font_size_px": {
+        "page_title": 30,
+        "item_title": 18,
+        "body": 15,
+        "metadata": 12
+      },
+      "line_height": {
+        "title": 1.45,
+        "body": 1.75,
+        "metadata": 1.5
+      },
+      "spacing_px": [
+        4,
+        8,
+        12,
+        16,
+        24,
+        32,
+        48
+      ],
+      "radius_px": {
+        "control": 6,
+        "thumbnail": 6,
+        "overlay": 12
+      },
+      "border_width_px": 1,
+      "control_height_px": 36,
+      "shadow": "常态无阴影；仅浮层使用轻阴影",
+      "reading_measure": "详情正文约 65–75ch；中文连续正文约 32–40em，按实际字形和视口调整"
+    }
+  },
+  "application": {
+    "changes": [
+      "在共享样式与组件层统一白色画布、浅灰辅助表面、绿色强调及文字层级。",
+      "将现有条目的标题、摘要、来源和操作整理成稳定的对齐与间距关系；现有导航、列表、卡片和详情按各自任务适配。"
+    ],
+    "prerequisites": [
+      "提供目标仓库、页面或路由范围及品牌约束；只需项目已有内容，不要求新增图片、推荐算法、订阅或收藏功能。"
+    ]
+  },
+  "acceptance": [
+    "FR-V01 范围内浅色页面及详情状态使用同一套颜色、字体、间距与控件角色；项目覆盖有明确记录。",
+    "FR-V02 每条内容的标题、摘要、来源与时间有可辨的三级层次；长标题、短标题、有图及无图的实际内容均不发生重叠或身份分离。",
+    "FR-V03 普通条目依靠留白与轻分隔组织，绿色用于主要动作和选中态；辅助标签不抢过标题，不靠重复卡片和阴影包裹正文。",
+    "FR-V04 现有导航、筛选、收藏、展开和详情入口在改造后仍可操作，选中、hover、键盘焦点与禁用状态清楚；不为风格添加新业务。",
+    "FR-V05 宽窄视口下，标题与来源仍关联到同一条目，阅读区不被侧栏或工具条挤出整页；详情长文可完整阅读，缺图不产生空占位。",
+    "FR-V06 示范数据、示例中的列表/卡片切换和侧栏目录不自动成为目标产品要求；保留品牌、内容含义和原有交互，未覆盖的主题与状态明确交代。"
+  ],
+  "review_prompt": "使用 user-scope `web-ui-workflows review-ui` 审核目标产品的视觉风格。\n\n模板：Feedly 清爽阅读器\n模板定义：https://prompts.aiplanet.live/api/webui/v1/templates/feedly-reader.json\n目标仓库：[填写仓库路径]\n产品入口：[填写 URL]\n应用范围：[整个产品，或列出页面／路由集合]\n项目明确约束：[有则填写]\n\n读取当前定义的 theme、components、overrides 和 acceptance；以白色画布、浅灰辅助表面、克制绿色和清晰文字层级适配目标页面及详情状态。保留项目品牌、任务结构、内容含义和业务行为，示例只展示视觉关系，不要求新增侧栏、封面、订阅、收藏或视图切换。已有深色主题保留项目定义，本模板只定义浅色视觉。\n\n本次只审核，不修改。复用项目有效设计，从真实入口核对颜色、文字层级、分组、对齐、宽窄屏和受影响的实际操作；检查长短条目及有图/无图情况。按适用 acceptance 给出证据、项目例外与未核实项，区分本次回归和基线问题，不以示例存在替代产品验证。",
+  "prompts": [
+    {
+      "id": "feedly-reader-apply",
+      "lang": "中文",
+      "is_default": true,
+      "body": "使用 user-scope `web-ui-workflows apply-ui-template` 优化目标产品的视觉风格。\n\n模板：Feedly 清爽阅读器\n模板定义：https://prompts.aiplanet.live/api/webui/v1/templates/feedly-reader.json\n目标仓库：[填写仓库路径]\n产品入口：[填写 URL]\n应用范围：[整个产品，或列出页面／路由集合]\n项目明确约束：[有则填写]\n\n读取当前定义的 theme、components、overrides 和 acceptance；以白色画布、浅灰辅助表面、克制绿色和清晰文字层级适配目标页面及详情状态。保留项目品牌、任务结构、内容含义和业务行为，示例只展示视觉关系，不要求新增侧栏、封面、订阅、收藏或视图切换。已有深色主题保留项目定义，本模板只定义浅色视觉。\n\n在项目共享样式与组件层落实同一份有效设计，记录模板来源与内容摘要、覆盖路由、项目例外和新增页面的继承入口。从真实入口阅读长短条目、有图与无图内容，检查宽窄屏并操作本次受影响的筛选、展开与详情；按适用 acceptance 报告结果及未核实项。"
+    }
+  ],
+  "exemplars": [
+    {
+      "id": "exemplar:feedly-reader",
+      "kind": "runnable-html",
+      "structure-origin": "derived-from: Feedly News Reader public product showcase",
+      "capture": "locally-authored",
+      "file": "assets/webui/exemplars/feedly-reader/index.html",
+      "borrow": "适合资讯流、订阅阅读、知识更新与内容列表的浅色视觉风格；保留目标产品已有结构和业务行为，可用于整个产品或指定页面。",
+      "route": "/webui/exemplars/feedly-reader/"
+    }
+  ],
+  "schema_version": 1,
+  "page_url": "https://prompts.aiplanet.live/webui/feedly-reader/"
+}

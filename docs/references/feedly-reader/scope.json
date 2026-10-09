@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "aihot-feedly-public-20261009",
+  "objective": "公开页面及详情浅色视觉，保留品牌、业务和深色；各路由族宽窄屏基础扫描及首页/详情实际阅读。",
+  "application": "style",
+  "design": {
+    "path": "effective-design.json",
+    "sha256": "67716551f7653fc57913b1bb4a7e7d2ecb8f82307bef067b568cb14852cf6122"
+  },
+  "project": {
+    "path": "project.json",
+    "sha256": "6a493eda45a05424cf0017e91252c5eb41c471fadd8fde5b914a1d7a32491154"
+  }
+}

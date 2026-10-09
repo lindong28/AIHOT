@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "template": {
+    "id": "style:feedly-reader",
+    "source": "https://prompts.aiplanet.live/api/webui/v1/templates/feedly-reader.json",
+    "sha256": "08e20c1f1b6c34e6f840285a781a993286001e3bfb724d1ddefc0316b1d60e29"
+  },
+  "rules": [
+    {
+      "id": "canvas",
+      "role": "body",
+      "kind": "style",
+      "source": "theme.tokens.canvas / FR-V01",
+      "description": "公开浅色白色画布",
+      "property": "background-color",
+      "expected": "rgb(255, 255, 255)"
+    },
+    {
+      "id": "accent",
+      "role": "root",
+      "kind": "style",
+      "source": "theme.tokens.accent / FR-V01",
+      "description": "共用克制绿色",
+      "property": "--accent",
+      "expected": "#187b3c"
+    },
+    {
+      "id": "border",
+      "role": "root",
+      "kind": "style",
+      "source": "theme.tokens.border / FR-V01",
+      "description": "共用浅灰分隔",
+      "property": "--line",
+      "expected": "#e6eae6"
+    },
+    {
+      "id": "viewport",
+      "role": "root",
+      "kind": "no-horizontal-overflow",
+      "source": "FR-V05",
+      "description": "整页不横向溢出"
+    },
+    {
+      "id": "feed-title",
+      "role": "feed-title",
+      "kind": "style",
+      "source": "theme.tokens.font_size_px.item_title / FR-V02",
+      "description": "信息流标题18px",
+      "property": "font-size",
+      "expected": "18px"
+    },
+    {
+      "id": "feed-shadow",
+      "role": "feed",
+      "kind": "style",
+      "source": "components.信息条目 / FR-V03",
+      "description": "信息流常态无卡片阴影",
+      "property": "box-shadow",
+      "expected": "none"
+    },
+    {
+      "id": "feed-reading",
+      "role": "feed",
+      "kind": "manual",
+      "source": "FR-V02 / FR-V03 / FR-V05",
+      "description": "首页阅读长短、有图无图条目，来源、时间、标题摘要关联与轻分隔"
+    },
+    {
+      "id": "detail-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "components.详情与长文 / FR-V05",
+      "description": "详情标题、导读或正文、引用及图片完整可读，无图不留空槽"
+    },
+    {
+      "id": "interaction",
+      "role": "body",
+      "kind": "manual",
+      "source": "FR-V04 / FR-V06",
+      "description": "首页筛选、展开、收藏、详情入口、焦点及浅深切换保留业务语义"
+    }
+  ]
+}

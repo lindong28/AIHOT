@@ -1,0 +1,86 @@
+/* Feedly 清爽阅读器 — style:feedly-reader.
+ * Effective design, provenance and exceptions: docs/references/feedly-reader.md.
+ * Resolve semantic variables at the root (Tailwind @theme references them there).
+ * Only the public light shell opts in; admin and existing dark values stay intact.
+ */
+:root:not([data-theme="dark"]):has(.public-site) {
+  --bg: #ffffff;
+  --bg-sunk: #f4f6f4;
+  --bg-muted: #e6eae6;
+  --surface: #ffffff;
+  --surface-2: #f7f8f7;
+  --raised: #ffffff;
+  --sidebar: #f7f8f7;
+  --daybar: #f4f6f4;
+  --field: #f4f6f4;
+  --ink: #202521;
+  --ink-2: #39423c;
+  --ink-3: #59635d;
+  --ink-4: #66716a;
+  --line: #e6eae6;
+  --line-strong: #ccd5ce;
+  --line-soft: #edf0ed;
+  --accent: #187b3c;
+  --accent-ink: #126431;
+  --accent-soft: #edf7ef;
+  --accent-softer: #f4faf5;
+  --accent-contrast: #ffffff;
+  --note: #59635d;
+  --prose-ink: #202521;
+  --code-bg: #f4f6f4;
+  --selection: #d8eddd;
+  --radius-control: 6px;
+  --radius-tile: 6px;
+  --radius-card: 6px;
+  --radius-panel: 6px;
+  --radius-sheet: 12px;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-thumb: none;
+  --shadow-soft: 0 4px 12px rgb(32 37 33 / 6%);
+  --shadow-pop: 0 12px 32px rgb(32 37 33 / 12%);
+}
+
+:root:not([data-theme="dark"]) .public-site {
+  .site-sidebar { border-color: var(--line); }
+  .site-sidebar a[aria-current="page"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .ui-button, .ui-select { border-radius: var(--radius-control); }
+  [data-pill-track], [data-pill-track] > :is(a, button), .tab-thumb { border-radius: 6px; }
+  [data-pill-track] { background: transparent; box-shadow: none; padding: 3px 0; }
+  .tab-thumb { background: var(--accent-soft); box-shadow: none; }
+  [data-pill-track] > :is([aria-current="page"], [aria-selected="true"]) { color: var(--accent); }
+  [role="search"] :is(input:not([type="hidden"]), button[type="submit"]) { border-radius: 6px; }
+  .feed-item {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+  }
+  .feed-source { font-size: 12px; }
+  .feed-title { font-size: 18px; line-height: 1.45; }
+  .feed-summary { font-size: 15px; line-height: 1.75; }
+  .feed-reason {
+    border-radius: 0;
+    background: transparent;
+    border-left: 2px solid var(--line);
+    padding: 0 0 0 12px;
+  }
+}
+
+@media (min-width: 961px) {
+  :root:not([data-theme="dark"]) .public-site {
+    .site-sidebar { width: 208px; }
+    /* Podium evidence sits at the card edge; keep its popup inside the reading area. */
+     .leaderboard-podium [role="tooltip"] { left: auto; right: 0; translate: 0; }
+    .feed-item {
+      padding: 16px 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    .feed-item > :is(h3, p), .feed-reason { max-width: 72ch; }
+    .feed-reason { border-top: 0; margin-top: 16px; }
+  }
+}

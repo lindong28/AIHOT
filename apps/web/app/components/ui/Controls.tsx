@@ -14,7 +14,7 @@ const SIZES: Record<Size, string> = { sm: "h-8 px-3 text-[12.5px]", md: "h-9 px-
 
 /** The pill button's classes, for links that look like buttons. */
 export function buttonClass(variant: Variant = "secondary", size: Size = "md"): string {
-  return `inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.98] ${SIZES[size]} ${VARIANTS[variant]}`;
+  return `ui-button inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.98] ${SIZES[size]} ${VARIANTS[variant]}`;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }>(function Button(
@@ -36,7 +36,7 @@ export function Select({ className = "", children, ...rest }: SelectHTMLAttribut
   return (
     <span className={`relative inline-flex ${className}`}>
       <select
-        className="h-8 w-full cursor-pointer appearance-none rounded-full border border-line-strong bg-surface py-0 pl-3.5 pr-8 text-[12.5px] text-ink-2 outline-none transition-colors hover:border-ink-4 focus:border-accent"
+        className="ui-select h-8 w-full cursor-pointer appearance-none rounded-full border border-line-strong bg-surface py-0 pl-3.5 pr-8 text-[12.5px] text-ink-2 outline-none transition-colors hover:border-ink-4 focus:border-accent"
         {...rest}
       >
         {children}

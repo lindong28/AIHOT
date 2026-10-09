@@ -186,3 +186,6 @@ env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/ubuntu \
 ```
 
 不额外设置 `MODEL_CALLS_ENABLED=false`：测试初始化会启用自身 mock。误继承生产配置的实际后果及处置见[切换记录](../references/20261001-production-cutover.md#2026-10-02-准备阶段补充)。
+
+
+2026-10-09 公开站点 Feedly 浅色视觉已发布到 `feedly-reader-20261009-r2`，只更新 Web，API/worker 保持原进程。未运行迁移或 seed；旧 release 与哈希静态资源保留。共享设计、模板摘要、验收范围和回退点见[Feedly 有效设计](../references/feedly-reader.md#发布与验收2026-10-09)。

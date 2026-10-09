@@ -20,7 +20,7 @@ export function Podium({ entries, board }: { entries: LbBoardEntry[]; board: str
   const top = entries.filter((e) => e.rank <= 3).slice(0, 3);
   if (top.length < 3) return null;
   return (
-    <ol className="mt-3 hidden gap-3 md:grid md:grid-cols-3" aria-label="前三名">
+    <ol className="leaderboard-podium mt-3 hidden gap-3 md:grid md:grid-cols-3" aria-label="前三名">
       {top.map((e, i) => (
         <li key={e.model.slug}>
           <Link to={modelHref(e.model.slug, board)} prefetch="intent" className={`card card-hover group flex h-full flex-col px-4 py-3.5 ${WASH[i]}`}>
