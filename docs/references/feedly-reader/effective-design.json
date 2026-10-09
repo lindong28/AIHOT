@@ -3,7 +3,7 @@
   "template": {
     "id": "style:feedly-reader",
     "source": "https://prompts.aiplanet.live/api/webui/v1/templates/feedly-reader.json",
-    "sha256": "08e20c1f1b6c34e6f840285a781a993286001e3bfb724d1ddefc0316b1d60e29"
+    "sha256": "0d8513244b6e30fa1757fbaf37da5a7b9082323a7b21d5fcaa03d12dcdce44d9"
   },
   "rules": [
     {
@@ -31,7 +31,7 @@
       "source": "theme.tokens.border / FR-V01",
       "description": "共用浅灰分隔",
       "property": "--line",
-      "expected": "#e6eae6"
+      "expected": "#e8e8e8"
     },
     {
       "id": "viewport",
@@ -45,9 +45,9 @@
       "role": "feed-title",
       "kind": "style",
       "source": "theme.tokens.font_size_px.item_title / FR-V02",
-      "description": "信息流标题18px",
+      "description": "信息流标题16px",
       "property": "font-size",
-      "expected": "18px"
+      "expected": "16px"
     },
     {
       "id": "feed-shadow",
@@ -63,7 +63,7 @@
       "role": "feed",
       "kind": "manual",
       "source": "FR-V02 / FR-V03 / FR-V05",
-      "description": "首页阅读长短、有图无图条目，来源、时间、标题摘要关联与轻分隔"
+      "description": "长短标题自然换行，标题→来源→两行摘要；X保留作者→原帖；媒体左置，小图比例、无图释放空间，推荐理由及日期轻量分组"
     },
     {
       "id": "detail-reading",

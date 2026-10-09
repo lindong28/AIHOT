@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "id": "aihot-feedly-public-20261009",
-  "objective": "公开页面及详情浅色视觉，保留品牌、业务和深色；各路由族宽窄屏基础扫描及首页/详情实际阅读。",
+  "id": "aihot-feedly-stream-public-20261009",
+  "objective": "按当前Feedly信息流模板更新公开浅色视觉，保留品牌、X原帖结构、深色和业务；覆盖全部公开路由与详情状态。",
   "application": "style",
   "design": {
     "path": "effective-design.json",
-    "sha256": "67716551f7653fc57913b1bb4a7e7d2ecb8f82307bef067b568cb14852cf6122"
+    "sha256": "cd7380b3d6828d701c38c73e6ac4abe8f7a28e8192eaa4db71ca7517b6a21754"
   },
   "project": {
     "path": "project.json",
