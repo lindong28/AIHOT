@@ -292,10 +292,12 @@
   .admin-nav-item:has(.admin-nav-active) { font-weight: 600; }
   .admin-mobile-nav { border-radius: 6px; }
   .admin-mobile-nav.bg-ink { background: var(--gh-nav-on); color: var(--ink); font-weight: 600; }
-  .admin-card { border-radius: 6px; }
+  /* A Box in a one-column grid otherwise grows to its table's min-content, so the table's own
+     horizontal scroller never engages (/admin/runs at 390px widened the page to 656px). */
+  .admin-card { border-radius: 6px; min-width: 0; }
   .admin-card-head { background: #f6f8fa; border-radius: 6px 6px 0 0; }
   .admin-card-head h2 { font-size: 14px; font-weight: 600; }
-  /* Box headers wrap their actions instead of widening the page (/admin/runs at 390px overflowed to 656px). */
+  /* Narrow Box headers wrap their count, filters and actions. */
   .admin-card-head { flex-wrap: wrap; }
   .admin-card-head > div { flex-wrap: wrap; min-width: 0; }
   .admin-stat { border-radius: 6px; }
