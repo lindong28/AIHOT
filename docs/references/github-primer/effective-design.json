@@ -3,7 +3,7 @@
   "template": {
     "id": "style:github-primer-product-ui",
     "source": "https://prompts.aiplanet.live/api/webui/v1/templates/github-primer-product-ui.json",
-    "sha256": "a509260daaa9701cf94a59c17e7e46f8bb3ebd3c67f0ebe0a1bd7a8ec63e5479"
+    "sha256": "67b484c8c1641c9e2e5114f0a60cb717c64fa0d3c5a8c7a0eeeafc818904d88f"
   },
   "rules": [
     {
@@ -57,6 +57,90 @@
       "kind": "no-horizontal-overflow",
       "source": "GH-V08 / GH-V14",
       "description": "整页不横向溢出"
+    },
+    {
+      "id": "type-scale",
+      "role": "text-all",
+      "kind": "allowed-values",
+      "property": "font-size",
+      "own_text": true,
+      "allowed": [
+        "12px",
+        "14px",
+        "16px",
+        "20px",
+        "24px",
+        "32px"
+      ],
+      "source": "theme.tokens.font_size_px / GH-V02",
+      "description": "全页可见文字只用六档字号；行内代码、头像首字母与品牌字标按 GH-V02 例外排除"
+    },
+    {
+      "id": "tracking",
+      "role": "text-all",
+      "kind": "allowed-values",
+      "property": "letter-spacing",
+      "own_text": true,
+      "allowed": [
+        "normal",
+        "0px"
+      ],
+      "source": "GH-V02",
+      "description": "标题、数字与大写小标签都不加正负字距；品牌字标排除"
+    },
+    {
+      "id": "text-color",
+      "role": "text-all",
+      "kind": "allowed-values",
+      "property": "color",
+      "own_text": true,
+      "allowed": [
+        "rgb(31, 35, 40)",
+        "rgb(89, 99, 110)",
+        "rgb(37, 41, 46)",
+        "rgb(255, 255, 255)",
+        "rgb(9, 105, 218)",
+        "rgb(5, 80, 174)",
+        "rgb(26, 127, 55)",
+        "rgb(154, 103, 0)",
+        "rgb(209, 36, 47)",
+        "rgb(130, 80, 223)",
+        "rgb(129, 139, 152)"
+      ],
+      "source": "theme.tokens.light / GH-V01",
+      "description": "文字颜色只用模板文字、强调与语义色；按钮字 #25292e 与反白字计入"
+    },
+    {
+      "id": "radius",
+      "role": "all",
+      "kind": "allowed-values",
+      "property": "border-top-left-radius",
+      "allowed": [
+        "0px",
+        "3px",
+        "5px",
+        "6px",
+        "12px",
+        "999px",
+        "9999px",
+        "3.35544e+07px",
+        "50%"
+      ],
+      "source": "theme.tokens.radius_px / GH-V03 / GH-V04",
+      "description": "圆角只用 3/6/12px 与 pill；5px 为 6px 分段轨道内的同心选中块（项目适配）"
+    },
+    {
+      "id": "control-height",
+      "role": "controls-all",
+      "kind": "allowed-values",
+      "property": "height",
+      "allowed": [
+        "28px",
+        "32px",
+        "40px"
+      ],
+      "source": "components.按钮与图标按钮 / components.搜索、筛选与表单 / GH-V04",
+      "description": "按钮、输入与搜索框宽窄屏都只用 28/32/40px"
     },
     {
       "id": "headings",

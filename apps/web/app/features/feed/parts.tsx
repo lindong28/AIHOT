@@ -64,7 +64,8 @@ export function StarButton({ item, size = 26, className = "" }: { item: Pick<Fee
         });
         if (added) setPulse((p) => p + 1);
       }}
-      style={{ width: size, height: size }}
+      // A style may resize the toggle through --star-size (GitHub: 28px icon button in feed cards).
+      style={{ width: `var(--star-size, ${size}px)`, height: `var(--star-size, ${size}px)` }}
       className={`relative z-10 inline-flex shrink-0 items-center justify-center rounded-control transition-colors duration-150 ${on ? "text-accent" : "text-ink-4 hover:bg-bg-sunk hover:text-ink-2"} ${className}`}
     >
       <span key={pulse} className={`flex ${pulse ? "anim-bump" : ""}`}>

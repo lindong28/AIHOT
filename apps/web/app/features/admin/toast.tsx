@@ -46,7 +46,7 @@ export function Toaster() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-            className={`pointer-events-auto max-w-md rounded-card px-4 py-2.5 text-[13.5px] shadow-lg ring-1 backdrop-blur ${
+            className={`admin-toast admin-toast--${t.tone} pointer-events-auto max-w-md rounded-card px-4 py-2.5 text-[13.5px] shadow-lg ring-1 backdrop-blur ${
               t.tone === "error" ? "bg-hot text-white ring-hot/40" : t.tone === "ok" ? "bg-ink text-bg ring-line-strong" : "bg-surface text-ink ring-line-strong"
             }`}
           >

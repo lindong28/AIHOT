@@ -20,7 +20,7 @@ export function CopyButton({ text, label = "复制", className = "" }: { text: s
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className={`inline-flex h-7 items-center gap-1 rounded-mark border border-line bg-surface px-2 text-[12px] transition-colors ${copied ? "text-ok" : "text-ink-3 hover:border-line-strong hover:text-ink"} ${className}`}
+      className={`copy-button inline-flex h-7 items-center gap-1 rounded-mark border border-line bg-surface px-2 text-[12px] transition-colors ${copied ? "text-ok" : "text-ink-3 hover:border-line-strong hover:text-ink"} ${className}`}
       aria-label={copied ? "已复制" : label}
     >
       <span key={copied ? "ok" : "copy"} className={copied ? "anim-swap-in" : ""}>

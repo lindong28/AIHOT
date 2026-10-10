@@ -313,7 +313,7 @@ export function ReasonDialog({
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 10, scale: 0.98, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-            className="admin-dialog relative w-full max-w-lg rounded-sheet bg-raised p-5 shadow-2xl ring-1 ring-line-strong"
+            className="admin-dialog relative w-full max-w-lg rounded-sheet bg-raised p-5 text-left shadow-2xl ring-1 ring-line-strong"
             onSubmit={async (e) => {
               e.preventDefault();
               if (requireReason && !reason.trim()) return;

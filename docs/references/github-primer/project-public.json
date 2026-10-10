@@ -65,6 +65,17 @@
     },
     "admin-nav-current": {
       "selector": ".admin-nav-active"
+    },
+    "text-all": {
+      "selector": "body *",
+      "exclude": "[role=\"img\"], .source-avatar, .brand-mark, code, pre, svg"
+    },
+    "all": {
+      "selector": "body *",
+      "exclude": "[role=\"img\"]"
+    },
+    "controls-all": {
+      "selector": ".ui-button, .admin-btn, input.admin-input, select.admin-input, .copy-button, [role=\"search\"] > div:has(> input), [role=\"search\"] :is(input, button[type=\"submit\"]).h-11, input.h-\\[42px\\], input#fb-email, .feed-item button[aria-pressed]"
     }
   },
   "cases": [

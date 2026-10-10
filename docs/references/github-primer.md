@@ -12,7 +12,7 @@
 | GitHub 覆盖公开页、详情和后台 | 本次请求包含管理页面。后台没有独立切换器，跟随同一浏览器保存的选择，与暗色在后台的既有行为一致；管理员在公开页侧栏或“更多”页选 GitHub 后，后台即使用 GitHub。比较过的备选：后台固定 GitHub（会改变后台默认外观，未获要求）、后台另加切换器（新增界面，超出视觉应用范围）。 |
 | 切换器改为 2×2 | 四个选项在 180px 侧栏单行会截断“Feedly”“GitHub”。该控件在四种风格下都变为两行；“更多”页外观行改为最小高度并加上下内边距，四种风格下控件均在行内。 |
 
-`apps/web/app/github.css` 是 GitHub 选项的唯一视觉覆盖，全部选择器限定在 `:root[data-theme="github"]`；不使用 `:has(.public-site)`，所以公开 `SiteShell` 与后台 `admin-site` 都继承。新增页面复用 SiteShell / 后台 layout、语义 token、`buttonClass`、`PillTabs`、`Badge`、`ScoreLabel`、`FeedItem`、后台 `Card` / `Stat` / `DataTable` / `Button` / `Field` 即自动继承，不复制私有颜色。为了让样式能区分角色，本次只给既有组件加了无行为的钩子：`ui-button--{variant}`、`data-pill-kind="nav|tabs"`（链接切换与页内切换）、后台 `admin-card`、`admin-card-head`、`admin-stat`、`admin-badge--{tone}`、`admin-table`、`admin-btn--{tone}`、`admin-input`、`admin-chip`、`admin-dialog`、`admin-nav-item` / `admin-nav-active`；后台监控页的两个标签链接补了 `aria-current`。
+`apps/web/app/github.css` 是 GitHub 选项的唯一视觉覆盖，全部选择器限定在 `:root[data-theme="github"]`；不使用 `:has(.public-site)`，所以公开 `SiteShell` 与后台 `admin-site` 都继承。新增页面复用 SiteShell / 后台 layout、语义 token、`buttonClass`、`PillTabs`、`Badge`、`ScoreLabel`、`FeedItem`、后台 `Card` / `Stat` / `DataTable` / `Button` / `Field` 即自动继承，不复制私有颜色。为了让样式能区分角色，本次只给既有组件加了无行为的钩子：`ui-button--{variant}`、`data-pill-kind="nav|tabs"`（链接切换与页内切换）、后台 `admin-card`、`admin-card-head`、`admin-stat`、`admin-badge--{tone}`、`admin-table`、`admin-btn--{tone}`、`admin-input`、`admin-chip`、`admin-dialog`、`admin-nav-item` / `admin-nav-active`；后台监控页的两个标签链接补了 `aria-current`。第二轮又加了 `site-toast`、`admin-toast--{tone}`、`copy-button`、`source-avatar`、`brand-mark` 五个类钩子；模型标志圆角与收藏按钮尺寸本来写在行内样式里，改为读取 `--brand-mark-radius`、`--star-size`，变量缺省时与原值相同。
 
 ## 页面、组件与状态盘点
 
@@ -38,10 +38,13 @@
 - 业务状态色保留含义：热度上升、“爆”、失败、精选、确认/预告日均映射到 Primer 语义色，不改为中性。
 - 介绍页“信号河”动画保留原结构，颜色随强调色；分享海报由 API 渲染，保持上一版固定白底，不随网页风格变化。
 - 暗色、亮色与 Feedly 不受影响；后台以前只有亮色/暗色，Feedly 覆盖仍不进入后台。
+- 字号六档的例外：信源头像与模型标志的首字母随头像尺寸缩放，行内代码按 85% 相对缩小，“AI Radar”字标保留原字距。
+- 信源无法区分个人与机构账号，头像统一保持圆形；模型标志按机构标志用 6px 方圆角。
+- 页内分段控件的选中块在 6px 轨道内用 5px 同心圆角。
 
 ## 核验
 
-批量规则：[effective-design.json](github-primer/effective-design.json) 编译 29 条规则（20 条机器规则、9 条人工阅读），公开与后台分别由 [scope-public.json](github-primer/scope-public.json)、[scope-admin.json](github-primer/scope-admin.json) 固定完整分母（41×2 与 13×2 个页面状态/视口组合，1440×1000 与 390×844）。执行：
+批量规则：[effective-design.json](github-primer/effective-design.json) 编译 34 条规则（25 条机器规则、9 条人工阅读；其中 5 条全页取值规则把字号、字距、文字颜色、圆角与控件高度作用于页面全部可见元素），公开与后台分别由 [scope-public.json](github-primer/scope-public.json)、[scope-admin.json](github-primer/scope-admin.json) 固定完整分母（41×2 与 13×2 个页面状态/视口组合，1440×1000 与 390×844）。执行：
 
 ```bash
 python3 scripts/verify-github.py --scope docs/references/github-primer/scope-public.json --output <持久证据目录> --jobs 6 --capacity-reason '共享公网 API 与本机浏览器容量' --direct
@@ -70,7 +73,7 @@ python3 scripts/verify-github.py --scope docs/references/github-primer/scope-adm
 
 后端测试首次运行 5 个失败；全新测试库重跑与改动前基线均 372/372 通过，判为环境性不稳定，未改测试。
 
-本仓 [template.json](github-primer/template.json) 是本次应用与核验所用的模板字节。模板随后只修订了“分组列表 Box”中 grid/flex 内取 `min-width: 0` 一句，本仓已按修订实现；下次重新应用时再同步副本与 SHA。
+本仓 [template.json](github-primer/template.json) 已在第二轮同步为当前模板字节（SHA256 前缀 `67b484c8`，记录在 effective-design 的 `template.sha256`）。
 
 ### 覆盖与未覆盖
 
@@ -78,9 +81,30 @@ python3 scripts/verify-github.py --scope docs/references/github-primer/scope-adm
 | --- | --- | --- |
 | 模板没规定 | 分享海报图片 | API 渲染的固定白底图片，不随网页风格变化，按项目例外保留 |
 | 模板没规定 | 介绍页“信号河”动画、外观切换器形态 | 产品特有组件，只随 token 改色 |
-| 产品未落实 | 后台 Toast | 继承语义 token 与浮层圆角，没有专门规则，也未在页面上触发观察 |
 | 产品未落实 | 亮色下排行榜 1440 宽到 1480px、后台运行页 390 宽到 656px | 既有亮色问题，不在 GitHub 风格范围 |
 | 尚未验证 | 生产后台 | 只在隔离本地实例核验，未登录生产后台 |
 | 尚未验证 | `/admin/content/:id`、`/admin/selectbench/:runId` | 隔离库无数据，用同组件详情代表 |
 | 尚未验证 | 其余 629 个公开组合的逐页阅读、非 Chromium 浏览器、旧版本缓存升级 | 机器规则已通过，人工阅读只覆盖上表页面 |
 | 尚未验证 | 用户审美认可 | agent 检查不等于用户认可 |
+
+## 第二轮审核与改进（2026-10-10）
+
+用户要求按模板审核并改进 AIHOT，结合来源网站补齐缺口，并更新模板与确有缺口的通用 skill。本轮先用全页取值扫描找上一轮规则没覆盖的元素：48 条公开路由（41 条原样本加 404、搜索结果、空搜索、相关度排序、分页、Agent 的 RSS 与 API 页）× 1440/390，加 14 条后台路由。扫描发现的组件再去 GitHub 公开仓库页（cli/cli，未登录）取参照。Feed 本轮未重新登录；上一轮同日的 Feed 观察继续使用。
+
+| 发现 | 归属 | 处置 |
+| --- | --- | --- |
+| 约 8400 个元素用 13、12.5、11、11.5、15、18px 等离档字号；详情标题 36px、页面标题 22/26px | 产品未落实；模板未写明离档字号是否允许 | `github.css` 字号映射表把全部 `text-[Npx]` 工具类归到六档；模板 GH-V02 补写 |
+| 大写小标签和数字带正负字距 | 产品未落实 | 去掉字距，品牌字标除外 |
+| 硬编码灰底 `rgba(28,39,51,.04)`（监控标签、排行表头） | 产品未落实 | 改用区域面 token |
+| 模型标志 8/9/14px 圆角；后台“开发”标记 4px 实底 | 产品未落实 | 6px 方圆角；描边 pill |
+| 控件 26/36/37/42/44px | 产品未落实；模板未写窄屏 | 收到 28/32/40；模板补窄屏同档 |
+| 复制按钮 3px 且复制后仍灰 | 产品未落实；Agent 页 `!text-ink-3` 在所有风格都压掉了复制成功色 | 6px 28px 默认按钮、成功转绿；删去该覆盖（所有风格受益） |
+| 详情“链接已复制”深色胶囊、后台 Toast | 模板未规定瞬时确认 | 工具提示外观；失败用危险提示条；模板补写并加示例 |
+| 目录搜索聚焦时内外两层框 | 产品未落实 | 外框持有聚焦环 |
+| 后台原因确认对话框文字右对齐 | 基线布局缺陷（位于右对齐单元格内，所有风格） | 对话框 `text-left` |
+| 热点页分隔点用边线色 | 产品未落实 | 改为 muted |
+| 后台错误提示显示接口英文原文 | 范围外（文案与产品） | 记录，未改 |
+| 批量规则只查声明选择器，上一轮 832 PASS 没覆盖上述元素 | 通用 skill 执行机制缺口 | web-ui-workflows 批量核验新增全页取值规则、溢出元素定位与受测构建记录（ai-agent-config `0bf26353`） |
+
+本地读数：公开 82 组合 1182 PASS、0 FAIL（构建 `root-BViki3bd.css`），后台 26 组合 366 PASS、0 FAIL（随后只加了后台选中 chip 计数颜色的构建 `root-BfhDDZ5z.css`）；全页取值扫描剩余项均为上述例外。阳性对照：把同一组新规则跑在当时的生产版本（`root-BBPBvc73.css`）上，140 项 FAIL，82 个组合的字号规则全部失败；报告里的资产路径区分出两个构建。后台隔离实例实际触发了原因确认对话框、成功与失败提示（写入只落在本机测试库）。
+

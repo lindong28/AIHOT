@@ -82,7 +82,7 @@ function McpTab({ base }: { base: string }) {
       <p className="mt-2 text-[14.5px] text-ink-3">适合支持远程 MCP 的 Agent 与开发工具。标准 Streamable HTTP，匿名只读，不需要 token；工具返回简洁文字与同一份结构化数据。</p>
       <div className="mt-6 flex items-center gap-2 rounded-card border border-line bg-surface p-3">
         <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink">{url}</code>
-        <CopyButton text={url} className="!text-ink-3" />
+        <CopyButton text={url} />
       </div>
       <CodeBlock title="通用 MCP 配置" lang="json" code={JSON.stringify({ mcpServers: { [name]: { type: "http", url } } }, null, 2)} />
       <CodeBlock lang="bash" code={`# Claude Code\nclaude mcp add --transport http ${name} '${url}'\n# Codex\ncodex mcp add ${name} --url '${url}'`} />
@@ -126,7 +126,7 @@ function RssTab({ base }: { base: string }) {
             <div key={path} className="card p-4">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[15px] font-semibold text-ink">{name}</span>
-                <CopyButton text={url} label="复制地址" className="!text-ink-3" />
+                <CopyButton text={url} label="复制地址" />
               </div>
               <p className="mt-1 text-[13px] leading-relaxed text-ink-3">{desc}</p>
               <code className="mt-2 block truncate font-mono text-[12.5px] text-ink-4">{url}</code>

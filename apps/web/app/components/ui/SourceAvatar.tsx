@@ -17,7 +17,7 @@ export function SourceAvatar({ name, iconUrl, avatarUrl, iconSrcSet, avatarSrcSe
         height={size}
         loading="lazy"
         onError={() => setFailed(true)}
-        className="shrink-0 rounded-full bg-bg-sunk object-cover"
+        className="source-avatar shrink-0 rounded-full bg-bg-sunk object-cover"
         style={{ width: size, height: size }}
       />
     );
@@ -27,7 +27,7 @@ export function SourceAvatar({ name, iconUrl, avatarUrl, iconSrcSet, avatarSrcSe
   return (
     <span
       aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
+      className="source-avatar inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
       style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.5)), background: `oklch(0.6 0.07 ${h})` }}
     >
       {sourceInitial(name)}

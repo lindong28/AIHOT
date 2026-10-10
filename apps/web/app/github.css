@@ -77,6 +77,73 @@
   --gh-primary-hover: #1c8139;
   --gh-underline: #fd8c73;
   --gh-done: #8250df;
+  /* Organisation marks are 6px rounded squares (template: 头像、来源标志与图片). */
+  --brand-mark-radius: 6px;
+}
+
+/* ---- Type scale: off-scale size utilities resolve to the template steps 12/14/16/20/24/32 ---- */
+/* Generated from the text-[Npx] utilities in apps/web/app; add new sizes here. */
+:root[data-theme="github"] {
+  .text-\[9px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[12\.5px\] { font-size: 12px; }
+  .text-\[13px\], .text-\[13\.5px\], .text-\[14\.5px\], .text-\[15px\] { font-size: 14px; }
+  .text-\[15\.5px\], .text-\[16\.5px\], .text-\[17px\], .text-\[18px\], .text-\[19px\] { font-size: 16px; }
+  .text-\[21px\] { font-size: 20px; }
+  .text-\[22px\], .text-\[26px\], .text-\[27px\] { font-size: 24px; }
+  .text-\[30px\], .text-\[34px\], .text-\[44px\], .text-\[48px\] { font-size: 32px; }
+}
+@container (width >= 520px) {
+  :root[data-theme="github"] {
+    .\@\[520px\]\:text-\[40px\] { font-size: 32px; }
+  }
+}
+@container (width >= 880px) {
+  :root[data-theme="github"] {
+    .\@\[880px\]\:text-\[12\.5px\] { font-size: 12px; }
+    .\@\[880px\]\:text-\[17\.5px\], .\@\[880px\]\:text-\[18px\] { font-size: 16px; }
+    .\@\[880px\]\:text-\[20px\] { font-size: 20px; }
+    .\@\[880px\]\:text-\[24px\] { font-size: 24px; }
+    .\@\[880px\]\:text-\[28px\], .\@\[880px\]\:text-\[30px\], .\@\[880px\]\:text-\[64px\] { font-size: 32px; }
+  }
+}
+@container (width >= 1040px) {
+  :root[data-theme="github"] {
+    .\@\[1040px\]\:text-\[48px\] { font-size: 32px; }
+  }
+}
+@media (min-width: 641px) {
+  :root[data-theme="github"] {
+    .sm\:text-\[11px\], .sm\:text-\[12\.5px\] { font-size: 12px; }
+    .sm\:text-\[13\.5px\], .sm\:text-\[15px\] { font-size: 14px; }
+    .sm\:text-\[18px\] { font-size: 16px; }
+    .sm\:text-\[23px\], .sm\:text-\[24px\] { font-size: 24px; }
+    .sm\:text-\[46px\] { font-size: 32px; }
+  }
+}
+@media (min-width: 768px) {
+  :root[data-theme="github"] {
+    .md\:text-\[52px\] { font-size: 32px; }
+  }
+}
+@media (min-width: 961px) {
+  :root[data-theme="github"] {
+    .lg\:text-\[12\.5px\] { font-size: 12px; }
+    .lg\:text-\[13px\], .lg\:text-\[15px\] { font-size: 14px; }
+    .lg\:text-\[15\.5px\], .lg\:text-\[17px\] { font-size: 16px; }
+    .lg\:text-\[25px\], .lg\:text-\[26px\] { font-size: 24px; }
+    .lg\:text-\[32px\], .lg\:text-\[36px\], .lg\:text-\[55px\] { font-size: 32px; }
+  }
+}
+@media (min-width: 1280px) {
+  :root[data-theme="github"] {
+    .xl\:text-\[16px\], .xl\:text-\[16\.5px\], .xl\:text-\[17px\] { font-size: 16px; }
+    .xl\:text-\[20px\] { font-size: 20px; }
+    .xl\:text-\[34px\], .xl\:text-\[36px\], .xl\:text-\[56px\] { font-size: 32px; }
+  }
+}
+@media (min-width: 1536px) {
+  :root[data-theme="github"] {
+    .\32 xl\:text-\[64px\] { font-size: 32px; }
+  }
 }
 
 :root[data-theme="github"] {
@@ -84,8 +151,12 @@
   :focus-visible { outline: 2px solid #0969da; outline-offset: -2px; border-radius: 6px; }
   /* Weights the utilities spell out directly. */
   [class*="font-[6"], [class*="font-[7"] { font-weight: 600; }
-  /* Headline tracking: Primer titles are not tightened or spaced out. */
-  :is(h1, h2, h3)[class*="tracking-[-"] { letter-spacing: 0; }
+  /* Primer text is never tightened or spaced out: titles, figures and kickers alike. The wordmark is the brand. */
+  :is([class*="tracking-["], .tracking-tight, .tracking-wide):not([role="img"]) { letter-spacing: normal; }
+  /* Meta separators (·) are muted text, never border-coloured. */
+  .text-line-strong { color: var(--ink-3); }
+  /* Hard-coded quiet fills resolve to the template's neutral area surface. */
+  .bg-\[rgba\(28\,39\,51\,0\.04\)\] { background-color: var(--bg-sunk); }
   /* No hover lift and no press scale. */
   .card-hover:hover { transform: none; box-shadow: none; }
   [class*="active:scale-"]:active { transform: none; }
@@ -160,6 +231,25 @@
   /* Primer overlays do not blur; Tailwind composes backdrop-filter from this variable. */
   [class*="backdrop-blur"] { --tw-backdrop-blur: blur(0); }
   button[aria-label="关闭"][class*="bg-[rgba(8,14,15"] { background: rgba(31, 35, 40, 0.5); }
+  /* Transient confirmations (链接已复制、已保存) take the tooltip look; a failure reads as a danger flash. */
+  :is(.site-toast, .admin-toast--ok, .admin-toast--info) {
+    background: #25292e; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12px; line-height: 1.5;
+    box-shadow: var(--shadow-soft); --tw-ring-color: transparent;
+  }
+  .admin-toast--error { background: var(--hot-soft); color: var(--hot); border-radius: 6px; font-size: 14px; box-shadow: var(--shadow-soft); --tw-ring-color: rgba(209, 36, 47, 0.4); }
+  /* Copy controls are small default buttons; once copied the label turns success green, as GitHub's check icon does. */
+  .copy-button { height: 28px; border-radius: 6px; border-color: var(--line); background: var(--gh-btn); color: #25292e; font-weight: 500; }
+  .copy-button:hover { background: var(--gh-btn-hover); border-color: var(--line); }
+  .copy-button[aria-label="已复制"] { color: var(--ok); }
+  /* One frame per field: a bordered search wrapper owns the focus ring, the input inside draws none. */
+  [role="search"] > div:has(> input):focus-within { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  [role="search"] > div:has(> input) > input:not([type="hidden"]),
+  [role="search"] > div:has(> input) > input:not([type="hidden"]):focus { border: 0; box-shadow: none; outline: none; }
+  /* Control heights take the template steps 28/32/40: the phone search bar and large buttons use 40px, the rest 32px. */
+  [role="search"] :is(input, button[type="submit"]).h-11, .ui-button.h-11, input#fb-email { height: 40px; }
+  .ui-button.h-9, input.h-\[42px\] { height: 32px; }
+  [role="search"] > div:has(> input) > :is(input, button) { height: 30px; }
+  .feed-item { --star-size: 28px; }
 
   /* ---- Long reads ---- */
   .prose { color: var(--ink); font-size: 16px; line-height: 1.75; letter-spacing: 0; }
@@ -176,7 +266,9 @@
   .prose th { background: transparent; font-weight: 600; }
   .prose tr:nth-child(2n) td { background: #f6f8fa; }
   @media (min-width: 80rem) { .prose { font-size: 16px; } }
-  .prose-compact { font-size: 15px; line-height: 1.75; color: var(--ink); }
+  .prose-compact { font-size: 16px; line-height: 1.75; color: var(--ink); }
+  /* Chart axis text set through the SVG attribute takes the caption step. */
+  svg text[font-size="11"] { font-size: 12px; }
   .prose-compact h2 { font-size: 20px; border-top: 0; padding-top: 0; border-bottom: 1px solid var(--line-soft); padding-bottom: 0.3em; }
 }
 
@@ -213,7 +305,7 @@
   .feed-x-text { font-size: 14px; line-height: 1.5; }
   .feed-media > span { border-radius: 6px; border-color: var(--line-soft); }
   .feed-reason { border-radius: 3px; background: #f6f8fa; }
-  .feed-reason p { color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+  .feed-reason p { color: var(--ink-3); font-size: 14px; line-height: 1.5; }
 }
 @media (min-width: 961px) {
   :root[data-theme="github"] .public-site {
@@ -258,7 +350,6 @@
   .reader-report-section > header > .num, .reader-report-rank { font-size: 14px; font-weight: 600; color: var(--ink-3); letter-spacing: 0; }
   .reader-report-story h3 { font-size: 16px; line-height: 1.5; font-weight: 600; }
   .reader-report-story > p { font-size: 14px; line-height: 1.6; }
-  [class*="tracking-[0.3em]"], [class*="tracking-[0.36em]"], [class*="tracking-[0.2em]"], [class*="tracking-[0.6em]"] { letter-spacing: 0.02em; }
 }
 @media (max-width: 640px) {
   :root[data-theme="github"] .public-site {
@@ -317,8 +408,16 @@
   .admin-btn--danger { background: var(--gh-btn); color: var(--hot); --tw-ring-shadow: 0 0 0 1px var(--line); box-shadow: var(--tw-ring-shadow); }
   .admin-btn--danger:hover { background: var(--hot); color: #fff; opacity: 1; }
   .admin-input { border-radius: 6px; --tw-ring-color: var(--line); }
+  /* Control heights 28/32: regular fields and buttons 32px, compact table fields 28px. */
+  .admin-input, .admin-btn.h-9 { height: 32px; }
+  .admin-input.\!py-1 { height: 28px; }
+  textarea.admin-input { height: auto; }
+  /* The environment marker is a Label: outlined pill. */
+  span.rounded[class*="bg-amber/15"] { border-radius: 999px; background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
   .admin-input:focus { --tw-ring-color: var(--accent); }
   .admin-chip { border-radius: 6px; }
+  /* Counts inside a selected (blue) chip are white text, not a translucent tint. */
+  .admin-chip.bg-ink .num { color: #fff; }
   .admin-dialog { border-radius: 12px; box-shadow: var(--shadow-pop); --tw-ring-color: var(--line); }
   .admin-dialog ~ div, div:has(> .admin-dialog) > div:first-child { background: rgba(31, 35, 40, 0.5); }
 }
