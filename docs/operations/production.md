@@ -174,6 +174,10 @@ Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipelin
 
 2026-10-07 暂态恢复版本已发布到 `/home/ubuntu/aihot/releases/transient-recovery-20261007-971dee99`，个人 Gateway 已配套升级，迁移 0047 已应用；API、Web、worker 与回填定时器恢复运行，公网 smoke 及实时／回填实际模型请求取得成功读数。模型和 provider 配置保持原样，历史回执按固定授权批次恢复；版本、测试和费用边界见[本次记录](../references/20261007-transient-recovery.md#部署与验证记录)。
 
+## 2026-10-10 仅前台样式发布
+
+GitHub 风格以仅前台方式发布，当前 `current` 为 `/home/ubuntu/aihot/releases/github-primer-20261010-5f6bd70`。这次没有使用 `service.sh install`，因为它会重启全部三个服务。做法是在新 release 目录 `npm ci` 并构建 Web，用 `cp -n` 带入上一版带哈希的静态资源，让已打开的旧页面仍能取到资源。随后原子切换 `current`，只重启 `aihot-web.service`。API 与 worker 进程未变，没有迁移或 seed。这种方式只适用于不改 API、worker 与 schema 的改动。回滚与验收见[有效设计](../references/github-primer.md#验收记录)。
+
 ## 离线测试环境
 
 不要加载生产 `app.env` 跑测试，也不要继承 `LLM_GATEWAY_*` 或供应商密钥。先准备名称以 `_test` 或 `_ci` 结尾的隔离空库并完成迁移，再在**腾讯云发布目录**运行（替换测试库连接）：
