@@ -71,7 +71,7 @@ export default function MorePage() {
               </li>
             ))}
             {g.title === "偏好" && (
-              <li className="flex h-[58px] items-center gap-3 px-4 text-[15px] font-medium text-ink">
+              <li className="flex min-h-[58px] items-center gap-3 px-4 py-2 text-[15px] font-medium text-ink">
                 <span className="text-ink-3">
                   <IconMoon size={18} />
                 </span>

@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "template": {
+    "id": "style:github-primer-product-ui",
+    "source": "https://prompts.aiplanet.live/api/webui/v1/templates/github-primer-product-ui.json",
+    "sha256": "a509260daaa9701cf94a59c17e7e46f8bb3ebd3c67f0ebe0a1bd7a8ec63e5479"
+  },
+  "rules": [
+    {
+      "id": "canvas",
+      "role": "body",
+      "kind": "style",
+      "source": "theme.tokens.light.canvas / GH-V01",
+      "description": "白色画布",
+      "property": "background-color",
+      "expected": "rgb(255, 255, 255)"
+    },
+    {
+      "id": "text",
+      "role": "body",
+      "kind": "style",
+      "source": "theme.tokens.light.text / GH-V01",
+      "description": "正文 #1f2328",
+      "property": "color",
+      "expected": "rgb(31, 35, 40)"
+    },
+    {
+      "id": "body-size",
+      "role": "body",
+      "kind": "style",
+      "source": "theme.tokens.font_size_px.body / GH-V02",
+      "description": "正文 14px",
+      "property": "font-size",
+      "expected": "14px"
+    },
+    {
+      "id": "accent",
+      "role": "root",
+      "kind": "style",
+      "source": "theme.tokens.light.accent / GH-V01",
+      "description": "强调色 #0969da",
+      "property": "--accent",
+      "expected": "#0969da"
+    },
+    {
+      "id": "border",
+      "role": "root",
+      "kind": "style",
+      "source": "theme.tokens.light.border / GH-V01",
+      "description": "边线 #d1d9e0",
+      "property": "--line",
+      "expected": "#d1d9e0"
+    },
+    {
+      "id": "viewport",
+      "role": "root",
+      "kind": "no-horizontal-overflow",
+      "source": "GH-V08 / GH-V14",
+      "description": "整页不横向溢出"
+    },
+    {
+      "id": "headings",
+      "role": "headings",
+      "kind": "predicate",
+      "source": "components.正文与代码 / GH-V02",
+      "description": "可见 h1–h3 字重不超过 600"
+    },
+    {
+      "id": "controls",
+      "role": "controls",
+      "kind": "predicate",
+      "source": "components.按钮与图标按钮 / GH-V04",
+      "description": "按钮、输入、选择与切换项圆角不超过 6px"
+    },
+    {
+      "id": "primary",
+      "role": "primary",
+      "kind": "predicate",
+      "source": "components.按钮与图标按钮 / GH-V04",
+      "description": "主动作为 #1f883d"
+    },
+    {
+      "id": "labels",
+      "role": "labels",
+      "kind": "predicate",
+      "source": "components.标签、计数与状态 / GH-V05",
+      "description": "语义标签为描边 pill、透明底"
+    },
+    {
+      "id": "underline",
+      "role": "underline",
+      "kind": "predicate",
+      "source": "components.页内导航与分段 / GH-V06",
+      "description": "页面级切换当前项 2px #fd8c73 下划线"
+    },
+    {
+      "id": "nav-current",
+      "role": "nav-current",
+      "kind": "predicate",
+      "source": "components.应用框架与侧栏导航 / GH-V07",
+      "description": "导航当前项 600 字重"
+    },
+    {
+      "id": "feed-card",
+      "role": "feed",
+      "kind": "predicate",
+      "source": "components.信息流事件卡 / GH-V03",
+      "description": "宽屏事件卡 1px 边线 6px 圆角无位移；窄屏为分隔行无阴影"
+    },
+    {
+      "id": "feed-title",
+      "role": "feed-title",
+      "kind": "style",
+      "source": "components.信息流事件卡 / GH-V03",
+      "description": "动态标题 16px",
+      "property": "font-size",
+      "expected": "16px"
+    },
+    {
+      "id": "ranking-surface",
+      "role": "ranking",
+      "kind": "style",
+      "source": "components.数据表与排行 / GH-V08",
+      "description": "排行无装饰渐变",
+      "property": "background-image",
+      "expected": "none"
+    },
+    {
+      "id": "rank-neutral",
+      "role": "rank-neutral",
+      "kind": "predicate",
+      "source": "components.数据表与排行 / GH-V08",
+      "description": "名次中性色"
+    },
+    {
+      "id": "metric-ink",
+      "role": "metric",
+      "kind": "style",
+      "source": "components.指标、图表与热度格 / GH-V08",
+      "description": "主指标中性文字",
+      "property": "color",
+      "expected": "rgb(31, 35, 40)"
+    },
+    {
+      "id": "admin-card",
+      "role": "admin-card",
+      "kind": "style",
+      "source": "components.管理后台与设置页 / GH-V13",
+      "description": "后台 Box 6px 圆角",
+      "property": "border-top-left-radius",
+      "expected": "6px"
+    },
+    {
+      "id": "admin-head",
+      "role": "admin-head",
+      "kind": "style",
+      "source": "components.管理后台与设置页 / GH-V13",
+      "description": "后台 Box 头部 #f6f8fa",
+      "property": "background-color",
+      "expected": "rgb(246, 248, 250)"
+    },
+    {
+      "id": "admin-nav-current",
+      "role": "admin-nav-current",
+      "kind": "style",
+      "source": "components.应用框架与侧栏导航 / GH-V07 / GH-V13",
+      "description": "后台导航当前项中性底",
+      "property": "background-color",
+      "expected": "rgba(129, 139, 152, 0.15)"
+    },
+    {
+      "id": "feed-reading",
+      "role": "feed",
+      "kind": "manual",
+      "source": "GH-V03 / GH-V05",
+      "description": "来源/时间、标题、摘要、标签、进展与推荐理由在同一事件卡中可读；有图无图、新闻与 X 条目各自成立"
+    },
+    {
+      "id": "detail-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "components.正文与代码 / GH-V02",
+      "description": "详情标题、导读或正文、引用、代码与图片完整可读，阅读原文入口可达"
+    },
+    {
+      "id": "report-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "components.刊物与报告页 / GH-V10",
+      "description": "刊头收敛为发布卡式层级，期号、日期、分栏和往期入口保留"
+    },
+    {
+      "id": "ranking-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "GH-V08",
+      "description": "排行、表格与指标保留列、单位与未知标记，名次中性"
+    },
+    {
+      "id": "calendar-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "components.指标、图表与热度格 / GH-V09",
+      "description": "日历/时间轴区分今天、选中与业务事件，选择日期后详情可读"
+    },
+    {
+      "id": "overlay-ops",
+      "role": "body",
+      "kind": "manual",
+      "source": "components.浮层：菜单、对话框与提示 / GH-V11",
+      "description": "菜单、海报弹窗等浮层宽窄屏可打开、可关闭"
+    },
+    {
+      "id": "forms-states",
+      "role": "detail",
+      "kind": "manual",
+      "source": "components.搜索、筛选与表单 / components.空态、加载与提示条 / GH-V12",
+      "description": "表单、代码、空/忙/错误状态层级清楚，禁用与反馈可辨"
+    },
+    {
+      "id": "interaction",
+      "role": "body",
+      "kind": "manual",
+      "source": "GH-V06 / GH-V07 / GH-V14",
+      "description": "导航、筛选、展开、收藏、切换与键盘焦点保持原业务语义"
+    },
+    {
+      "id": "admin-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "GH-V13",
+      "description": "后台页头、Box、统计、表格、表单与导航层级一致可读"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "aihot-github-public-20261010",
+  "objective": "选择 GitHub 风格时核验 AI Radar 全部公开页面与详情；亮色、暗色、Feedly 保持。",
+  "application": "style",
+  "design": {
+    "path": "effective-design.json",
+    "sha256": "987b79370d342d70ab63713fa37139d08252caa8229bf81937f3dc26df76d688"
+  },
+  "project": {
+    "path": "project-public.json",
+    "sha256": "3a47f8b912dfc6553e136b9df6394b1b22a394e20831994d59eca90f8d7f10b7"
+  }
+}

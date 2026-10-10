@@ -1,0 +1,245 @@
+{
+  "id": "style:github-primer-product-ui",
+  "slug": "github-primer-product-ui",
+  "name": "GitHub Primer 产品界面",
+  "reuse_mode": "style",
+  "status": "approved",
+  "description": "以 GitHub Feed 与仓库页的真实界面为依据：白色画布、浅灰 #f6f8fa 区域头与嵌入面、1px #d1d9e0 功能边线、6px 主圆角、系统无衬线 14px/1.5 正文；事件卡与分组 Box 承载重复内容，蓝色只表示链接与当前位置，绿色只用于唯一主动作，常态不靠阴影和渐变造层级。",
+  "scope": "可跨产品复用于资讯与动态流、目录与归档、详情长文、排行表格、指标监控、刊物报告、表单设置和管理后台等浅色界面；各页面保留自己的任务结构与业务语义，只采用同一套视觉角色。深色 token 随定义提供，仅在项目选择时使用。",
+  "risks": "照搬 GitHub 标志、Octocat、全局顶栏或仓库业务结构会造成品牌归属误解；过量 Box 嵌套会让密集页面变成表格拼贴；系统字体与 GitHub 的 Mona Sans VF 字宽并不相同；Feed 只观察到关注类事件卡，排行、刊物、日历热度、海报与后台条款是沿同一视觉系统的推导设计。",
+  "evidence": "2026-08-27 用户要求添加 GitHub 风格模板并用于评测页（原工作台示例）。2026-10-10 用户要求以 https://github.com/feed 的真实页面为重点，创建可跨产品、跨页面复用的 GitHub 视觉风格模板并应用到 AIHOT 全部页面；本次据此更新当前定义、示例与应用/审核 Prompt。agent 检查不代表用户对成品的审美认可。",
+  "source": "2026-10-10 真实观察：登录态 GitHub Feed（https://github.com/feed，1440/1012/390 视口；事件卡、NavList、Filter 浮层、changelog 时间轴、焦点态）与 Home；未登录的仓库首页、Issues、Pull requests、Commits、Releases、Actions、Discussions、个人主页贡献日历、Topics、Explore、Trending 与 README 页（1440/390，light，Issues 另取 dark）。数值取自页面 computed style 与 Primer CSS 变量，不复制 GitHub 代码、标志或页面素材；示例使用原创合成内容。",
+  "tags": [
+    "开发者工具",
+    "资讯流",
+    "工作台",
+    "数据密集",
+    "浅色",
+    "GitHub 风"
+  ],
+  "layouts": [],
+  "components": [
+    {
+      "name": "应用框架与侧栏导航",
+      "description": "实测（Feed、Issues）：画布 #ffffff；区域头或顶栏 #f6f8fa 加 1px #d1d9e0 底线；侧栏白底 1px 右边线。导航项 32–33px、内边距 6px 8px、14px/1.5、#25292e、6px 圆角；hover 底 rgba(129,139,152,.10)；当前项底 rgba(129,139,152,.15)、字重 600，并在左侧 8px 外放 4×24px #0969da 竖条。分组标题 12px w600 #59636e。保留目标已有导航结构，不新增 GitHub 式全局顶栏；窄屏沿项目既有折叠或底栏，当前项用同一强调色与字重表达。"
+    },
+    {
+      "name": "信息流事件卡",
+      "description": "实测（Feed）：一条动态一张卡，白底、1px #d1d9e0、6px、阴影 0 1px 1px #1f23280a, 0 1px 2px #1f232808，卡间距 16px，内容左右 16px。卡头为 32–40px 圆形头像或来源标志，行动者/来源 14px w600 #1f2328 加 14px #59636e 动作或说明，下一行时间 12px #59636e；次要操作放右上 32px 透明图标按钮。正文 14px/1.5；被引用对象放入 #f6f8fa、3px 圆角、16px 内边距的嵌入预览，内含 14px w600 标题、14px 说明、12–14px muted 统计和 28px 小按钮。卡片 hover 不位移、不加深阴影；无图不留空图槽。窄屏卡片全宽 16px 边距，所有动作留在原卡内。动态带时间列时（推导，沿 Commits 日期轴）：时间 12–13px #59636e 等宽数字放在卡片左侧，2px #d1d9e0 竖线与 8px 白心灰边节点串联同日条目；日期组标题 14px #59636e。"
+    },
+    {
+      "name": "分组列表 Box",
+      "description": "实测（Issues、Commits）：同类重复条目放进一个 1px #d1d9e0、6px 的 Box；可选 #f6f8fa 头部承载计数、筛选与排序；行间 1px 分隔，行内边距 8–16px。行标题 16px w600（密集时 14px w600），元信息 12px #59636e 用「·」分隔，标签紧随标题；行 hover 可用 #f6f8fa。按日期分组时，在 Box 之上放 14px #59636e 日期标题与 16px 图标（如「Commits on Oct 7」）。适用于新闻列表、归档、来源目录和收藏。头部的计数、筛选与操作在窄屏换行，不撑宽页面。"
+    },
+    {
+      "name": "按钮与图标按钮",
+      "description": "实测：高度 28/32/40px、6px 圆角、14px w500（小号 12px）。主按钮 #1f883d 白字、1px rgba(31,35,40,.15) 边、hover #1c8139，一组动作只设一个；默认按钮 #f6f8fa、1px #d1d9e0、#25292e，hover #eff2f5；透明按钮无底、#59636e 字，hover 中性浅底；危险操作默认外观配 #d1242f 字，最终确认才用红色实底。图标按钮为 28/32px 方形 6px。focus-visible 为 2px #0969da 外环；禁用保持形状并降低不透明度。不使用胶囊按钮和按下缩放。选中的筛选、日期或分段项属于导航状态，按页内导航与分段条款使用选中样式，不套用绿色主按钮。"
+    },
+    {
+      "name": "标签、计数与状态",
+      "description": "实测：Label 为 pill、20px 高、12px w500、左右 7px，1px 语义色边框加同色文字、透明底（中性 #d1d9e0 边 #59636e 字，成功 #1a7f37，强调 #0969da，注意 #9a6700，危险 #d1242f）；Counter 为 pill、18px、12px w600、底 rgba(129,139,152,.12)。需要强状态时用实底 State（成功 #1f883d、完成 #8250df、草稿 #59636e）。状态图标沿成功绿、失败红、等待黄。保留业务含义色，未知不得显示为成功或零。"
+    },
+    {
+      "name": "页内导航与分段",
+      "description": "实测（仓库 UnderlineNav、Releases 分段）：按链接切换的页面级视图用 UnderlineNav：项 14px、左右 8px、40–48px 高，当前项 #1f2328 w600 加 2px #fd8c73 下划线，容器底部 1px #d1d9e0，计数器紧随标签。同一页内的局部切换用分段控件：外框 1px #d1d9e0、6px，选中项 #0969da 实底白字或白底加边，未选中 #25292e。窄屏横向滚动或收入「更多」，不换成胶囊轨道。"
+    },
+    {
+      "name": "搜索、筛选与表单",
+      "description": "搜索与筛选为实测，表单字段为推导：输入框 32px（大号 40px）、白底、1px #d1d9e0、6px、14px，placeholder #59636e，focus 边框 #0969da 加 2px 外环；搜索框前置 16px 放大镜。筛选浮层见浮层条款。表单标签 14px w600 置于字段上方，说明 12px muted，错误 12px #d1242f 与图标并列；开关轨道 1px 边、开启为 #0969da；必填、禁用与只读状态清楚可辨。"
+    },
+    {
+      "name": "浮层：菜单、对话框与提示",
+      "description": "Filter 浮层为实测，菜单与提示为推导：白底、1px #d1d9e0、6px（大对话框 12px）、阴影 0 0 0 1px #d1d9e040, 0 6px 12px -3px #25292e0a, 0 6px 18px #25292e1f。头部 14px w600 标题加右上关闭；选项行 32px、14px，可带 16px 图标与 12px muted 说明，hover 中性浅底；底部操作右对齐，透明次要加绿色主按钮。工具提示深底 #25292e 白字 12px 6px。长内容在浮层内滚动，Escape 与关闭按钮可达。"
+    },
+    {
+      "name": "侧栏卡片与时间轴",
+      "description": "实测（Feed changelog）：辅助信息放 1px rgba(209,217,224,.7)、12px 圆角、16px 内边距的卡片；标题 14px w600。时间轴为 2px 中性竖线加 8px 灰点，时间 12px #59636e 在上、条目 14px #1f2328 在下，末尾 12px muted「查看全部 →」。大事记与进展列表沿同一节奏；节点颜色只表达已有分类或状态。窄屏辅助卡移到主内容之后。"
+    },
+    {
+      "name": "正文与代码",
+      "description": "实测（README、Releases）：详情正文 16px/1.5，中文长文可放宽到 16px/1.75；h1 32px w600、h2 24px w600 各带 1px #d1d9e0 底线；链接 #0969da、hover 下划线；引用 4px #d1d9e0 左边线加 #59636e 字；行内代码 85% 字号、底 rgba(129,139,152,.2)、6px；代码块 #f6f8fa、6px、16px 内边距、13.6px 等宽、局部横向滚动；正文表格 1px #d1d9e0 单元格、表头 600、隔行 #f6f8fa；图片 6px 圆角。"
+    },
+    {
+      "name": "数据表与排行",
+      "description": "表格为实测，排行为推导：表头 12px w600 #59636e，可用 #f6f8fa 底或白底加 1px 底线；行 1px 分隔，单元格 8px 16px，数值右对齐等宽。名次用中性数字，前三名只靠字重区分，不用奖牌色、渐变或光晕；头部概览卡沿 Box，主要数值 24–32px w600 #1f2328。宽表在自身容器内横向滚动，不撑破页面；保留原有列、单位和未知标记。"
+    },
+    {
+      "name": "指标、图表与热度格",
+      "description": "贡献日历色阶为实测，其余为推导：统计卡沿 Box，标签 12px muted，数值 20–32px w600 #1f2328，单位 12px 紧邻数值。图表白底、1px #d1d9e0 弱网格、2px 主线 #0969da，多系列沿项目可辨色；提示层沿浮层规则。强度或日历格采用贡献日历色阶 #eff2f5 / #aceebb / #4ac26b / #2da44e / #116329，10px 级方格配 2px 圆角；选中格 2px #0969da 外框，今天用小点或描边，业务状态另用语义色。"
+    },
+    {
+      "name": "刊物与报告页",
+      "description": "推导（沿 Releases 发布卡与 Commits 日期分组）：刊头为一张 Box，标题 32px w600 加期号或「最新」Label，下方 14px muted 元信息行（日期、条数、来源）带 16px 图标；不使用巨型字标、点阵日期或装饰色带。分节标题 20px w600 加 1px 底线，序号用 Counter 或 muted 数字；条目沿分组列表 Box 或事件卡；往期导航沿侧栏 NavList。有图无图都不留空槽，窄屏分栏自然堆叠。"
+    },
+    {
+      "name": "空态、加载与提示条",
+      "description": "空态为实测（Home），提示条与加载为推导：局部空态是 Box 内一行 14px 说明，可带图标与次要动作；页面级空态标题 20px w600、说明 14px muted、一个按钮，不画大插画。加载用 #eff2f5 骨架或 16px 转圈，保留原布局占位。提示条 1px 语义边框加浅语义底（#ddf4ff、#dafbe1、#fff8c5、#ffebe9）、14px 字、6px；错误正文 #d1242f。"
+    },
+    {
+      "name": "管理后台与设置页",
+      "description": "推导（沿 Settings 式页面骨架）：页头为 24px w600 标题、14px muted 说明与右侧按钮组；内容区块用带 #f6f8fa 头部的 Box；统计、表格、表单与浮层分别沿对应条款；侧栏导航沿应用框架 NavList。危险区用 1px #ffcecb 边框 Box 与红字按钮；操作结果用提示条或浮层，不用常驻装饰。"
+    },
+    {
+      "name": "头像、来源标志与图片",
+      "description": "实测（Feed、Issues）：人员头像圆形，组织/来源标志 6px 方圆角，尺寸 16/20/24/32/40px，1px rgba(31,35,40,.15) 内描边；列表缩略图 6px 圆角、等比裁切；媒体播放标志为深色半透明圆。图片加载失败回退到首字母或通用图标，不留空白框。"
+    }
+  ],
+  "overrides": "保留项目名称、标志、路由、数据、筛选、收藏与业务状态含义；品牌色只用于标志等身份角色，交互强调改用 #0969da，主动作改用 #1f883d，确有业务约束时记录例外。只改视觉角色，不新增 GitHub 式全局顶栏、仓库导航、Star/Fork 等业务。项目已有深色主题按项目定义保留；本定义的 dark token 仅在项目选择时启用。生成的分享图片、导出文件不继承网页 CSS，如需同风格须单独渲染并核验字节。",
+  "theme": {
+    "name": "GitHub Primer（实测取值）",
+    "description": "取值来自 2026-10-10 GitHub 页面根部的 Primer CSS 变量与 computed style，是可直接使用的设计基线；字体以系统无衬线代替 Mona Sans VF。",
+    "options": [
+      "保留现有任务结构，仅应用 GitHub 视觉"
+    ],
+    "tokens": {
+      "light": {
+        "canvas": "#ffffff",
+        "surface_muted": "#f6f8fa",
+        "surface_inset": "#f6f8fa",
+        "neutral_muted": "rgba(129,139,152,.12)",
+        "text": "#1f2328",
+        "text_muted": "#59636e",
+        "text_disabled": "#818b98",
+        "border": "#d1d9e0",
+        "border_muted": "rgba(209,217,224,.7)",
+        "accent": "#0969da",
+        "accent_surface": "#ddf4ff",
+        "focus": "#0969da",
+        "success": "#1a7f37",
+        "success_surface": "#dafbe1",
+        "attention": "#9a6700",
+        "attention_surface": "#fff8c5",
+        "danger": "#d1242f",
+        "danger_surface": "#ffebe9",
+        "done": "#8250df",
+        "button_primary": "#1f883d",
+        "button_primary_hover": "#1c8139",
+        "button_default": "#f6f8fa",
+        "button_default_hover": "#eff2f5",
+        "underline_active": "#fd8c73",
+        "nav_active_surface": "rgba(129,139,152,.15)",
+        "nav_hover_surface": "rgba(129,139,152,.10)",
+        "heat_scale": [
+          "#eff2f5",
+          "#aceebb",
+          "#4ac26b",
+          "#2da44e",
+          "#116329"
+        ]
+      },
+      "dark": {
+        "canvas": "#0d1117",
+        "surface_muted": "#151b23",
+        "surface_inset": "#010409",
+        "text": "#f0f6fc",
+        "text_muted": "#9198a1",
+        "border": "#3d444d",
+        "accent": "#4493f8",
+        "focus": "#1f6feb",
+        "success": "#3fb950",
+        "danger": "#f85149",
+        "attention": "#d29922",
+        "button_primary": "#238636",
+        "button_default": "#212830",
+        "underline_active": "#f78166"
+      },
+      "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "font_family_mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+      "font_size_px": {
+        "caption": 12,
+        "body": 14,
+        "body_large": 16,
+        "title_small": 16,
+        "title_medium": 20,
+        "page_title": 24,
+        "title_large": 32
+      },
+      "font_weight": {
+        "body": 400,
+        "control": 500,
+        "heading": 600
+      },
+      "line_height": {
+        "body": 1.5,
+        "title": 1.25,
+        "long_read_cjk": 1.75
+      },
+      "spacing_px": [
+        4,
+        8,
+        12,
+        16,
+        24,
+        32,
+        40,
+        48
+      ],
+      "radius_px": {
+        "small": 3,
+        "control": 6,
+        "card": 6,
+        "panel_large": 12,
+        "pill": 9999
+      },
+      "control_height_px": {
+        "small": 28,
+        "medium": 32,
+        "large": 40
+      },
+      "border_width_px": 1,
+      "shadow": {
+        "resting": "0 1px 1px #1f23280a, 0 1px 2px #1f232808",
+        "floating": "0 0 0 1px #d1d9e040, 0 6px 12px -3px #25292e0a, 0 6px 18px #25292e1f"
+      },
+      "motion": "状态过渡 80–150ms ease；不做悬浮位移、按下缩放与呼吸光晕"
+    }
+  },
+  "application": {
+    "changes": [
+      "在共享样式与组件层落实白画布、#f6f8fa 区域面、1px 边线、6px 圆角、14px/1.5 正文与 600 标题字重；所有页面共用同一组 token。",
+      "把动态流落实为事件卡，把重复列表、归档与目录落实为分组 Box，把页面级切换落实为 UnderlineNav，把按钮、标签、计数器与浮层换成 Primer 角色。",
+      "将既有排行、指标、日历、刊物、表单、空态与后台页面对应到组件条款；已符合项保留，例外具体到角色并记录理由。"
+    ],
+    "prerequisites": [
+      "提供目标仓库、页面或路由范围（含详情与管理页面）及品牌约束；只需要项目已有内容，不要求新增 GitHub 业务结构。"
+    ]
+  },
+  "acceptance": [
+    "GH-V01 范围内浅色页面及详情、管理状态使用同一组画布、区域面、边线、文字与强调 token；项目覆盖有记录。",
+    "GH-V02 正文 14px/1.5、标题 600；页面标题 24px、详情标题 32px 级；没有 700 以上的装饰字重、巨型字标与负字距标题。",
+    "GH-V03 动态条目以事件卡或分组 Box 呈现：1px 边线、6px 圆角、无悬浮位移，来源/时间/摘要关系与 Feed 卡一致；有图无图都不留空槽。",
+    "GH-V04 按钮、输入和选择框为 28/32/40px、6px 方圆角；主动作绿色且每组至多一个，默认按钮浅灰带边，透明按钮无底。",
+    "GH-V05 标签为描边 pill、计数器为中性 pill；业务状态色保留含义，未知不显示为成功或零。",
+    "GH-V06 页面级切换为下划线导航（2px #fd8c73），局部切换与选中的筛选/日期项为分段选中样式而非绿色主按钮；当前项、hover 与键盘焦点（2px #0969da）清楚。",
+    "GH-V07 侧栏或底栏导航当前项有中性底、600 字重与强调竖条或强调色；品牌标志保留。",
+    "GH-V08 排行、表格与指标保留原列和单位；名次中性，没有奖牌色、渐变与光晕；宽表局部滚动，整页无横向溢出。",
+    "GH-V09 时间轴、日历与热度格使用中性竖线与贡献色阶；今天、选中和业务事件可分辨。",
+    "GH-V10 刊物、报告与关于页收敛巨型题头和装饰日期，保留期号、日期、分栏与往期入口。",
+    "GH-V11 菜单、对话框、提示层与筛选浮层为白底 1px 边线 6px 加浮层阴影，宽窄屏可操作、可关闭。",
+    "GH-V12 表单、代码、空/忙/错误状态沿对应条款；错误、禁用和复制等反馈清楚，未运行的提交状态如实列出。",
+    "GH-V13 后台页头、Box、统计、数据表、表单与导航沿同一组角色，与公开页面一致。",
+    "GH-V14 宽窄屏实际阅读和操作受影响控件；新增页面复用同一共享入口；未覆盖的组件、状态与主题明确交代。"
+  ],
+  "review_prompt": "使用 user-scope `web-ui-workflows review-ui` 审核目标产品的视觉风格。\n\n模板：GitHub Primer 产品界面\n模板定义：https://prompts.aiplanet.live/api/webui/v1/templates/github-primer-product-ui.json\n目标仓库：[填写仓库路径]\n产品入口：[填写 URL]\n应用范围：[整个产品，或列出页面／路由集合；含详情状态与管理页面]\n项目明确约束：[有则填写]\n\n读取当前定义的 theme、components、overrides 和 acceptance，无需访问 GitHub；复用项目已有的有效设计记录。按白画布、#f6f8fa 区域面、1px #d1d9e0 边线、6px 方圆角、14px/1.5 正文与 600 标题，检查事件卡、分组 Box、下划线导航、按钮、标签与计数器、输入、浮层、表格、时间轴、空态和后台页面是否落实到对应条款。\n\n本次只审核，不修改。从真实入口在宽窄屏核对颜色、文字层级、分组、对齐、跨页一致性和受影响控件的实际操作，覆盖整个产品的页面、详情状态与管理页面。按 GH-V acceptance 给出证据、项目例外与未核实项，区分模板未规定、产品未落实与尚未验证，并区分本次回归和基线问题；不以示例存在替代产品验证。",
+  "prompts": [
+    {
+      "id": "github-primer-product-ui-apply",
+      "lang": "中文",
+      "is_default": true,
+      "body": "使用 user-scope `web-ui-workflows apply-ui-template` 优化目标产品的视觉风格。\n\n模板：GitHub Primer 产品界面\n模板定义：https://prompts.aiplanet.live/api/webui/v1/templates/github-primer-product-ui.json\n目标仓库：[填写仓库路径]\n产品入口：[填写 URL]\n应用范围：[整个产品，或列出页面／路由集合；含详情状态与管理页面]\n项目明确约束：[有则填写]\n\n读取当前定义的 theme、components、overrides 和 acceptance，无需访问 GitHub。把 GitHub Feed 与仓库页的视觉关系落实到目标产品：白画布、#f6f8fa 区域面、1px #d1d9e0 边线、6px 方圆角、14px/1.5 正文与 600 标题；动态条目用事件卡，重复列表、归档与目录用分组 Box，页面级切换用下划线导航，按钮、标签、计数器、输入与浮层换成对应 Primer 角色。蓝色只表示链接与当前位置，绿色只给唯一主动作。不能只换配色；也不引入 GitHub 标志、全局顶栏或仓库业务结构。\n\n先结合路由、导航、真实页面和代码盘点全部页面、详情状态、管理页面及其组件与状态，逐项对应到 components 条款、项目例外或待补设计。在项目共享样式与组件层落实同一份有效设计，记录模板来源与内容摘要、覆盖路由、项目例外和新增页面的继承入口；保留品牌、任务结构、内容含义与业务行为，已有深色主题按项目定义保留。示例展示视觉关系，不指定目标产品布局。\n\n从真实入口在宽窄屏阅读并操作受影响的导航、筛选、展开、菜单、表单与详情；按 GH-V acceptance 逐项报告结果、例外与未核实项，区分模板未规定、产品未落实与尚未验证。发现可复用的缺口时回写同一份模板定义。"
+    }
+  ],
+  "exemplars": [
+    {
+      "id": "exemplar:github-primer-product-ui",
+      "kind": "runnable-html",
+      "structure-origin": "derived-from: GitHub Feed and repository pages",
+      "capture": "locally-authored",
+      "file": "assets/webui/exemplars/github-primer-product-ui/index.html",
+      "borrow": "可跨产品复用于资讯与动态流、目录与归档、详情长文、排行表格、指标监控、刊物报告、表单设置和管理后台等浅色界面；各页面保留自己的任务结构与业务语义，只采用同一套视觉角色。深色 token 随定义提供，仅在项目选择时使用。",
+      "route": "/webui/exemplars/github-primer-product-ui/"
+    }
+  ],
+  "schema_version": 1,
+  "page_url": "https://prompts.aiplanet.live/webui/github-primer-product-ui/"
+}

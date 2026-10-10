@@ -1,0 +1,335 @@
+{
+  "schema_version": 1,
+  "project": "AI Radar admin GitHub selected style (isolated local instance)",
+  "base_url": "http://127.0.0.1:3312",
+  "viewports": [
+    {
+      "id": "wide",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "id": "narrow",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "roles": {
+    "body": {
+      "selector": "body"
+    },
+    "root": {
+      "selector": "html"
+    },
+    "detail": {
+      "selector": "#main"
+    },
+    "headings": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"#main h1, #main h2:not(.sr-only), #main h3\")].filter(vis);const bad=n.filter(e=>!((e,c)=>Number(c.fontWeight)<=600)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 字重>600'}})()"
+    },
+    "controls": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"a.rounded-full, button.rounded-full:not([aria-hidden]), select.rounded-full, .ui-button, .ui-select, [data-pill-track] > a, [data-pill-track] > button, [role=search] input:not([type=hidden]), .admin-btn, .admin-input, .admin-chip\")].filter(vis);const bad=n.filter(e=>!((e,c)=>parseFloat(c.borderTopLeftRadius)<=6)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 圆角>6px'}})()"
+    },
+    "primary": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".ui-button--primary, a.bg-accent.text-accent-contrast:not([aria-current]), button.bg-accent.text-accent-contrast, .admin-btn--primary\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgb(31, 136, 61)\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 非绿色主按钮'}})()"
+    },
+    "labels": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"span.rounded-full[class*=\\\"bg-amber-soft\\\"], span.rounded-full[class*=\\\"bg-accent-soft\\\"], span.rounded-full[class*=\\\"bg-hot-soft\\\"], span.rounded-full[class*=\\\"bg-ok-soft\\\"], .admin-badge\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgba(0, 0, 0, 0)\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 标签非透明底'}})()"
+    },
+    "underline": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"[data-pill-kind=nav] .tab-thumb\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgb(253, 140, 115)\"&&Math.round(e.getBoundingClientRect().height)===2)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 非2px珊瑚下划线'}})()"
+    },
+    "nav-current": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".site-sidebar a[aria-current=page], nav[aria-label=\\\"\\u5e95\\u90e8\\u5bfc\\u822a\\\"] a[aria-current=page]\")].filter(vis);const bad=n.filter(e=>!((e,c)=>Number(c.fontWeight)>=600)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 当前项非600'}})()"
+    },
+    "feed": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".feed-item\")].filter(vis);const bad=n.filter(e=>!((e,c)=>innerWidth>960?(c.borderTopWidth===\"1px\"&&c.borderTopLeftRadius===\"6px\"&&c.transform===\"none\"):c.boxShadow===\"none\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 事件卡/行规则'}})()"
+    },
+    "feed-title": {
+      "selector": ".feed-title"
+    },
+    "ranking": {
+      "selector": ".reader-hot-strip, .reader-hot-page .card, .leaderboard-podium > li > a"
+    },
+    "rank-neutral": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".text-rank-1, .text-rank-2, .text-rank-3, .reader-board-rank\")].filter(vis);const bad=n.filter(e=>!((e,c)=>[\"rgb(89, 99, 110)\",\"rgb(31, 35, 40)\"].includes(c.color))(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 名次彩色'}})()"
+    },
+    "metric": {
+      "selector": ".reader-primary-metric"
+    },
+    "admin-card": {
+      "selector": ".admin-card"
+    },
+    "admin-head": {
+      "selector": ".admin-card-head"
+    },
+    "admin-nav-current": {
+      "selector": ".admin-nav-active"
+    }
+  },
+  "cases": [
+    {
+      "id": "admin-00",
+      "path": "/admin/content",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-01",
+      "path": "/admin/sources",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-02",
+      "path": "/admin/sources/new",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-03",
+      "path": "/admin/sources/radar-404media",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-04",
+      "path": "/admin/monitor",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-05",
+      "path": "/admin/feedback",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-06",
+      "path": "/admin/runs",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-07",
+      "path": "/admin/backfill",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-08",
+      "path": "/admin/models",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-09",
+      "path": "/admin/selectbench",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-10",
+      "path": "/admin/settings",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-11",
+      "path": "/admin/audit",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。"
+      }
+    },
+    {
+      "id": "admin-12",
+      "path": "/admin/login",
+      "state": "github / isolated admin (DEV_AUTH_ROLE, local seed DB)",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('main, form') !== null && document.body.innerText.length > 20",
+      "exclude": {
+        "feed-card": "公开页面组件规则；后台不使用。",
+        "feed-title": "公开页面组件规则；后台不使用。",
+        "ranking-surface": "公开页面组件规则；后台不使用。",
+        "rank-neutral": "公开页面组件规则；后台不使用。",
+        "metric-ink": "公开页面组件规则；后台不使用。",
+        "nav-current": "公开页面组件规则；后台不使用。",
+        "underline": "公开页面组件规则；后台不使用。",
+        "feed-reading": "公开页面组件规则；后台不使用。",
+        "detail-reading": "公开页面组件规则；后台不使用。",
+        "report-reading": "公开页面组件规则；后台不使用。",
+        "ranking-reading": "公开页面组件规则；后台不使用。",
+        "calendar-reading": "公开页面组件规则；后台不使用。",
+        "admin-card": "登录页没有后台框架与 Box。",
+        "admin-head": "登录页没有后台框架与 Box。",
+        "admin-nav-current": "登录页没有后台框架与 Box。"
+      }
+    }
+  ]
+}

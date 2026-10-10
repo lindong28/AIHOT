@@ -191,14 +191,21 @@ export function markRead(id: string) {
 }
 
 // --- theme ---
-export type ThemePreference = "light" | "dark" | "feedly" | null;
+/** Independent visual styles; the original light style is the default. */
+export const THEMES = ["light", "dark", "feedly", "github"] as const;
+export type ThemePreference = (typeof THEMES)[number] | null;
+const THEME_COLORS: Record<(typeof THEMES)[number], string> = { light: "#faf9f6", dark: "#13191c", feedly: "#ffffff", github: "#ffffff" };
+
+export function isTheme(v: unknown): v is (typeof THEMES)[number] {
+  return typeof v === "string" && (THEMES as readonly string[]).includes(v);
+}
 
 export function getThemePreference(): ThemePreference {
   const v = readRaw(KEYS.theme);
-  if (v === "light" || v === "dark" || v === "feedly") return v;
+  if (isTheme(v)) return v;
   // Tolerate a JSON-quoted value written by other code paths.
-  if (v === '"light"' || v === '"dark"' || v === '"feedly"') return JSON.parse(v);
-  return null;
+  const quoted = THEMES.find((t) => v === `"${t}"`);
+  return quoted ?? null;
 }
 
 export function setThemePreference(pref: ThemePreference) {
@@ -213,11 +220,11 @@ export function resolvedTheme(pref: ThemePreference = getThemePreference()): Non
 export function applyTheme(pref: ThemePreference = getThemePreference()) {
   const theme = resolvedTheme(pref);
   document.documentElement.setAttribute("data-theme", theme);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#13191c" : theme === "feedly" ? "#ffffff" : "#faf9f6");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
 }
 
 /** Inline script run before paint so the first frame already has the reader's theme. */
-export const THEME_BOOT_SCRIPT = `(function(){var t='light';try{var v=localStorage.getItem('${KEYS.theme}');if(v==='"light"'||v==='"dark"'||v==='"feedly"')v=JSON.parse(v);if(v==='light'||v==='dark'||v==='feedly')t=v}catch(e){}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='dark'?'#13191c':t==='feedly'?'#ffffff':'#faf9f6')})();`;
+export const THEME_BOOT_SCRIPT = `(function(){var c=${JSON.stringify(THEME_COLORS)},t='light';try{var v=localStorage.getItem('${KEYS.theme}');for(var k in c)if(v===k||v==='"'+k+'"')t=k}catch(e){}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',c[t])})();`;
 
 // --- changelog red dot ---
 export function getChangelogSeen(): string | null {
@@ -304,7 +311,7 @@ export function mergeLocalData(incoming: { starred: unknown[]; read: unknown[]; 
   const readFailed = !writeRaw(KEYS.read, JSON.stringify([...readIds, ...readAdditions.slice(0, readRoom)]));
 
   let themeApplied = false;
-  if (!getThemePreference() && (incoming.theme === "light" || incoming.theme === "dark" || incoming.theme === "feedly")) {
+  if (!getThemePreference() && isTheme(incoming.theme)) {
     themeApplied = writeRaw(KEYS.theme, incoming.theme);
   }
   cache.clear();

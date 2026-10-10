@@ -1,0 +1,564 @@
+{
+  "schema_version": 1,
+  "project": "AI Radar public GitHub selected style",
+  "base_url": "https://news.aiplanet.live",
+  "viewports": [
+    {
+      "id": "wide",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "id": "narrow",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "roles": {
+    "body": {
+      "selector": "body"
+    },
+    "root": {
+      "selector": "html"
+    },
+    "detail": {
+      "selector": "#main"
+    },
+    "headings": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"#main h1, #main h2:not(.sr-only), #main h3\")].filter(vis);const bad=n.filter(e=>!((e,c)=>Number(c.fontWeight)<=600)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 字重>600'}})()"
+    },
+    "controls": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"a.rounded-full, button.rounded-full:not([aria-hidden]), select.rounded-full, .ui-button, .ui-select, [data-pill-track] > a, [data-pill-track] > button, [role=search] input:not([type=hidden]), .admin-btn, .admin-input, .admin-chip\")].filter(vis);const bad=n.filter(e=>!((e,c)=>parseFloat(c.borderTopLeftRadius)<=6)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 圆角>6px'}})()"
+    },
+    "primary": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".ui-button--primary, a.bg-accent.text-accent-contrast:not([aria-current]), button.bg-accent.text-accent-contrast, .admin-btn--primary\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgb(31, 136, 61)\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 非绿色主按钮'}})()"
+    },
+    "labels": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"span.rounded-full[class*=\\\"bg-amber-soft\\\"], span.rounded-full[class*=\\\"bg-accent-soft\\\"], span.rounded-full[class*=\\\"bg-hot-soft\\\"], span.rounded-full[class*=\\\"bg-ok-soft\\\"], .admin-badge\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgba(0, 0, 0, 0)\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 标签非透明底'}})()"
+    },
+    "underline": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\"[data-pill-kind=nav] .tab-thumb\")].filter(vis);const bad=n.filter(e=>!((e,c)=>c.backgroundColor===\"rgb(253, 140, 115)\"&&Math.round(e.getBoundingClientRect().height)===2)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 非2px珊瑚下划线'}})()"
+    },
+    "nav-current": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".site-sidebar a[aria-current=page], nav[aria-label=\\\"\\u5e95\\u90e8\\u5bfc\\u822a\\\"] a[aria-current=page]\")].filter(vis);const bad=n.filter(e=>!((e,c)=>Number(c.fontWeight)>=600)(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 当前项非600'}})()"
+    },
+    "feed": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".feed-item\")].filter(vis);const bad=n.filter(e=>!((e,c)=>innerWidth>960?(c.borderTopWidth===\"1px\"&&c.borderTopLeftRadius===\"6px\"&&c.transform===\"none\"):c.boxShadow===\"none\")(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 事件卡/行规则'}})()"
+    },
+    "feed-title": {
+      "selector": ".feed-title"
+    },
+    "ranking": {
+      "selector": ".reader-hot-strip, .reader-hot-page .card, .leaderboard-podium > li > a"
+    },
+    "rank-neutral": {
+      "expression": "(()=>{const vis=e=>e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&e.getClientRects().length>0;const n=[...document.querySelectorAll(\".text-rank-1, .text-rank-2, .text-rank-3, .reader-board-rank\")].filter(vis);const bad=n.filter(e=>!((e,c)=>[\"rgb(89, 99, 110)\",\"rgb(31, 35, 40)\"].includes(c.color))(e,getComputedStyle(e)));return {pass:bad.length===0,samples:n.length,detail:bad.length+'/'+n.length+' fail: 名次彩色'}})()"
+    },
+    "metric": {
+      "selector": ".reader-primary-metric"
+    },
+    "admin-card": {
+      "selector": ".admin-card"
+    },
+    "admin-head": {
+      "selector": ".admin-card-head"
+    },
+    "admin-nav-current": {
+      "selector": ".admin-nav-active"
+    }
+  },
+  "cases": [
+    {
+      "id": "route-00",
+      "path": "/",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-01",
+      "path": "/all",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-02",
+      "path": "/all/search-busy",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-03",
+      "path": "/search-busy",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-04",
+      "path": "/hot",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-05",
+      "path": "/daily",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-06",
+      "path": "/daily/archive",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-07",
+      "path": "/daily/2026-10-09",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-08",
+      "path": "/weekly",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-09",
+      "path": "/weekly/2026-W40",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-10",
+      "path": "/monthly",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-11",
+      "path": "/monthly/2026-09",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-12",
+      "path": "/topics",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-13",
+      "path": "/topics/openai",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-14",
+      "path": "/topics/openai/page/2?tab=selected",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-15",
+      "path": "/sources",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-16",
+      "path": "/sources/wechat",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-17",
+      "path": "/sources/wechat/radar-mp-2390142780",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-18",
+      "path": "/about",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-19",
+      "path": "/terms",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-20",
+      "path": "/privacy",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-21",
+      "path": "/changelog",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-22",
+      "path": "/feedback",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-23",
+      "path": "/more",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-24",
+      "path": "/starred",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-25",
+      "path": "/agent",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-26",
+      "path": "/codex-reset",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-27",
+      "path": "/codex-reset/history/2026-10-08",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-28",
+      "path": "/leaderboard",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-29",
+      "path": "/leaderboard/category/coding",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-30",
+      "path": "/leaderboard/sources",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-31",
+      "path": "/leaderboard/sources/artificial-analysis",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-32",
+      "path": "/leaderboard/rules",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-33",
+      "path": "/leaderboard/claude-opus-5-5",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-34",
+      "path": "/items/hx6xcmliizfd53173qcnsbs5v",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-35",
+      "path": "/items/m1qlexzssp2rbjy9ehq7gjy2q",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-36",
+      "path": "/story/2db1055f-c704-4346-980e-76bb8df84f54",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-37",
+      "path": "/?category=ai-models",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-38",
+      "path": "/all?channel=firstParty",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-39",
+      "path": "/topics?tab=all",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    },
+    {
+      "id": "route-40",
+      "path": "/sources?tab=selected",
+      "state": "github / published content",
+      "ready": "document.documentElement.dataset.theme==='github' && document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
+      "exclude": {
+        "admin-card": "后台规则；公开页面不使用后台组件。",
+        "admin-head": "后台规则；公开页面不使用后台组件。",
+        "admin-nav-current": "后台规则；公开页面不使用后台组件。",
+        "admin-reading": "后台规则；公开页面不使用后台组件。"
+      }
+    }
+  ]
+}

@@ -22,9 +22,9 @@ export function AdminPage({ title, subtitle, actions, children }: { title: React
 
 export function Card({ title, right, children, className = "", pad = true }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; pad?: boolean }) {
   return (
-    <section className={`rounded-panel bg-surface ring-1 ring-line ${className}`}>
+    <section className={`admin-card rounded-panel bg-surface ring-1 ring-line ${className}`}>
       {(title || right) && (
-        <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="admin-card-head flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink">{title}</h2>
           {right && <div className="flex items-center gap-2 text-[12.5px] text-ink-3">{right}</div>}
         </div>
@@ -37,7 +37,7 @@ export function Card({ title, right, children, className = "", pad = true }: { t
 export function Stat({ label, value, hint, tone }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: "ok" | "warn" | "bad" }) {
   const color = tone === "bad" ? "text-hot" : tone === "warn" ? "text-amber" : tone === "ok" ? "text-ok" : "text-ink";
   return (
-    <div className="rounded-panel bg-surface px-4 py-3.5 ring-1 ring-line">
+    <div className="admin-stat rounded-panel bg-surface px-4 py-3.5 ring-1 ring-line">
       <div className="text-[12.5px] text-ink-3">{label}</div>
       <div className={`num mt-1 text-[22px] font-semibold tracking-tight ${color}`}>{value}</div>
       {hint && <div className="mt-0.5 text-[12px] text-ink-4">{hint}</div>}
@@ -57,7 +57,7 @@ const TONES: Record<Tone, string> = {
 
 export function Badge({ tone = "muted", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
   return (
-    <span title={title} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-medium ring-1 ${TONES[tone]}`}>
+    <span title={title} className={`admin-badge admin-badge--${tone} inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-medium ring-1 ${TONES[tone]}`}>
       {children}
     </span>
   );
@@ -98,7 +98,7 @@ export function DataTable<T>({ rows, columns, rowKey, empty = "暂无数据", on
   if (!rows.length) return <Empty>{empty}</Empty>;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
+      <table className="admin-table w-full min-w-[640px] border-collapse text-left text-[13px]">
         <thead>
           <tr className="border-b border-line text-[12px] text-ink-3">
             {columns.map((c) => (
@@ -153,7 +153,7 @@ export function Button({
       type="button"
       {...rest}
       disabled={rest.disabled || busy}
-      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color,transform] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 ${
+      className={`admin-btn admin-btn--${tone} inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color,transform] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 ${
         size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-9 px-3.5 text-[13.5px]"
       } ${BTN[tone]} ${className}`}
     >
@@ -167,7 +167,7 @@ export function ButtonLink({ to, children, tone = "secondary", size = "md" }: { 
   return (
     <Link
       to={to}
-      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color] ${
+      className={`admin-btn admin-btn--${tone} inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-[opacity,background-color] ${
         size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-9 px-3.5 text-[13.5px]"
       } ${BTN[tone]}`}
     >
@@ -176,7 +176,7 @@ export function ButtonLink({ to, children, tone = "secondary", size = "md" }: { 
   );
 }
 
-const INPUT = "w-full rounded-control bg-surface px-3 py-2 text-[13.5px] text-ink ring-1 ring-line-strong outline-none transition-shadow placeholder:text-ink-4 focus:ring-2 focus:ring-accent";
+const INPUT = "admin-input w-full rounded-control bg-surface px-3 py-2 text-[13.5px] text-ink ring-1 ring-line-strong outline-none transition-shadow placeholder:text-ink-4 focus:ring-2 focus:ring-accent";
 
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   const id = useId();
@@ -222,7 +222,7 @@ export function FilterChips({ param, options }: { param: string; options: Array<
             key={o.value || "all"}
             to={`?${next}`}
             preventScrollReset
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] transition-colors ${active ? "bg-ink text-bg" : "bg-surface text-ink-2 ring-1 ring-line hover:bg-bg-sunk"}`}
+            className={`admin-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] transition-colors ${active ? "bg-ink text-bg" : "bg-surface text-ink-2 ring-1 ring-line hover:bg-bg-sunk"}`}
           >
             {o.label}
             {o.count !== undefined && <span className={`num text-[11.5px] ${active ? "text-bg/70" : "text-ink-4"}`}>{o.count}</span>}
@@ -313,7 +313,7 @@ export function ReasonDialog({
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 10, scale: 0.98, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-            className="relative w-full max-w-lg rounded-sheet bg-raised p-5 shadow-2xl ring-1 ring-line-strong"
+            className="admin-dialog relative w-full max-w-lg rounded-sheet bg-raised p-5 shadow-2xl ring-1 ring-line-strong"
             onSubmit={async (e) => {
               e.preventDefault();
               if (requireReason && !reason.trim()) return;

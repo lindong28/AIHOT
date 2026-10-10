@@ -18,7 +18,7 @@ for (const systemDark of [false, true]) {
   });
 }
 
-for (const theme of ["light", "dark", "feedly"] as const) {
+for (const theme of ["light", "dark", "feedly", "github"] as const) {
   test(`${theme} survives storage, first paint and backup round trips`, () => {
     const values = new Map<string, string>();
     const localStorage = {
@@ -51,7 +51,7 @@ for (const theme of ["light", "dark", "feedly"] as const) {
         });
         assert.equal(actual, theme);
         assert.equal(getThemePreference(), theme);
-        assert.equal(chrome, theme === "dark" ? "#13191c" : theme === "feedly" ? "#ffffff" : "#faf9f6");
+        assert.equal(chrome, theme === "dark" ? "#13191c" : theme === "light" ? "#faf9f6" : "#ffffff");
       }
     } finally {
       if (previous) Object.defineProperty(globalThis, "window", previous);

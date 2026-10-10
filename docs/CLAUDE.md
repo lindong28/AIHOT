@@ -5,6 +5,7 @@
 | 文件 | 读者与用途 |
 |---|---|
 | [references/feedly-reader.md](references/feedly-reader.md) | 开发者：公开站点 Feedly 浅色有效设计、例外与核验入口 |
+| [references/github-primer.md](references/github-primer.md) | 开发者：GitHub 风格（第四个可选外观）的有效设计、页面与组件盘点、例外与核验入口 |
 | [README.md](README.md) | 所有读者：按任务选择阅读入口 |
 | [CLAUDE.md](CLAUDE.md) | Agent：本文档索引 |
 | [deploy.md](deploy.md) | 站点运营者：环境配置、本机和 Docker 部署 |

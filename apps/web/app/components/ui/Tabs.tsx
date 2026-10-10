@@ -79,6 +79,7 @@ export function PillTabs({
     <div className={`scrollbar-none max-w-full overflow-x-auto ${fill ? "w-full" : ""} ${className}`}>
       <Track
         data-pill-track=""
+        data-pill-kind={links ? "nav" : "tabs"}
         aria-label={label}
         role={links ? undefined : "tablist"}
         className={`${fill ? "grid w-full" : "inline-flex w-max"} gap-0.5 rounded-full bg-bg-sunk p-[3px] ring-1 ring-inset ring-line-soft dark:bg-bg-muted/60`}
