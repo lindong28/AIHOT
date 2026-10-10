@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "id": "aihot-feedly-components-public-20261010",
-  "objective": "补齐Feedly复合组件并应用AI Radar公开浅色站点，保留品牌、业务结构和深色。",
+  "id": "aihot-feedly-selectable-public-20261010",
+  "objective": "在明确选择Feedly风格时核验AI Radar公开页面，默认原有亮色、暗色各自保留。",
   "application": "style",
   "design": {
     "path": "effective-design.json",
@@ -9,6 +9,6 @@
   },
   "project": {
     "path": "project.json",
-    "sha256": "854f842b5b740d74db5e43093076e943a547d839c272d36b8889d3eaddd43d02"
+    "sha256": "441fd151e23d9d898e4124f0a57e9dfc27367415dce086b53af71ffb67232140"
   }
 }

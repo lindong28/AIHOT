@@ -1,6 +1,26 @@
 # AI Radar · Feedly 清爽阅读器有效设计
 
-## 2026-10-10 复合组件补齐
+## 当前风格选择（2026-10-10）
+
+公开页面现有三种独立选择：原有亮色（默认）、原有暗色、Feedly。`aihot-theme` 保存 `light` / `dark` / `feedly`，兼容旧 JSON 引号形式。未保存、旧自动模式或无效值回到亮色，不再按系统配色自动选择；已经保存的亮色、暗色不重置。首帧脚本、切换器、跨标签页通知和本地备份导入/导出使用同一组风格值。备份 version 1 保持，新消费者接受 `feedly`，旧消费者会忽略自己不认识的风格而仍可导入收藏和已读数据。
+
+`app.css` 继续定义原有亮色和暗色；`reader.css` 只在 `html[data-theme="feedly"]` 且存在公开 SiteShell 时覆盖。所有公开路由及详情继承此选择，后台不启用 Feedly 覆盖。分享海报是独立生成的图片，保持上一版固定白底，不随浏览器主题变化。
+
+用户要求的三种风格与默认值是本次行为依据；实现只收窄 Feedly CSS 选择器、扩展既有偏好值及切换入口。按 L0 执行固定行为，回退点为前一发布；验证为实际切换、刷新和新浏览器默认值。原来的模板扫描绑定下文保留；当前复验使用 `scripts/verify-feedly.py`，它在每个隔离浏览器中先从“更多”页真实选择 Feedly，再访问受测路由，避免误测默认亮色。
+
+本次本地核验：typecheck、Web 构建、18 个 Web 测试及独立空库的 372 个后端测试通过，smoke 通过。后端首跑因为隔离环境缺少 PostgreSQL 用户名而失败；补全连接用户名后在另一空库重跑通过，未改产品后端。独立只读审查一轮无 finding，并在 1440/390 两视口实际切换三种风格。模板扫描抽查首页及收藏、两视口共 4 组合，22 个机器规则 PASS、0 FAIL；其余路由及人工规则保持 UNCHECKED，不当作整站复验。证据在 `/Users/lindong/.local/state/aihot-three-styles-20261010/`。
+
+### 三种风格的线上验收
+
+2026-10-10 发布至 `tencent-webserver-china` 的 `three-styles-20261010-91a0b9b`，部署源码提交 `91a0b9ba6164fbe7ba693a6e852621ee7c1b8ade`。仅重启 Web（PID 2221197）；API PID 2208432、worker PID 928519 保持。无迁移、seed 或配置变更。`current` 已指向新 release，旧 release `feedly-components-20261010-3ccd2a9` 与旧哈希资源保留，回退只需恢复 current 并重启 Web。
+
+公网三种选择在 1440×1000 的同一浏览器内真实切换并分别刷新：亮色 `rgb(250,249,246)`、暗色 `rgb(19,25,28)`、Feedly `rgb(255,255,255)`，保存值、选中按钮及刷新后风格均对应。390×844 新浏览器无保存值时默认亮色；手机“更多”页选择 Feedly、导航精选、展开多信源，再打开 `items/yvqpt02kkp9r4mh028ab3nb9u` 阅读 AI 导读及来源，选择保持、未见水平溢出。宽屏原亮色下模型筛选进入 `?category=ai-models`，返回对应模型条目。深查外观切换/首帧/刷新；相邻回归首页、更多、收藏和一条长标题详情；后台、反馈提交、其它业务组合与其它浏览器引擎不在本次逐项验收范围。
+
+发布前浏览器已加载旧 CSS `root-CW5nkEcF.css`，普通 reload 的 transferSize=0；发布后同一浏览器普通 reload 获得新 CSS `root-DdizILFQ.css` 及三种按钮，默认暖白亮色。新 CSS SHA256 `2b693050afae0fcdd01a59aa7c566f84ebf79ce3199f80eb554d65256aadd08e` 与本地构建相同，五个改动运行源码与远端逐字节一致。此读数只覆盖这个连续浏览器会话，不代表全部 CDN 节点或所有用户缓存。公网 smoke 通过，Feedly 模板抽查首页/收藏 × 宽窄屏的 4 组合为22 PASS、0 FAIL，其余组合与人工规则保留 UNCHECKED。
+
+实现、审查及部署已完成；未处理 finding：无。代码在私有工作树提交后整合本地 main，不执行 Git push（本仓未获显式 push 授权）。上述运行源码提交之后仅补验收记录并并回同一任务提交，最终本地提交的产品代码与部署一致。
+
+## 2026-10-10 复合组件补齐（历史发布）
 
 用户已要求执行整站审计的缺口与改进。跨仓缺口清单与通用规则决定记录在 `prompt-templates/docs/feedly-component-coverage.md`；本仓负责共享浅色样式、对应组件和海报图片适配。重点为首页/热点排行、刊物题头、模型指标、监控日历、复合资讯与收藏；已协调的目录、表单等保留并按新规则验收。更新后以本节记录的新模板摘要为准，下方历史读数不代表本次通过。
 
@@ -39,7 +59,7 @@
 
 ## 共享实现与继承
 
-`root.tsx` 的 `SiteShell.public-site` 是所有公开路由（含错误详情）的继承入口；`reader.css` 是本次唯一浅色覆盖。变量在带公开 shell 的浅色根元素解析，让 Tailwind 语义颜色、圆角和阴影保持一致。新增公开页面复用 SiteShell、语义 token、Controls、PillTabs；信息流复用 FeedItem，不复制页面私有颜色。后台不进入该 shell，深色继续用 app.css 的原定义。
+`root.tsx` 的 `SiteShell.public-site` 是所有公开路由（含错误详情）的继承入口；`reader.css` 是 Feedly 选项的唯一视觉覆盖。变量仅在带公开 shell 的 `data-theme="feedly"` 根元素解析，让 Tailwind 语义颜色、圆角和阴影保持一致。新增公开页面复用 SiteShell、语义 token、Controls、PillTabs；信息流复用 FeedItem，不复制页面私有颜色。后台不进入该 shell，深色继续用 app.css 的原定义。
 
 本次读取新版真实信息流定义：白色画布、#f6f7f8 导航、#f7f7f7 辅助面；正文 #333333、摘要 #666666、元信息 #767676，边线 #e8e8e8；强调 #187b3c、淡绿选中 #edf7ef。新闻标题16px/1.35、700字重且自然换行；来源12px在标题下，摘要14px/1.4、两行预览。条目去除逐条边框、无阴影，推荐理由12px辅助呈现，日期13px低对比分组。已有X媒体左置，桌面130×80px、窄屏80×60px，多图保留全部既有缩略图并在同宽区域排成小网格；无图不设图片列。控件6px、缩略图4px、浮层12px。
 
@@ -55,7 +75,7 @@
 
 [scope.json](feedly-reader/scope.json) 固定 [有效规则](feedly-reader/effective-design.json) 与 [项目绑定](feedly-reader/project.json) 的完整摘要。覆盖精选/全部/搜索忙状态、热点/事件、日周月报及归档、主题与分页、来源目录及详情、模型榜各子页、重置监控及历史、收藏、接入、关于/条款/隐私/更新/反馈/更多、两种条目详情。查询覆盖类别、一手、精选/全部切换。`/items/:id/original` 是原文出口，保留原行为，不作为新阅读页；管理后台不是应用目标。
 
-基础扫描覆盖41个路由/查询样本 × 2视口（1440×1000、390×844），检查画布、强调/边线变量及整页溢出；FeedItem页面另查字号和阴影。人工阅读与交互独立记账，机器扫描不证明可读性，也不代表穷尽全部内容。执行器：`python3 ~/.claude/skills/web-ui-workflows/workflows/apply-ui-template/verify-ui.py --scope docs/references/feedly-reader/scope.json --output <持久证据目录> --jobs 4 --capacity-reason '共享公网API与本机浏览器容量' --screenshots --direct`。
+基础扫描覆盖41个路由/查询样本 × 2视口（1440×1000、390×844），检查画布、强调/边线变量及整页溢出；FeedItem页面另查字号和阴影。人工阅读与交互独立记账，机器扫描不证明可读性，也不代表穷尽全部内容。执行器：`python3 scripts/verify-feedly.py --scope docs/references/feedly-reader/scope.json --output <持久证据目录> --jobs 4 --capacity-reason '共享公网API与本机浏览器容量' --screenshots --direct`。
 
 ## 发布与验收（2026-10-09）
 

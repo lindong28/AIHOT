@@ -1,9 +1,9 @@
 /* Feedly 清爽阅读器 — style:feedly-reader.
  * Effective design, provenance and exceptions: docs/references/feedly-reader.md.
  * Resolve semantic variables at the root (Tailwind @theme references them there).
- * Only the public light shell opts in; admin and existing dark values stay intact.
+ * Only the public Feedly selection opts in; original light, dark and admin stay intact.
  */
-:root:not([data-theme="dark"]):has(.public-site) {
+:root[data-theme="feedly"]:has(.public-site) {
   --bg: #ffffff;
   --bg-sunk: #f7f7f7;
   --bg-muted: #e8e8e8;
@@ -41,7 +41,7 @@
   --shadow-pop: 0 12px 32px rgb(32 37 33 / 12%);
 }
 
-:root:not([data-theme="dark"]) .public-site {
+:root[data-theme="feedly"] .public-site {
   .site-sidebar { border-color: var(--line); }
   .site-sidebar a[aria-current="page"] {
     color: var(--accent);
@@ -91,7 +91,7 @@
 }
 
 @media (min-width: 961px) {
-  :root:not([data-theme="dark"]) .public-site {
+  :root[data-theme="feedly"] .public-site {
     .site-sidebar { width: 208px; }
     /* Podium evidence sits at the card edge; keep its popup inside the reading area. */
      .leaderboard-podium [role="tooltip"] { left: auto; right: 0; translate: 0; }
@@ -104,7 +104,7 @@
 }
 
 @media (max-width: 960px) {
-  :root:not([data-theme="dark"]) .public-site {
+  :root[data-theme="feedly"] .public-site {
     .feed-item:has(.feed-media) { grid-template-columns: 80px minmax(0, 1fr); column-gap: 12px; }
     .feed-item > .feed-media { width: 80px; gap: 2px; }
     .feed-media > span { height: 29px; }
@@ -113,7 +113,7 @@
 }
 
 /* Compound components share the reader baseline; business status colors stay semantic. */
-:root:not([data-theme="dark"]) .public-site {
+:root[data-theme="feedly"] .public-site {
   .reader-hot-strip, .leaderboard-podium > li > a { background-image: none; }
   :is(.reader-hot-strip, .reader-hot-page, .leaderboard-podium) :is(.text-rank-1, .text-rank-2, .text-rank-3, .text-rank-rest) { color: var(--ink-4); }
   .reader-hot-strip .num:first-child { font-size: 14px; font-weight: 500; }
@@ -174,7 +174,7 @@
   .reader-about > header p { font-size: 15px; line-height: 1.75; }
 }
 @media (max-width: 640px) {
-  :root:not([data-theme="dark"]) .public-site {
+  :root[data-theme="feedly"] .public-site {
     .reader-report-nameplate { height: 28px; }
     .reader-report-headline { font-size: 24px; }
     .reader-about h1 { font-size: 28px; }

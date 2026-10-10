@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "project": "AI Radar public Feedly light style",
+  "project": "AI Radar public Feedly selected style",
   "base_url": "https://news.aiplanet.live",
   "viewports": [
     {
@@ -47,7 +47,7 @@
     {
       "id": "route-00",
       "path": "/",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "detail-reading": "此规则限定条目详情；其他页面执行基础扫描。",
@@ -63,7 +63,7 @@
     {
       "id": "route-01",
       "path": "/all",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -83,7 +83,7 @@
     {
       "id": "route-02",
       "path": "/all/search-busy",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -105,7 +105,7 @@
     {
       "id": "route-03",
       "path": "/search-busy",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -126,7 +126,7 @@
     {
       "id": "route-04",
       "path": "/hot",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -145,7 +145,7 @@
     {
       "id": "route-05",
       "path": "/daily",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -165,7 +165,7 @@
     {
       "id": "route-06",
       "path": "/daily/archive",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -186,7 +186,7 @@
     {
       "id": "route-07",
       "path": "/daily/2026-10-09",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -206,7 +206,7 @@
     {
       "id": "route-08",
       "path": "/weekly",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -226,7 +226,7 @@
     {
       "id": "route-09",
       "path": "/weekly/2026-W40",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -246,7 +246,7 @@
     {
       "id": "route-10",
       "path": "/monthly",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -266,7 +266,7 @@
     {
       "id": "route-11",
       "path": "/monthly/2026-09",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -286,7 +286,7 @@
     {
       "id": "route-12",
       "path": "/topics",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -307,7 +307,7 @@
     {
       "id": "route-13",
       "path": "/topics/openai",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -326,7 +326,7 @@
     {
       "id": "route-14",
       "path": "/topics/openai/page/2?tab=selected",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -346,7 +346,7 @@
     {
       "id": "route-15",
       "path": "/sources",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -367,7 +367,7 @@
     {
       "id": "route-16",
       "path": "/sources/wechat",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -387,7 +387,7 @@
     {
       "id": "route-17",
       "path": "/sources/wechat/radar-mp-2390142780",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -407,7 +407,7 @@
     {
       "id": "route-18",
       "path": "/about",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -428,7 +428,7 @@
     {
       "id": "route-19",
       "path": "/terms",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -449,7 +449,7 @@
     {
       "id": "route-20",
       "path": "/privacy",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -470,7 +470,7 @@
     {
       "id": "route-21",
       "path": "/changelog",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -491,7 +491,7 @@
     {
       "id": "route-22",
       "path": "/feedback",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -512,7 +512,7 @@
     {
       "id": "route-23",
       "path": "/more",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -534,7 +534,7 @@
     {
       "id": "route-24",
       "path": "/starred",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -556,7 +556,7 @@
     {
       "id": "route-25",
       "path": "/agent",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -577,7 +577,7 @@
     {
       "id": "route-26",
       "path": "/codex-reset",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -598,7 +598,7 @@
     {
       "id": "route-27",
       "path": "/codex-reset/history/2026-10-08",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -619,7 +619,7 @@
     {
       "id": "route-28",
       "path": "/leaderboard",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -640,7 +640,7 @@
     {
       "id": "route-29",
       "path": "/leaderboard/category/coding",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -661,7 +661,7 @@
     {
       "id": "route-30",
       "path": "/leaderboard/sources",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -683,7 +683,7 @@
     {
       "id": "route-31",
       "path": "/leaderboard/sources/artificial-analysis",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -705,7 +705,7 @@
     {
       "id": "route-32",
       "path": "/leaderboard/rules",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -727,7 +727,7 @@
     {
       "id": "route-33",
       "path": "/leaderboard/claude-opus-5-5",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -746,7 +746,7 @@
     {
       "id": "route-34",
       "path": "/items/hx6xcmliizfd53173qcnsbs5v",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -767,7 +767,7 @@
     {
       "id": "route-35",
       "path": "/items/m1qlexzssp2rbjy9ehq7gjy2q",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -788,7 +788,7 @@
     {
       "id": "route-36",
       "path": "/story/2db1055f-c704-4346-980e-76bb8df84f54",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -809,7 +809,7 @@
     {
       "id": "route-37",
       "path": "/?category=ai-models",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -829,7 +829,7 @@
     {
       "id": "route-38",
       "path": "/all?channel=firstParty",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-reading": "此规则限定首页长短及有无图代表样本。",
@@ -849,7 +849,7 @@
     {
       "id": "route-39",
       "path": "/topics?tab=all",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",
@@ -871,7 +871,7 @@
     {
       "id": "route-40",
       "path": "/sources?tab=selected",
-      "state": "light / published content",
+      "state": "feedly / published content",
       "ready": "document.querySelector('.public-site #main') !== null && document.querySelector('#main').innerText.length > 20 && !document.querySelector('#main').innerText.includes('服务暂时繁忙')",
       "exclude": {
         "feed-title": "该结构不使用 FeedItem；全局画布/色彩/溢出仍扫描。",

@@ -191,13 +191,13 @@ export function markRead(id: string) {
 }
 
 // --- theme ---
-export type ThemePreference = "light" | "dark" | null;
+export type ThemePreference = "light" | "dark" | "feedly" | null;
 
 export function getThemePreference(): ThemePreference {
   const v = readRaw(KEYS.theme);
-  if (v === "light" || v === "dark") return v;
+  if (v === "light" || v === "dark" || v === "feedly") return v;
   // Tolerate a JSON-quoted value written by other code paths.
-  if (v === '"light"' || v === '"dark"') return JSON.parse(v);
+  if (v === '"light"' || v === '"dark"' || v === '"feedly"') return JSON.parse(v);
   return null;
 }
 
@@ -206,17 +206,18 @@ export function setThemePreference(pref: ThemePreference) {
   invalidate(KEYS.theme);
 }
 
-export function resolvedTheme(pref: ThemePreference = getThemePreference()): "light" | "dark" {
-  if (pref) return pref;
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  } catch {
-    return "light";
-  }
+export function resolvedTheme(pref: ThemePreference = getThemePreference()): NonNullable<ThemePreference> {
+  return pref ?? "light";
+}
+
+export function applyTheme(pref: ThemePreference = getThemePreference()) {
+  const theme = resolvedTheme(pref);
+  document.documentElement.setAttribute("data-theme", theme);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#13191c" : theme === "feedly" ? "#ffffff" : "#faf9f6");
 }
 
 /** Inline script run before paint so the first frame already has the reader's theme. */
-export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('${KEYS.theme}');if(t==='"light"'||t==='"dark"')t=JSON.parse(t);if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','light')}})();`;
+export const THEME_BOOT_SCRIPT = `(function(){var t='light';try{var v=localStorage.getItem('${KEYS.theme}');if(v==='"light"'||v==='"dark"'||v==='"feedly"')v=JSON.parse(v);if(v==='light'||v==='dark'||v==='feedly')t=v}catch(e){}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='dark'?'#13191c':t==='feedly'?'#ffffff':'#faf9f6')})();`;
 
 // --- changelog red dot ---
 export function getChangelogSeen(): string | null {
@@ -234,12 +235,12 @@ export interface ExportBundle {
   version: 1;
   starred: LocalStarredItem[];
   read: string[];
-  theme: "light" | "dark" | "auto" | null;
+  theme: ThemePreference | "auto";
 }
 
 export function exportBundle(): ExportBundle {
   const pref = getThemePreference();
-  return { version: 1, starred: getStarred(), read: getReadIds(), theme: pref ?? "auto" };
+  return { version: 1, starred: getStarred(), read: getReadIds(), theme: resolvedTheme(pref) };
 }
 
 export interface ImportReport {
@@ -303,7 +304,7 @@ export function mergeLocalData(incoming: { starred: unknown[]; read: unknown[]; 
   const readFailed = !writeRaw(KEYS.read, JSON.stringify([...readIds, ...readAdditions.slice(0, readRoom)]));
 
   let themeApplied = false;
-  if (!getThemePreference() && (incoming.theme === "light" || incoming.theme === "dark")) {
+  if (!getThemePreference() && (incoming.theme === "light" || incoming.theme === "dark" || incoming.theme === "feedly")) {
     themeApplied = writeRaw(KEYS.theme, incoming.theme);
   }
   cache.clear();

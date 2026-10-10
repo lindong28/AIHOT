@@ -1,28 +1,27 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { IconMonitor, IconMoon, IconSun } from "../icons";
-import { resolvedTheme, setThemePreference, useThemePreference, type ThemePreference } from "../../lib/local-state";
+import { useEffect, type ReactNode } from "react";
+import { IconMoon, IconSun } from "../icons";
+import { applyTheme, setThemePreference, useThemePreference, type ThemePreference } from "../../lib/local-state";
 
-type Choice = "dark" | "system" | "light";
+type Choice = NonNullable<ThemePreference>;
 
-const OPTIONS: Array<{ key: Choice; label: string; icon: ReactNode }> = [
-  { key: "dark", label: "深色", icon: <IconMoon size={14} /> },
-  { key: "system", label: "跟随系统", icon: <IconMonitor size={14} /> },
-  { key: "light", label: "浅色", icon: <IconSun size={14} /> },
+const OPTIONS: Array<{ key: Choice; label: string; icon?: ReactNode }> = [
+  { key: "light", label: "亮色", icon: <IconSun size={14} /> },
+  { key: "dark", label: "暗色", icon: <IconMoon size={14} /> },
+  { key: "feedly", label: "Feedly" },
 ];
 
-/** Three-way appearance switch (dark / follow the system / light) with a sliding thumb. */
+/** Three independent visual styles; the original light style is the default. */
 export function ThemeSwitch({ className = "" }: { className?: string }) {
   const pref = useThemePreference();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  const current: Choice = !mounted ? "system" : (pref ?? "system");
+  // Read current storage on hydration and on import / cross-tab notifications.
+  useEffect(() => applyTheme(), [pref]);
+  const current: Choice = pref ?? "light";
   const index = OPTIONS.findIndex((o) => o.key === current);
 
   const choose = (key: Choice) => {
-    const nextPref: ThemePreference = key === "system" ? null : key;
     const apply = () => {
-      setThemePreference(nextPref);
-      document.documentElement.setAttribute("data-theme", resolvedTheme(nextPref));
+      setThemePreference(key);
+      applyTheme(key);
     };
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
     if (doc.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(apply);
@@ -44,10 +43,10 @@ export function ThemeSwitch({ className = "" }: { className?: string }) {
           aria-checked={current === o.key}
           title={o.label}
           onClick={() => choose(o.key)}
-          className={`relative z-10 flex items-center justify-center rounded-full transition-colors duration-150 ${current === o.key ? "text-ink" : "text-ink-4 hover:text-ink-2"}`}
+          className={`relative z-10 flex items-center justify-center gap-1 rounded-full text-[11px] transition-colors duration-150 ${current === o.key ? "text-ink" : "text-ink-4 hover:text-ink-2"}`}
         >
           {o.icon}
-          <span className="sr-only">{o.label}</span>
+          <span>{o.label}</span>
         </button>
       ))}
     </div>
