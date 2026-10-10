@@ -109,3 +109,15 @@ python3 scripts/verify-github.py --scope docs/references/github-primer/scope-adm
 
 本地读数：公开 82 组合 1182 PASS、0 FAIL（构建 `root-BViki3bd.css`），后台 26 组合 366 PASS、0 FAIL（随后只加了后台选中 chip 计数颜色的构建 `root-BfhDDZ5z.css`）；全页取值扫描剩余项均为上述例外。阳性对照：把同一组新规则跑在当时的生产版本（`root-BBPBvc73.css`）上，140 项 FAIL，82 个组合的字号规则全部失败；报告里的资产路径区分出两个构建。后台隔离实例实际触发了原因确认对话框、成功与失败提示（写入只落在本机测试库）。
 
+生产读数（发布 `github-audit-20261010-978aed2`，仅重启 Web；根样式 `root-lMWZxwMi.css` 与本地构建逐字节一致；smoke 通过）：
+
+| 读数 | 范围 | 结果 |
+| --- | --- | --- |
+| 生产批量 | 公开 41 状态 × 2 视口，35 条规则 | 1200 PASS、0 FAIL、0 执行错误；82 个组合实际加载的都是同一根样式 |
+| 生产人工阅读 | 同上，按 finalize 闭合 | 5 项 PASS（首页信息流、390 排行榜、390 X 详情、重置日历、Agent 页复制成功），651 项未逐一阅读 |
+| 本地后台批量 | 隔离实例 13 状态 × 2 视口 | 374 PASS、0 FAIL；人工阅读 1 项 PASS（反馈页选中 chip 为蓝色） |
+| 生产操作 | 1440 与 390 | 链接已复制提示为 #25292e 12px 6px；Agent 页复制成功转绿；目录搜索只有外框聚焦环；手机搜索栏 40px；模型标志 32/32 图片加载、6px；图片查看器显示原图并可 Escape 关闭；收藏按钮 28px，切换为蓝色后再取消 |
+
+第一次批量在发布后立刻运行，`/daily` 与 `/more` 仍拿到 EdgeOne 缓存的上一版 HTML，失败项全部来自这两页；新记录的资产路径直接显示了这一点。等缓存过期后的完整重跑如上表。发布后的这段窗口已写入[生产操作](../operations/production.md)。
+
+本轮未覆盖：生产后台（只在隔离实例）；`/admin/content/:id` 与 `/admin/selectbench/:runId`（隔离库无数据）；其余 651 个公开组合的逐页阅读；非 Chromium 浏览器；GitHub Feed 的菜单展开、深色与 Star/Release 卡（需要登录，本轮没有为它们重新取登录态，AIHOT 的缺口不依赖它们）；用户审美认可。
