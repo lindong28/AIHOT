@@ -40,7 +40,7 @@ function sorted(entries: LbBoardEntry[], key: SortKey, dir: 1 | -1) {
 function Rank({ rank }: { rank: number }) {
   const n = String(rank).padStart(2, "0");
   if (rank <= 3) {
-    return <span className="mono inline-flex h-7 w-[26px] items-center justify-center rounded-full bg-accent/[0.06] text-[13px] font-bold text-accent">{n}</span>;
+    return <span className="reader-board-rank mono inline-flex h-7 w-[26px] items-center justify-center rounded-full bg-accent/[0.06] text-[13px] font-bold text-accent">{n}</span>;
   }
   return <span className="mono text-[13px] text-ink-4">{n}</span>;
 }
@@ -162,7 +162,7 @@ export function BoardTable({ entries, board }: { entries: LbBoardEntry[]; board:
             <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{price(e, e.price?.inputCny)}</td>
             <td className="mono hidden px-3 py-3 text-[14.5px] font-medium text-ink lg:table-cell">{price(e, e.price?.outputCny)}</td>
             <td className="py-3 pl-2 pr-4 text-right align-middle lg:pl-3 lg:pr-[22px]">
-              <strong className={`mono inline-block text-[20px] font-semibold leading-7 tracking-[-0.02em] ${e.rank <= 3 ? "text-accent" : "text-ink"}`} aria-label={`${e.model.name} 共识指数 ${e.score.toFixed(1)}`}>
+              <strong className={`reader-board-score mono inline-block text-[20px] font-semibold leading-7 tracking-[-0.02em] ${e.rank <= 3 ? "text-accent" : "text-ink"}`} aria-label={`${e.model.name} 共识指数 ${e.score.toFixed(1)}`}>
                 {e.score.toFixed(1)}
               </strong>
             </td>

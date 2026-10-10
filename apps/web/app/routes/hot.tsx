@@ -82,7 +82,7 @@ function HeatPanel({ e }: { e: HotEntryView }) {
   const peak = Math.max(...seen);
   const peakAt = e.spark.findIndex((v) => v === peak);
   return (
-    <div className="order-first flex aspect-[2/1] flex-col rounded-panel bg-accent-softer p-4 ring-1 ring-inset ring-line-soft xl:order-none xl:aspect-[16/10] dark:bg-accent-soft">
+    <div className="reader-heat-panel order-first flex aspect-[2/1] flex-col rounded-panel bg-accent-softer p-4 ring-1 ring-inset ring-line-soft xl:order-none xl:aspect-[16/10] dark:bg-accent-soft">
       <div className="flex items-baseline justify-between text-[11.5px] text-ink-4">
         <span className="font-semibold text-ink-3">24 小时热度</span>
         <span>
@@ -103,7 +103,7 @@ function HeatPanel({ e }: { e: HotEntryView }) {
 function Lead({ e }: { e: HotEntryView }) {
   const panel = !e.cover && e.spark.filter((v) => v !== null).length >= 3;
   return (
-    <article className="card card-hover group relative flex flex-col overflow-hidden p-5 sm:p-6">
+    <article className="reader-hot-lead card card-hover group relative flex flex-col overflow-hidden p-5 sm:p-6">
       <div className="flex items-center gap-2.5">
         <span className={`mono text-[12px] font-bold tracking-[0.16em] ${rankColor(e.rank)}`}>NO.{pad(e.rank)}</span>
         <Badges e={e} />
@@ -142,7 +142,7 @@ function Lead({ e }: { e: HotEntryView }) {
         <div className="flex w-full shrink-0 items-end justify-between gap-5 sm:ml-auto sm:w-auto sm:justify-end">
           {!panel && <Sparkline values={e.spark} area className="h-10 w-[140px] text-accent" />}
           <div className="text-right">
-            <div className="mono text-[34px] font-semibold leading-none tracking-[-0.03em] text-ink">{Math.round(e.heat)}</div>
+            <div className="reader-primary-metric mono text-[34px] font-semibold leading-none tracking-[-0.03em] text-ink">{Math.round(e.heat)}</div>
             <div className="mt-1 text-[11.5px] text-ink-4">热度指数</div>
           </div>
         </div>
@@ -227,7 +227,7 @@ export default function HotPage() {
   const runners = rest.slice(0, 2);
   const others = rest.slice(2);
   return (
-    <div className="pb-10">
+    <div className="reader-hot-page pb-10">
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 pb-5 pt-5 lg:pt-1">
         <div>
           <div className="flex items-center gap-2 text-[12px] font-semibold tracking-[0.08em] text-hot">

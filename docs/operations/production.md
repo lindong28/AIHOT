@@ -189,3 +189,5 @@ env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/ubuntu \
 
 
 2026-10-09 公开站点 Feedly 浅色视觉已发布到 `feedly-reader-20261009-r2`，只更新 Web，API/worker 保持原进程。未运行迁移或 seed；旧 release 与哈希静态资源保留。共享设计、模板摘要、验收范围和回退点见[Feedly 有效设计](../references/feedly-reader.md#发布与验收2026-10-09)。
+
+2026-10-10 Feedly 复合组件补齐已发布，current 为 `feedly-components-20261010-3ccd2a9`。本轮更新 Web 与海报 API；worker 保持 PID 928519，不执行迁移/seed。运行身份、回退点、375文件字节对照和取样边界见[本轮验收](../references/feedly-reader.md#本轮发布与取样验收)。

@@ -111,3 +111,74 @@
     .feed-media > span:only-child { height: 60px; }
   }
 }
+
+/* Compound components share the reader baseline; business status colors stay semantic. */
+:root:not([data-theme="dark"]) .public-site {
+  .reader-hot-strip, .leaderboard-podium > li > a { background-image: none; }
+  :is(.reader-hot-strip, .reader-hot-page, .leaderboard-podium) :is(.text-rank-1, .text-rank-2, .text-rank-3, .text-rank-rest) { color: var(--ink-4); }
+  .reader-hot-strip .num:first-child { font-size: 14px; font-weight: 500; }
+  :is(.reader-hot-strip, .reader-hot-page > header) .animate-ping { display: none; }
+  :is(.reader-hot-strip h2, .reader-hot-page > header) .bg-hot { background: var(--ink-4); }
+  .reader-hot-page > header .text-hot { color: var(--ink-3); }
+  .reader-hot-lead { padding: 20px; }
+  .reader-hot-lead h2 { font-size: 20px; line-height: 1.35; }
+  .reader-heat-panel { background: var(--bg-sunk); }
+  .reader-hot-page svg.text-accent { color: var(--ink-4); }
+  .reader-primary-metric { font-size: 28px; color: var(--ink); letter-spacing: -.02em; }
+  .reader-board-rank { background: transparent; color: var(--ink-4); }
+  .reader-board-score { color: var(--ink); }
+
+  .reader-report-masthead { padding-block: 24px; gap: 20px; }
+  .reader-report-nameplate { height: 32px; max-width: 100%; }
+  .reader-report-masthead > div:first-child > p { margin-top: 12px; font-size: 12px; letter-spacing: .1em; }
+  .reader-report-date { background: transparent; border-radius: 0; }
+  .reader-report-date > div:first-child { width: 112px; padding-block: 4px; }
+  .reader-report-date-figure { font-size: 24px; font-weight: 600; line-height: 1.2; letter-spacing: 0; }
+  /* Accessible text is the date; the halftone canvas remains a dark-theme decoration. */
+  .reader-report-date-figure > span { opacity: 1; }
+  .reader-report-date-figure > canvas { display: none; }
+  .reader-report-metrics { gap: 8px 24px; border-color: var(--line); }
+  .reader-report-metrics .num { font-size: 20px; }
+  .reader-report-lead { padding-block: 24px; }
+  .reader-report-headline { font-size: 28px; line-height: 1.35; font-weight: 700; letter-spacing: -.02em; }
+  .reader-report-dek { margin-top: 16px; font-size: 16px; line-height: 1.75; }
+  .reader-report-section { padding-top: 32px; }
+  .reader-report-section > header { border-color: var(--line); }
+  .reader-report-section > header h2 { font-size: 22px; line-height: 1.35; font-weight: 700; }
+  .reader-report-section > header > .num, .reader-report-rank { font-size: 18px; font-weight: 500; color: var(--ink-4); }
+  .reader-report-story { padding-block: 20px; }
+  .reader-report-story h3 { margin-top: 8px; font-size: 16px; line-height: 1.35; }
+  .reader-report-story > p { font-size: 14px; line-height: 1.6; }
+  .reader-report > [aria-label="头版"] > aside { padding-block: 24px; }
+
+  .cr-wash { background: var(--surface); border-color: var(--line); border-radius: 6px; padding: 20px; gap: 24px; }
+  .cr-dot { box-shadow: none; animation: none; }
+  .reader-post { border-color: var(--line); }
+  .reader-post > blockquote { font-size: 14px; line-height: 1.7; }
+  .reader-calendar [data-day] { background: var(--bg-sunk); box-shadow: none; }
+  .reader-calendar [data-day][aria-selected="true"] { background: var(--accent-soft); }
+  .reader-calendar aside { background: var(--bg-sunk); }
+
+  .reader-quote { border: 0; border-left: 2px solid var(--line); border-radius: 0; background: transparent; padding: 0 0 0 12px; }
+  .reader-quote blockquote { font-size: 14px; line-height: 1.7; }
+  .reader-saved-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin: 0; padding: 16px 0; border: 0; background: transparent; border-radius: 0; box-shadow: none; }
+  .reader-saved-item > div { order: -1; min-width: 0; font-size: 12px; }
+  .reader-saved-item > h2 { order: -2; margin: 0; font-size: 16px; line-height: 1.35; }
+  .reader-saved-item > p { margin-top: 0; max-width: 75ch; font-size: 14px; line-height: 1.4; }
+  .reader-saved-item:hover { background: var(--bg-sunk); transform: none; }
+
+  .reader-about h1 { margin-top: 16px; font-size: 32px; line-height: 1.35; font-weight: 700; }
+  .reader-about h2:not(.sr-only) { font-size: 22px; line-height: 1.35; }
+  .reader-about > section { margin-top: 32px; }
+  .reader-about .num.font-black { font-size: 28px; font-weight: 600; }
+  .reader-about > header p { font-size: 15px; line-height: 1.75; }
+}
+@media (max-width: 640px) {
+  :root:not([data-theme="dark"]) .public-site {
+    .reader-report-nameplate { height: 28px; }
+    .reader-report-headline { font-size: 24px; }
+    .reader-about h1 { font-size: 28px; }
+    .reader-report-date > div:first-child { width: 104px; }
+    .reader-hot-lead, .cr-wash { padding: 16px; }
+  }
+}

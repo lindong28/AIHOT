@@ -35,22 +35,22 @@ function Masthead({ report, index }: { report: ReportDetail; index: ReportNaviga
         <span>{EDITION[report.kind]}</span>
       </div>
 
-      <div className="flex items-stretch justify-between gap-5 py-6 @[880px]:gap-10 @[880px]:py-8">
+      <div className="reader-report-masthead flex items-stretch justify-between gap-5 py-6 @[880px]:gap-10 @[880px]:py-8">
         <div className="flex min-w-0 flex-col justify-center">
           <h1 id="report-start">
             <span className="sr-only">
               AI {KIND_LABEL[report.kind]} · {dateLine(report.kind, report.key)}
             </span>
-            <Nameplate which={report.kind} className="block h-[54px] w-auto @[520px]:h-[74px] @[880px]:h-[98px] @[1040px]:h-[112px]" />
+            <Nameplate which={report.kind} className="reader-report-nameplate block h-[54px] w-auto @[520px]:h-[74px] @[880px]:h-[98px] @[1040px]:h-[112px]" />
           </h1>
           <p className="mt-3 text-[11.5px] tracking-[0.36em] text-ink-4 @[880px]:mt-4 @[880px]:text-[12.5px]">{SITE.name.toUpperCase()}</p>
         </div>
         {/* 报眼: the box beside the nameplate, as a Chinese daily sets it: the issue and the date in the
             nameplate's dots, and on wider paper the issue calendar beside them. */}
-        <div className="flex shrink-0 items-stretch well rounded-panel">
+        <div className="reader-report-date flex shrink-0 items-stretch well rounded-panel">
           <div className="flex w-[112px] flex-col items-center justify-center px-2 py-3 text-center @[880px]:w-[150px] @[880px]:py-4">
             {issue && <span className="text-[11px] tracking-[0.2em] text-ink-4">第 {issue} 期</span>}
-            <Halftone seed={`${report.kind}-${report.key}-date`} className="num mt-2 whitespace-nowrap text-[44px] font-black leading-[0.95] tracking-[-0.04em] text-ink @[880px]:text-[64px]">
+            <Halftone seed={`${report.kind}-${report.key}-date`} className="reader-report-date-figure num mt-2 whitespace-nowrap text-[44px] font-black leading-[0.95] tracking-[-0.04em] text-ink @[880px]:text-[64px]">
               {mark.figure}
             </Halftone>
             <span className="mt-2 text-[11.5px] text-ink-2">{mark.top}</span>
@@ -60,7 +60,7 @@ function Masthead({ report, index }: { report: ReportDetail; index: ReportNaviga
         </div>
       </div>
 
-      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1.5 border-y border-line-strong py-3">
+      <div className="reader-report-metrics flex flex-wrap items-baseline gap-x-8 gap-y-1.5 border-y border-line-strong py-3">
         {metricItems(report.metrics).map((m) => (
           <span key={m.unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
             <span className="num text-[22px] font-bold leading-none tracking-[-0.02em] text-ink @[880px]:text-[24px]">{m.value}</span>
@@ -99,7 +99,7 @@ function Original({ c, className = "" }: { c: ReportCitation; className?: string
 /** One story: source, headline, at most four lines of summary, and the original at the foot. */
 function Story({ c, dated, className = "" }: { c: ReportCitation; dated: boolean; className?: string }) {
   return (
-    <article id={anchorOf(c) ?? undefined} className={`flex min-w-0 scroll-mt-6 flex-col py-6 ${className}`}>
+    <article id={anchorOf(c) ?? undefined} className={`reader-report-story flex min-w-0 scroll-mt-6 flex-col py-6 ${className}`}>
       <div className="flex items-center gap-2 text-[12px] text-ink-3">
         <Source c={c} />
         {dated && c.publishedAt && <span className="num ml-auto shrink-0 text-ink-4">{shortDay(c.publishedAt)}</span>}
@@ -220,10 +220,10 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
 
   return (
     <section aria-label="头版" className={cover ? "grid @[880px]:grid-cols-[minmax(0,1fr)_300px] @[1040px]:grid-cols-[minmax(0,1fr)_340px]" : ""}>
-      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className={`min-w-0 scroll-mt-6 py-7 @[880px]:py-10 ${cover ? "@[880px]:border-r @[880px]:border-line @[880px]:pr-10" : ""}`}>
+      <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className={`reader-report-lead min-w-0 scroll-mt-6 py-7 @[880px]:py-10 ${cover ? "@[880px]:border-r @[880px]:border-line @[880px]:pr-10" : ""}`}>
         <Kicker>{daily ? "头条" : "本期导读"}</Kicker>
         {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="mt-5" />}
-        <h2 className="mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
+        <h2 className="reader-report-headline mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
           {leadStory?.itemId ? (
             <Link to={`/items/${leadStory.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
               {title}
@@ -234,7 +234,7 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
         </h2>
         {(dek || (cover && !wide)) && (
           <div className={cover && !wide ? "mt-6 grid gap-6 @[640px]:grid-cols-[minmax(0,1fr)_minmax(0,38%)] @[880px]:mt-7" : ""}>
-            {dek && <p className={`text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>}
+            {dek && <p className={`reader-report-dek text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>}
             {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} />}
           </div>
         )}
@@ -257,7 +257,7 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
                 return (
                   <li key={keyOf(h)}>
                     <Link to={to} className="group flex gap-3.5 border-b border-line py-4">
-                      <span className="num w-6 shrink-0 text-[26px] font-black leading-[0.95] tracking-[-0.03em] text-accent">{i + 1}</span>
+                      <span className="reader-report-rank num w-6 shrink-0 text-[26px] font-black leading-[0.95] tracking-[-0.03em] text-accent">{i + 1}</span>
                       <span className="min-w-0">
                         <span className="block text-[15px] font-bold leading-[1.55] text-ink transition-colors group-hover:text-accent">{h.title}</span>
                         <span className="mt-1.5 block truncate text-[12px] text-ink-4">{shortSourceName(h.sourceName)}</span>
@@ -293,7 +293,7 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
 /** A page of the report: its number in the accent beside its name. */
 export function SectionPage({ id, no, label, children }: { id: string; no?: number; label: string; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-t`} className="scroll-mt-6 pt-12 @[880px]:pt-16">
+    <section id={id} aria-labelledby={`${id}-t`} className="reader-report-section scroll-mt-6 pt-12 @[880px]:pt-16">
       <header className="flex items-baseline gap-3 border-b border-line-strong pb-3 @[880px]:gap-4">
         {no !== undefined && <span className="num text-[26px] font-black leading-none tracking-[-0.03em] text-accent @[880px]:text-[30px]">{pad(no)}</span>}
         <h2 id={`${id}-t`} className="min-w-0 text-[24px] font-black leading-[1.25] tracking-[-0.02em] text-ink @[880px]:text-[28px]">
@@ -342,7 +342,7 @@ function History({ report, index }: { report: ReportDetail; index: ReportNavigat
   const others = index.filter((e) => e.key !== report.key).slice(0, 12);
   if (others.length === 0) return null;
   return (
-    <section id="report-history" className="scroll-mt-6 pt-12">
+    <section id="report-history" className="reader-report-section scroll-mt-6 pt-12">
       <Kicker>往期 AI {KIND_LABEL[report.kind]}</Kicker>
       <ul className="mt-3">
         {others.map((e) => (
@@ -364,7 +364,7 @@ export function ReportPaper({ report, index }: { report: ReportDetail; index: Re
   const pages = pagesOf(report, leadStory);
   const count = pages.reduce((sum, p) => sum + p.items.length, 0) + (leadStory ? 1 : 0);
   return (
-    <article className="@container">
+    <article className="reader-report @container">
       <Masthead report={report} index={index} />
       {count === 0 && report.flashes.length === 0 ? (
         <p className="py-16 text-center text-[14px] text-ink-4">本期没有入选内容。</p>

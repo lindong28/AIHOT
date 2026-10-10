@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "id": "aihot-feedly-stream-public-20261009",
-  "objective": "按当前Feedly信息流模板更新公开浅色视觉，保留品牌、X原帖结构、深色和业务；覆盖全部公开路由与详情状态。",
+  "id": "aihot-feedly-components-public-20261010",
+  "objective": "补齐Feedly复合组件并应用AI Radar公开浅色站点，保留品牌、业务结构和深色。",
   "application": "style",
   "design": {
     "path": "effective-design.json",
-    "sha256": "cd7380b3d6828d701c38c73e6ac4abe8f7a28e8192eaa4db71ca7517b6a21754"
+    "sha256": "e252973a440a621936ce61eb8e6fec241d8dbaa37b65bae6349b707abeeff49d"
   },
   "project": {
     "path": "project.json",
-    "sha256": "6a493eda45a05424cf0017e91252c5eb41c471fadd8fde5b914a1d7a32491154"
+    "sha256": "854f842b5b740d74db5e43093076e943a547d839c272d36b8889d3eaddd43d02"
   }
 }

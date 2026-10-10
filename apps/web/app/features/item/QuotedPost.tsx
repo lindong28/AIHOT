@@ -19,7 +19,7 @@ function Author({ quoted }: { quoted: Pick<Quoted, "authorName" | "handle"> }) {
 export function QuotedPost({ quoted, original = false }: { quoted: Quoted; original?: boolean }) {
   const zh = original ? null : quoted.translation;
   return (
-    <figure className="mt-6 rounded-tile border border-line px-4 py-3.5">
+    <figure className="reader-quote mt-6 rounded-tile border border-line px-4 py-3.5">
       <figcaption className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]">
         <Author quoted={quoted} />
       </figcaption>
@@ -42,7 +42,7 @@ export function QuotedPost({ quoted, original = false }: { quoted: Quoted; origi
 /** Feed card: who is quoted and the start of what they said (the card itself opens the item). */
 export function QuotedLine({ quoted }: { quoted: Omit<Quoted, "url"> }) {
   return (
-    <div className="mt-2.5 rounded-tile border border-line-soft px-3 py-2 text-[13px] leading-[1.6]">
+    <div className="reader-quote mt-2.5 rounded-tile border border-line-soft px-3 py-2 text-[13px] leading-[1.6]">
       <div className="flex flex-wrap items-baseline gap-x-1.5">
         <Author quoted={quoted} />
       </div>

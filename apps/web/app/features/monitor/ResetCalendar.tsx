@@ -5,8 +5,7 @@ import { IconChevronRight } from "../../components/icons";
 import { PostCard } from "./PostCard";
 import { bjDate, dayWord, durationText, monthDay, stamp, windowText } from "./format";
 
-// Day cells as on the original monitor: a faint plain day, green for landed resets, a dashed green edge
-// on white for "should have landed", warm sand for announced ones; the label chip repeats the tone.
+// Base/dark calendar tones; reader.css limits light-mode status color to chips and selection.
 const CELL: Record<CodexCalendarMark["state"], string> = {
   confirmed: "bg-cal-confirmed border-transparent",
   likely: "bg-surface border-dashed border-ok-ink/55",
@@ -113,7 +112,7 @@ export function ResetCalendar({ marks, events, today, historyFrom, now, avatar, 
   };
 
   return (
-    <section className="mt-8" aria-labelledby="calendar-title">
+    <section className="reader-calendar mt-8" aria-labelledby="calendar-title">
       <h2 id="calendar-title" className="text-[18px] font-bold text-ink">
         重置日历
       </h2>

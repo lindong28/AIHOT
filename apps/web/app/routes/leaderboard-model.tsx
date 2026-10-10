@@ -306,7 +306,7 @@ export default function LeaderboardModelPage() {
         </div>
         <div className="sm:text-right">
           <span className="block text-[12px] text-ink-4">综合共识指数</span>
-          <strong className="mono block text-[48px] font-medium leading-[1.25] tracking-[-0.055em] text-accent lg:text-[55px]">{overall.score !== null ? overall.score.toFixed(1) : "—"}</strong>
+          <strong className="reader-primary-metric mono block text-[48px] font-medium leading-[1.25] tracking-[-0.055em] text-accent lg:text-[55px]">{overall.score !== null ? overall.score.toFixed(1) : "—"}</strong>
           <b className={`text-[12px] font-medium ${overall.onBoard ? "text-ink-3" : "text-ink-4"}`}>
             {overall.rank === null ? "未进入综合榜" : overall.onBoard ? `综合榜第 ${overall.rank} 名` : "综合榜前 30 名之外"}
           </b>

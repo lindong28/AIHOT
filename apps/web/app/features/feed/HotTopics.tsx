@@ -29,7 +29,7 @@ export function HotTopics({ entries }: { entries: HotStripEntry[] }) {
   return (
     <section
       aria-labelledby="hot-topics"
-      className="card relative mb-6 overflow-hidden bg-[radial-gradient(120%_90%_at_100%_0%,var(--hot-soft),transparent_55%)] px-4 pb-2 pt-3.5 lg:px-5"
+      className="reader-hot-strip card relative mb-6 overflow-hidden bg-[radial-gradient(120%_90%_at_100%_0%,var(--hot-soft),transparent_55%)] px-4 pb-2 pt-3.5 lg:px-5"
     >
       <div className="mb-1 flex items-center justify-between">
         <h2 id="hot-topics" className="flex items-center gap-2 text-[14px] font-semibold text-ink">

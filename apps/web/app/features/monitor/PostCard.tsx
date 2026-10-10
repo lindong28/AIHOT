@@ -31,7 +31,7 @@ export function PostCard({ post, stage, avatar, compact = false }: { post: CardP
   const [showOriginal, setShowOriginal] = useState(false);
   const hasTranslation = !!post.translation;
   return (
-    <article className={`min-w-0 rounded-card border border-line-strong bg-surface ${compact ? "px-4 py-3" : "p-4 sm:px-6"}`}>
+    <article className={`reader-post min-w-0 rounded-card border border-line-strong bg-surface ${compact ? "px-4 py-3" : "p-4 sm:px-6"}`}>
       <header className="flex items-center gap-2.5">
         <SourceAvatar name="Tibo" avatarUrl={avatar} size={36} />
         <span className="min-w-0 flex-1 leading-tight">

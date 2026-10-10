@@ -3,7 +3,7 @@
   "template": {
     "id": "style:feedly-reader",
     "source": "https://prompts.aiplanet.live/api/webui/v1/templates/feedly-reader.json",
-    "sha256": "0d8513244b6e30fa1757fbaf37da5a7b9082323a7b21d5fcaa03d12dcdce44d9"
+    "sha256": "4efd666788f4963e307ced19a99800d7b8f9bc716909bd4a5196f8107982f487"
   },
   "rules": [
     {
@@ -78,6 +78,75 @@
       "kind": "manual",
       "source": "FR-V04 / FR-V06",
       "description": "首页筛选、展开、收藏、详情入口、焦点及浅深切换保留业务语义"
+    },
+    {
+      "id": "ranking-surface",
+      "role": "ranking",
+      "kind": "style",
+      "source": "FR-V08",
+      "description": "排行没有装饰渐变",
+      "property": "background-image",
+      "expected": "none"
+    },
+    {
+      "id": "metric-size",
+      "role": "metric",
+      "kind": "style",
+      "source": "FR-V08",
+      "description": "主指标28px并从属于模型或事件",
+      "property": "font-size",
+      "expected": "28px"
+    },
+    {
+      "id": "metric-ink",
+      "role": "metric",
+      "kind": "style",
+      "source": "FR-V08",
+      "description": "主指标中性文字",
+      "property": "color",
+      "expected": "rgb(51, 51, 51)"
+    },
+    {
+      "id": "report-title",
+      "role": "report-title",
+      "kind": "manual",
+      "source": "FR-V09",
+      "description": "题头28–36px且日期完整可读，期号和往期入口保留"
+    },
+    {
+      "id": "report-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "FR-V09",
+      "description": "刊物正文与有图/无图布局连续可读；分栏和章节归属保持"
+    },
+    {
+      "id": "calendar-selection",
+      "role": "calendar",
+      "kind": "manual",
+      "source": "FR-V10",
+      "description": "日期选中、今天和事件标签可区分，选择日期后对应详情与原文可展开"
+    },
+    {
+      "id": "directory-hierarchy",
+      "role": "detail",
+      "kind": "manual",
+      "source": "FR-V07",
+      "description": "目录及归档标题先于辅助数量，长名称和导航入口可读"
+    },
+    {
+      "id": "compound-context",
+      "role": "detail",
+      "kind": "manual",
+      "source": "FR-V11",
+      "description": "引用、进展、证据展开保留主内容归属，辅助层级克制"
+    },
+    {
+      "id": "utility-reading",
+      "role": "detail",
+      "kind": "manual",
+      "source": "FR-V12 / FR-V14",
+      "description": "说明页文字层级和控件关联清楚，代码局部滚动与状态提示可读"
     }
   ]
 }
