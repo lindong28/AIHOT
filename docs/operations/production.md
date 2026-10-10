@@ -176,7 +176,7 @@ Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipelin
 
 ## 2026-10-10 仅前台样式发布
 
-GitHub 风格以仅前台方式发布，当前 `current` 为 `/home/ubuntu/aihot/releases/github-primer-20261010-5f6bd70`。这次没有使用 `service.sh install`，因为它会重启全部三个服务。做法是在新 release 目录 `npm ci` 并构建 Web，用 `cp -n` 带入上一版带哈希的静态资源，让已打开的旧页面仍能取到资源。随后原子切换 `current`，只重启 `aihot-web.service`。API 与 worker 进程未变，没有迁移或 seed。这种方式只适用于不改 API、worker 与 schema 的改动。回滚与验收见[有效设计](../references/github-primer.md#验收记录)。
+GitHub 风格以仅前台方式发布，当前 `current` 为同日第二轮的仅前台发布（目录名 `github-audit-20261010-<提交>`，以 `readlink current` 为准）。这次没有使用 `service.sh install`，因为它会重启全部三个服务。做法是在新 release 目录 `npm ci` 并构建 Web，用 `cp -n` 带入上一版带哈希的静态资源，让已打开的旧页面仍能取到资源。随后原子切换 `current`，只重启 `aihot-web.service`。API 与 worker 进程未变，没有迁移或 seed。这种方式只适用于不改 API、worker 与 schema 的改动。公网 HTML 经 EdgeOne 缓存，`s-maxage` 最长 600 秒，且压缩与未压缩响应分别缓存：发布后最多约 10 分钟内部分页面仍引用上一版样式（上一版带哈希的资源仍在，页面不会坏）。核验发布结果前，用浏览器同样的 `Accept-Encoding` 请求页面，确认引用的根样式已是新文件名，或等缓存过期后再跑批量核验。回滚与验收见[有效设计](../references/github-primer.md#验收记录)。
 
 ## 离线测试环境
 

@@ -44,7 +44,7 @@
 
 ## 核验
 
-批量规则：[effective-design.json](github-primer/effective-design.json) 编译 34 条规则（25 条机器规则、9 条人工阅读；其中 5 条全页取值规则把字号、字距、文字颜色、圆角与控件高度作用于页面全部可见元素），公开与后台分别由 [scope-public.json](github-primer/scope-public.json)、[scope-admin.json](github-primer/scope-admin.json) 固定完整分母（41×2 与 13×2 个页面状态/视口组合，1440×1000 与 390×844）。执行：
+批量规则：[effective-design.json](github-primer/effective-design.json) 编译 35 条规则（26 条机器规则、9 条人工阅读；其中 5 条全页取值规则把字号、字距、文字颜色、圆角与控件高度作用于页面全部可见元素），公开与后台分别由 [scope-public.json](github-primer/scope-public.json)、[scope-admin.json](github-primer/scope-admin.json) 固定完整分母（41×2 与 13×2 个页面状态/视口组合，1440×1000 与 390×844）。执行：
 
 ```bash
 python3 scripts/verify-github.py --scope docs/references/github-primer/scope-public.json --output <持久证据目录> --jobs 6 --capacity-reason '共享公网 API 与本机浏览器容量' --direct
@@ -103,6 +103,7 @@ python3 scripts/verify-github.py --scope docs/references/github-primer/scope-adm
 | 目录搜索聚焦时内外两层框 | 产品未落实 | 外框持有聚焦环 |
 | 后台原因确认对话框文字右对齐 | 基线布局缺陷（位于右对齐单元格内，所有风格） | 对话框 `text-left` |
 | 热点页分隔点用边线色 | 产品未落实 | 改为 muted |
+| 后台反馈页选中的筛选 chip 仍是绿色（按钮型 chip 被主按钮规则压过） | 产品未落实；有效设计漏编译 GH-V06 的选中 chip 条款 | 主按钮规则排除 chip；新增 `selected-chip` 机器规则，旧构建上报 FAIL、修复后 PASS |
 | 后台错误提示显示接口英文原文 | 范围外（文案与产品） | 记录，未改 |
 | 批量规则只查声明选择器，上一轮 832 PASS 没覆盖上述元素 | 通用 skill 执行机制缺口 | web-ui-workflows 批量核验新增全页取值规则、溢出元素定位与受测构建记录（ai-agent-config `0bf26353`） |
 

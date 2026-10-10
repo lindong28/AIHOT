@@ -5,10 +5,10 @@
   "application": "style",
   "design": {
     "path": "effective-design.json",
-    "sha256": "26209bb2d045477be32314c16420beb8e41226d802ee3ab704249ad0f72c1cda"
+    "sha256": "f8244fe42819d58ba9fd6fcf91c935e840d31a1543b5cf91e8753e96d1d38ab7"
   },
   "project": {
     "path": "project-public.json",
-    "sha256": "d4108fdd294ab6a9ad6f192857beac7d4a0514f9edb4b5000db53683e199cab7"
+    "sha256": "201c26108f672755c7901e1256c69687bebab72f9044b4f4aec3415074a9bb8c"
   }
 }

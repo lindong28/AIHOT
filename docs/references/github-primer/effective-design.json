@@ -178,6 +178,15 @@
       "description": "页面级切换当前项 2px #fd8c73 下划线"
     },
     {
+      "id": "selected-chip",
+      "role": "selected-chip",
+      "kind": "style",
+      "property": "background-color",
+      "expected": "rgb(9, 105, 218)",
+      "source": "components.按钮与图标按钮 / GH-V06",
+      "description": "选中的筛选、日期与期次 chip 用蓝色选中样式，不是绿色主按钮"
+    },
+    {
       "id": "nav-current",
       "role": "nav-current",
       "kind": "predicate",

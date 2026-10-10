@@ -76,6 +76,9 @@
     },
     "controls-all": {
       "selector": ".ui-button, .admin-btn, input.admin-input, select.admin-input, .copy-button, [role=\"search\"] > div:has(> input), [role=\"search\"] :is(input, button[type=\"submit\"]).h-11, input.h-\\[42px\\], input#fb-email, .feed-item button[aria-pressed]"
+    },
+    "selected-chip": {
+      "selector": ".admin-chip.bg-ink, a[aria-current].bg-ink:not(.admin-mobile-nav), a[aria-current].bg-accent"
     }
   },
   "cases": [
