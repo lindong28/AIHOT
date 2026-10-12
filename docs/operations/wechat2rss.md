@@ -24,6 +24,8 @@
 
 2026-10-12 已增至 43 个公众号：从用户提供的[第一篇文章](https://mp.weixin.qq.com/s/l8QN_d41HXb_5nDFKHKK1g)核对并添加超级Vibe（`bizId=3686046201`），从[第二篇文章](https://mp.weixin.qq.com/s/jbE13suqK7C8rnlBDqj6uQ)核对并添加 AI for Frontend（`bizId=2391359985`）。两者均已创建真实上游订阅、登记并启用生产来源；首轮 worker 读取成功，分别发现 5 / 20 条 RSS 条目，并在既有首次采集窗口内新增入库 1 / 4 篇。公开信源目录已显示两者；采集入库不等于已筛选发布。沿用 15 分钟检查、首次最近 7 天且最多 8 篇的规则，未运行历史 backfill，站内与外发全文均关闭。
 
+2026-10-12 随后新增[手工川](https://mp.weixin.qq.com/s/_PimzH5_vrPkbcimGIJFeQ)（`bizId=3869894872`），公众号总数增至 44。上游订阅、生产来源登记及首次 worker 采集均完成：RSS 发现 22 条，按既有首次采集窗口新增入库 1 篇；公开信源目录已显示该账号。沿用现行公众号本站全文开启、RSS 全文关闭的设置，采集入库不等于已筛选发布。
+
 新增时先从文章页核对公众号名称与 `bizId`，通过上游 `/list` 完整分页确认是否已有订阅；仅缺项调用 `/add/:bizId`，从返回订阅地址的 `/feed/<feedId>.xml` 取得 `feedId`。认证使用机器上的私有 RSS token，不把带 token 的 URL 输出或提交。接口契约见[上游 API 文档](https://github.com/ttttmr/wechat2rss/blob/master/deploy/api.md)。把账号按既有 `mp_account` / `provider=wechat2rss` 结构加入清单后，将该文件部署至 `/home/ubuntu/aihot/current/industry/sources.json`，再在生产 release 根目录执行：
 
 ```bash
