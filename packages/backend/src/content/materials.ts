@@ -158,8 +158,8 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
     return { articleId: newId, created: true, revised: false, backfill: t.backfill };
   }
 
-  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null; managed_backfill_id: string | null; content_discarded_at: Date | null }[]>`
-    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt, managed_backfill_id,content_discarded_at FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
+  const [existing] = await db<{ id: string; source_id: string; revision: number; content_hash: string | null; backfill: boolean; title: string; body_text: string | null; excerpt: string | null; body_status: string; managed_backfill_id: string | null; content_discarded_at: Date | null }[]>`
+    SELECT id, source_id, revision, content_hash, backfill, title, body_text, excerpt, body_status, managed_backfill_id,content_discarded_at FROM articles WHERE identity_key = ${identityKey} FOR UPDATE`;
   await db`INSERT INTO article_discoveries (article_id, source_id, via, discovered_at)
            VALUES (${existing!.id}, ${m.sourceId}, ${m.via}, ${discoveredAt}) ON CONFLICT DO NOTHING`;
   const unchanged: MaterialResult = { articleId: existing!.id, created: false, revised: false, backfill: existing!.backfill };
@@ -191,7 +191,15 @@ async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
   const bodyText = m.bodyText ?? existing!.body_text;
   const excerpt = m.excerpt ?? existing!.excerpt;
   const next = contentHash({ title, bodyText, excerpt });
-  if (existing!.content_hash === next) return unchanged;
+  if (existing!.content_hash === next) {
+    // Confirming a previously missing media-only body needs processing even when its text is empty.
+    const recovered = existing!.body_status !== "ok" && m.bodyStatus === "ok" && !!(m.bodyText || m.bodyHtml);
+    if (m.bodyHtml && m.bodyStatus === "ok") await db`UPDATE articles
+      SET body_html=CASE WHEN ${recovered} OR coalesce(body_html,'')='' THEN ${m.bodyHtml} ELSE body_html END,
+          body_status='ok',processing_state=CASE WHEN ${recovered} THEN 'new' ELSE processing_state END,updated_at=now()
+      WHERE id=${existing!.id}`;
+    return { ...unchanged, revised: recovered };
+  }
   if (existing!.content_hash === null) {
     // Imported history carries no hash of this form (its collectors normalised differently): the
     // first report here records the baseline instead of a revision, so an import does not send

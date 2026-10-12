@@ -1,3 +1,4 @@
+import { wechatBodyIssue } from "../content/wechat.ts";
 import { z } from "zod";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
@@ -6,13 +7,14 @@ const media = z.object({ kind: z.enum(["image", "video"]), url: z.url(), alt: z.
 const material = z.object({
   sourceId: z.string().min(1), url: z.url(), title: z.string().min(1), author: z.string().nullable().optional(),
   language: z.string().nullable().optional(), publishedAt: z.iso.datetime({ offset: true }),
-  excerpt: z.string().nullable().optional(), bodyText: z.string().min(1), bodyHtml: z.string().nullable().optional(),
+  excerpt: z.string().nullable().optional(), bodyText: z.string(), bodyHtml: z.string().nullable().optional(),
   media: z.array(media).optional(),
   xPost: z.object({ tweetId: z.string(), authorName: z.string(), handle: z.string(), text: z.string(),
     media: z.array(media).optional(), lang: z.string().nullable().optional(), replyTo: z.string().nullable().optional(),
     quoted: z.object({ authorName: z.string(), handle: z.string(), text: z.string(), url: z.url(), media: z.array(media).optional() }).nullable().optional(),
   }).nullable().optional(),
-});
+}).refine(m => !!m.bodyText.trim() || (URL.canParse(m.url) && new URL(m.url).hostname === "mp.weixin.qq.com" && !wechatBodyIssue(m.bodyText,m.bodyHtml)),
+  { message: "Material requires text or a WeChat media body", path: ["bodyText"] });
 export const manifestEntry = z.object({
   material,
   quality: z.object({ state: z.enum(["complete", "incomplete", "unverified"]), evidence: z.string().min(1), contentHash: z.string().length(64) }),

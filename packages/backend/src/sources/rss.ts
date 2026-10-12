@@ -2,6 +2,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { guardedFetch } from "../lib/http-fetch.ts";
 import { collapseWhitespace, stripTags } from "../lib/text.ts";
+import { wechatBodyIssue } from "../content/wechat.ts";
 import { sanitizeBody } from "../content/sanitize.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
@@ -93,7 +94,10 @@ function feedText(bodyHtml: string | null, summaryHtml: string, source: SourceRo
   const bodyText = bodyHtml ? stripTags(bodyHtml) : null;
   const teaser = !!bodyText && source.kind !== "mp_account" && source.participation_mode === "editorial" && isTeaser(bodyText);
   const excerpt = summaryHtml ? collapseWhitespace(stripTags(summaryHtml)).slice(0, 2000) : teaser ? collapseWhitespace(bodyText!) : null;
-  return bodyText && (bodyText.length > 280 || source.kind === "mp_account") && !teaser
+  if (source.kind === "mp_account") {
+    return { excerpt, bodyHtml, bodyText, bodyStatus: wechatBodyIssue(bodyText, bodyHtml) ? "unconfirmed" : "ok" };
+  }
+  return bodyText && bodyText.length > 280 && !teaser
     ? { excerpt, bodyHtml, bodyText, bodyStatus: "ok" }
     : { excerpt, bodyHtml: null, bodyText: null, bodyStatus: "pending" };
 }

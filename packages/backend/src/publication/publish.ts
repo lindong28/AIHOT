@@ -27,6 +27,7 @@ interface ArticleRow {
   backfill: boolean;
   body_status: string;
   body_text: string | null;
+  body_html: string | null;
   x_post: unknown;
   grouped_at: Date | null;
 }
@@ -152,7 +153,7 @@ export async function publishArticleTx(tx: Tx, articleId: string, options: Publi
   const now = options.now ?? new Date();
   const [article] = await tx<ArticleRow[]>`
     SELECT id, source_id, url, title, language, author, published_at, discovered_at, timeline_at, backfill, body_status,
-           body_text, x_post, grouped_at
+           body_text, body_html, x_post, grouped_at
     FROM articles WHERE id = ${articleId} AND content_discarded_at IS NULL FOR UPDATE`;
   if (!article) return null;
   const [source] = await tx<SourceFacts[]>`
@@ -192,7 +193,7 @@ export async function publishArticleTx(tx: Tx, articleId: string, options: Publi
   const reason = selected ? pickString(f.reason, analysis?.reason_zh ?? null) : null;
   const hasXPost = !!article.x_post;
   const channel = channelOf(source.kind, hasXPost);
-  const bodyMode = bodyModeOf(source, article.body_status, !!article.body_text && article.body_text.length > 0);
+  const bodyMode = bodyModeOf(source, article.body_status, !!(article.body_text || article.body_html));
   const syndicate = mayRedistribute(source, bodyMode);
   const originalTitle = isChineseTitle && title === collapseWhitespace(article.title) ? null : collapseWhitespace(article.title);
 

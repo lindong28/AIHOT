@@ -45,6 +45,7 @@ async function route(articleId: string, db: Db): Promise<Route | null> {
            a.backfill, a.published_at, a.discovered_at
     FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${articleId} AND a.content_discarded_at IS NULL`;
   if (!row) return null;
+  if (row.kind === "mp_account" && row.config.provider === "wechat2rss" && row.body_status !== "ok") return null;
   const historical = isHistorical(row);
   const signal = row.participation_mode !== "editorial";
   const pending = row.body_status === "pending";

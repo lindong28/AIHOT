@@ -3,6 +3,8 @@ import { join, resolve, sep } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { parseHTML } from "linkedom";
 import { sql } from "../db.ts";
+import { wechatBodyIssue } from "../content/wechat.ts";
+import { wechatOrigin } from "../content/retention.ts";
 import { config } from "../config.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { guardedFetch } from "../lib/http-fetch.ts";
@@ -127,6 +129,10 @@ export async function fetchHistoryOriginal(url: string) {
 
 export function hasArchivedBody(v: HistoryVersion): boolean {
   const text = v.material?.bodyText?.trim();
+  if (v.material && wechatOrigin(v.material.sourceId, undefined, v.material.url)) {
+    if (wechatBodyIssue(text,v.material.bodyHtml)) return false;
+    if (!wechatBodyIssue("",v.material.bodyHtml)) return true;
+  }
   return !!text && text !== v.material?.title.trim() && text !== v.material?.url;
 }
 

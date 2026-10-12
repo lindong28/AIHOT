@@ -27,3 +27,16 @@
 - 代码：`providers/embeddings.ts` 在 Gateway 路径缺省为 `text-embedding-3-small`、dimensions=0；上游无自有 embedding key 时缺省为 `text-embedding-v4`、1024。
 - 当前影响：2026-10-03 生产 `app.env` 明确指定 `EMBEDDING_MODEL=text-embedding-v4`、`EMBEDDING_DIMS=1024`，运行值对齐；Gateway 下未配置模型时 `embeddingsAvailable()` 返回 false，不能把代码 fallback 当作已发生的外部调用。
 - 后续：调整缺省配置时按上游语义与 Gateway 接入契约核对；当前不更换线上 embedding，也不重建历史向量。
+
+## ISSUE-WECHAT-20261012-body-alert：公众号正文失败的及时告警
+
+- 状态：open；负责人：AIHOT 维护者。
+- 观察：正文空壳现在使 Wechat2RSS 的 fetch_runs 与来源健康报失败，既有信源周报可见，但 operations/alerts.ts 只检测全站停止新增，单来源持续缺正文不一定及时推送。
+- 处置：本次先恢复正文、保留来源失败与定时重试；后续在既有运营告警中接入持续正文缺口，不另起服务。验证需覆盖单来源失败而其它来源仍正常新增的场景。
+
+
+## ISSUE-WECHAT-20261012-text-recovery：相同文字且无 HTML 的状态恢复
+
+- 状态：open；负责人：AIHOT 维护者；实现审查 MEDIUM，留待用户决定是否扩展修复。
+- 观察：`content/materials.ts` 的相同 content_hash 分支，旧状态 unconfirmed、新输入 ok 且文字相同但没有 bodyHtml 时，可能返回 revised=true 而不更新 body_status。该分支的实际 UPDATE 仍要求传入 HTML。
+- 本次处置：已修复并验证公众号抓取的 HTML / 图片恢复路径；其恢复输入有 HTML，此非阻塞分支不在本次增加修复。后续统一文本与 HTML 恢复条件，并验证连续两次相同输入的状态与幂等结果。

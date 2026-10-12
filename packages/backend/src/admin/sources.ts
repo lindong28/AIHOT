@@ -141,7 +141,7 @@ const CreateSchema = z
     interval_minutes: z.number().int().min(1).max(1440).default(30),
     first_party: z.boolean().default(false),
     tags: z.array(z.string()).default([]),
-    site_fulltext: z.boolean().default(false),
+    site_fulltext: z.boolean().optional(),
     syndicate_fulltext: z.boolean().default(false),
   })
   .strict();
@@ -169,7 +169,8 @@ export async function findDuplicateSource(kind: string, config: Record<string, u
 }
 
 export async function createSource(input: unknown, actor: string) {
-  const s = CreateSchema.parse(input);
+  const parsed = CreateSchema.parse(input);
+  const s = { ...parsed, site_fulltext: parsed.site_fulltext ?? parsed.kind === "mp_account" };
   assertSupportedConfig(s.kind, s.config);
   const dup = await findDuplicateSource(s.kind, s.config);
   if (dup) return { created: false as const, duplicate: dup };

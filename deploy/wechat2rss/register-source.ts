@@ -16,7 +16,7 @@ try {
     for (const s of accounts) {
       assertSupportedConfig("mp_account", s.config);
       await tx`INSERT INTO sources (id, name, kind, config, tier, first_party, participation_mode, interval_minutes, enabled, site_fulltext, syndicate_fulltext, next_fetch_at)
-        VALUES (${s.id}, ${s.name}, 'mp_account', ${tx.json(s.config)}, ${s.tier}, ${s.first_party}, ${s.participation_mode}, ${s.interval_minutes}, ${s.enabled}, false, false, now())
+        VALUES (${s.id}, ${s.name}, 'mp_account', ${tx.json(s.config)}, ${s.tier}, ${s.first_party}, ${s.participation_mode}, ${s.interval_minutes}, ${s.enabled}, ${s.site_fulltext ?? true}, ${s.syndicate_fulltext ?? false}, now())
         ON CONFLICT (id) DO NOTHING`;
     }
   });

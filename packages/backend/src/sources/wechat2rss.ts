@@ -1,4 +1,5 @@
 // The existing Wechat2RSS instance supplies a separate RSS feed for each official account.
+import { fetchWechatBody } from "../content/wechat.ts";
 import { credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { upsertMaterial } from "../content/materials.ts";
@@ -50,7 +51,7 @@ export async function readWechat2Rss(source: SourceRow) {
   }
   return items.map((item) => ({
     ...item, language: "zh", author: item.author || source.name,
-    bodyStatus: item.bodyText ? "ok" as const : "none" as const,
+    bodyStatus: item.bodyStatus,
     raw: { wechat2rss: { bizId: String(bizId), feedId } },
   }));
 }
@@ -69,13 +70,26 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
     const items = await readWechat2Rss(source);
     const candidates = items.filter((item) => item.publishedAt && item.publishedAt.getTime() >= cutoff)
       .sort((a, b) => b.publishedAt!.getTime() - a.publishedAt!.getTime());
-    for (const item of candidates.slice(0, source.cursor?.initializedAt ? 50 : 8)) {
+    const batch = candidates.slice(0, source.cursor?.initializedAt ? 50 : 8);
+    let index = 0;
+    await Promise.all(Array.from({ length: Math.min(8, batch.length) }, async () => {
+      while (index < batch.length) {
+        const item = batch[index++]!;
+        if (item.bodyStatus !== "ok") {
+          try { Object.assign(item, await fetchWechatBody(item.url)); } catch { /* Retry on the next scheduled check. */ }
+        }
+      }
+    }));
+    let missing = 0;
+    for (const item of batch) {
+      if (item.bodyStatus !== "ok") missing++;
       const saved = await upsertMaterial({ ...item, sourceId, via: "fetch",
         backfill: item.publishedAt!.getTime() <= Date.parse(initializedAt) ? "first-import" : null });
       created += Number(saved.created);
       revised += Number(saved.revised);
-      if (saved.created || saved.revised) await queueProcessing(saved.articleId);
+      if (item.bodyStatus === "ok" && (saved.created || saved.revised)) await queueProcessing(saved.articleId);
     }
+    if (missing) throw new Error(`Wechat2RSS: ${missing}/${batch.length} articles still lack a usable body; valid articles saved, retry on next check`);
     const cursor = { ...(source.cursor ?? {}), initializedAt, lastCheckedAt: now.toISOString() };
     await sql`UPDATE sources SET cursor = ${sql.json(cursor)}, last_fetch_at = now(), last_ok_at = now(),
       health = 'ok', fail_count = 0, last_error = NULL,
@@ -85,7 +99,8 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
   } catch (error) {
     const message = error instanceof Error ? error.message : "Wechat2RSS collection failed";
     await sql`UPDATE sources SET last_fetch_at = now(), fail_count = fail_count + 1, last_error = ${message},
-      health = CASE WHEN fail_count + 1 >= 3 THEN 'failing' ELSE 'degraded' END, updated_at = now() WHERE id = ${sourceId}`;
+      health = CASE WHEN fail_count + 1 >= 3 THEN 'failing' ELSE 'degraded' END,
+      next_fetch_at = now() + make_interval(mins => interval_minutes), updated_at = now() WHERE id = ${sourceId}`;
     await sql`UPDATE fetch_runs SET status = 'failed', finished_at = now(), new_count = ${created}, error = ${message} WHERE id = ${run!.id}`;
     return { sourceId, status: "failed" as const, error: message };
   }

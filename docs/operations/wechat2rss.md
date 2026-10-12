@@ -138,7 +138,7 @@ WECHAT2RSS_RSS_TOKEN=<原实例 RSS_TOKEN>
 
 token 仅经私有文件传输，不打印认证 URL、原始访问日志或上游错误正文。此 provider 只允许部署指定的 HTTP IPv4 回环 origin，不跟随重定向；没有打开生产 `ALLOW_PRIVATE_NETWORK_FETCH`。
 
-从新 release 运行 `node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-source.ts` 可单独补登记；正常 release 的 seed 也导入同一清单。两者均保留已有来源配置、暂停状态和游标。变更凭据后重启 worker/API 才使用新环境。账号经现有 `sources.mp` 队列按 15 分钟检查，正文用于模型处理，公开全文开关仍关闭。
+从新 release 运行 `node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-source.ts` 可单独补登记；正常 release 的 seed 也导入同一清单。两者均保留已有来源配置、暂停状态和游标。变更凭据后重启 worker/API 才使用新环境。账号经现有 `sources.mp` 队列按 15 分钟检查，正文用于模型处理；2026-10-12 起公众号默认开启本站全文，RSS 全文许可仍关闭。已有来源的开启与历史修复见[公众号正文修复](../references/20261012-wechat-fulltext.md)。
 
 首轮每账号最多 8 篇，首轮时间减 7 天是固定接收下界，后续可补齐这个窗口内的剩余条目；不会按最新发布时间推进过滤下界而丢掉延迟收录文章。复用统一历史语义与预算：旧文按来源时间归档，超过 48 小时的历史不增加当前热度。上游每账号 RSS 最多保留 50 条，长时间中断超出此窗口的缺口需维护者另行核查，不自动启动全历史回填。
 
