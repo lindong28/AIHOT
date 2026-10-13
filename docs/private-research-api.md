@@ -30,15 +30,15 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 ## 初次构建、启用与撤销
 
 1. 明确授权生产发布后固定发布提交，检查在途任务和既有迁移流程。执行增量迁移 0048；它建立私有投影、索引及同步触发器，不在迁移内扫描存量正文。现有表索引 DDL 仍需锁窗口，不能在未核对生产负载时直接运行。
-2. 让所有写入历史准备记录的 worker 使用本版 `storePreparation` 后，在后端受控环境运行 `node scripts/research-index.ts 100`。以单次数据库事务写一批并保存游标，中断后同命令继续；行锁保证一个构建者拥有当前进度。构建为旧 `preparation.dataJson` 增加安全的派生 research 标量，原串及正文不改；原材料的 NUL／孤立 surrogate 以 JSON 编码字符串保存并还原。批内串行避免同事务游标与同 identity 更新竞争。构建未完成时接口 503；读取请求不会自动构建。
+2. 让所有写入历史准备记录的 worker 使用本版 `storePreparation` 后，在后端受控环境运行 `node scripts/research-index.ts 100`。该 CLI 会连续续批至完成；容量受限的主机应直接有界调用 buildResearchBatch，按批检查 PostgreSQL 数据/WAL 文件系统余量和实际增长，不运行无停点的全量循环。以单次数据库事务写一批并保存游标，中断后同命令继续；行锁保证一个构建者拥有当前进度。构建为旧 `preparation.dataJson` 增加安全的派生 research 标量，原串及正文不改；原材料的 NUL／孤立 surrogate 以 JSON 编码字符串保存并还原。批内串行避免同事务游标与同 identity 更新竞争。构建未完成时接口 503；读取请求不会自动构建。
 3. 生成高熵专用令牌（至少 32 随机字节），在现有受控后端配置写入 SHA-256 小写十六进制摘要 `RESEARCH_TOKEN_SHA256`，不保存／输出原令牌到普通文件或日志。客户端经授权秘密载体读取 `AIHOT_RESEARCH_TOKEN`；不让用户通过对话粘贴。新增持久凭据落点需单独确认。
 4. 发布 Nginx 私有 location：关闭缓存、响应临时落盘与 access log，保留 API 的脱敏错误／慢请求信号。CDN 若在链路上，核实私有前缀 bypass；不能仅凭源站 no-store 宣称 CDN 已核实。API/Web 原有代理路径也需以真实入口确认。
 5. 用 CLI 验证找账号→分页→读正文→保存，核对身份集合、首尾／内容摘要和当前限制；另测无令牌／错误令牌、受限正文搜索和公开入口回归。
 
-轮换时临时配置逗号分隔的新旧摘要，分发新令牌后移除旧摘要并重启／重载实际 API 配置。环境变量由进程启动载入；只改文件不代表生效。关闭时清空摘要并让 API 加载，随后确认匿名和旧令牌均不可读。回退应用版本不删除原始资料；保留向后兼容投影与触发器，确认旧写链可工作。撤销不能收回此前已下载的资料。
+轮换时临时配置逗号分隔的新旧摘要，分发新令牌后移除旧摘要并重启／重载实际 API 配置。环境变量由进程启动载入；只改文件不代表生效。关闭时清空摘要并让 API 加载，随后确认匿名和旧令牌均不可读。回退应用版本不删除原始资料；保留向后兼容投影与触发器，确认旧写链可工作。旧版 worker 保存 preparation 时会移除 research 派生字段，可能令材料投影消失；再次升级须先统一新 writer，再将 research_index_state 的 article_cursor、material_cursor 置 NULL，articles_complete、materials_complete 置 false，完整重建并核对身份后才开放令牌。已完成状态下直接重跑构建 CLI 不会补扫。撤销不能收回此前已下载的资料。
 
 索引构建失败即时以非零退出，已提交批次可恢复；只读请求错误即时反馈调用者，复用 API 5xx／慢请求日志，不建立新后台任务或独立告警服务。数据库触发器错误会使原写事务失败，须按原服务失败链定位，不静默跳过同步。
 
 ## 共享 CLI
 
-两种 harness 共用 ai-agent-config 的 `connector-workflows query-aihot`。Python 标准库 CLI 提供 sources/search/read、--all、--cursor 与 --output；保存成功才原子替换 0600 文件，失败和中断不把部分输出当成完成。生产配置与发布尚未发生时，本地隔离 HTTP 可通过显式 `--allow-localhost` 验证。
+两种 harness 共用 ai-agent-config 的 `connector-workflows query-aihot`。Python 标准库 CLI 提供 sources/search/read、--all、--cursor 与 --output；保存成功才原子替换 0600 文件，失败和中断不把部分输出当成完成。当前个人部署已启用；本机已授权配置位于 `~/.config/aihot/research.env`（0600、不入 Git），在同一 shell 中加载后调用 CLI，不打印令牌。隔离 HTTP 可通过显式 `--allow-localhost` 验证。

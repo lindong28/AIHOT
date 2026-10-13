@@ -1,8 +1,8 @@
 # 私有文章资料查询 API 实施计划
 
-状态：2026-10-13 用户授权“现在就实现这个 plan”，U0–U4 实施中；U5 生产发布仍待单独授权。单份计划内含最小设计，不另建 spec。实施进度、证据与未决项继续更新本文。
+状态：2026-10-13 用户授权“现在就实现这个 plan”，U0–U5 已完成：实现、共享 CLI、生产发布及真实消费者验收均已交付。单份计划内含最小设计，不另建 spec。实施进度、证据与未决项继续更新本文。
 
-实施恢复点：AIHOT 分支 `codex/private-research-impl-20261013`，基线 `33af3101fd09db9fbd76a999b4dbc6f2e9dd2789`；共享 CLI 在 ai-agent-config 分支 `codex/private-research-cli-20261013`。U0–U3 已实现和验证，U4 已过独立审查，待本地提交整合；U5 未授权、未执行。隔离 PostgreSQL 17 使用端口 39481，三个独立 *_test 库用于功能、完整套件和原基线对照；临时服务及工作树由本 session 回收。证据摘要见文末，不依赖临时目录保存。
+交付版本：AIHOT 功能提交 `982479af7a8931e7d37c233462f9bd106eddd6fb` 已发布并部署；共享 CLI `131f7afdb1530864ab22d8a88a8ad1a84f711fe3` 已发布。隔离 PostgreSQL 17（39481）及临时 API/Web 已停止，验证日志与账号正文保存在本机 `~/.local/share/aihot-private-research-20261013/`，不入 Git。本文后续提交仅同步部署实测，不改变固定的生产运行版本。
 
 ## 目标与已确认取舍
 
@@ -18,7 +18,7 @@
 
 完成效果：agent 可以按来源、关键词和日期找资料，遍历结果，按稳定资料 ID 或原文 URL 读取原文及出处。正文、生成摘要、译文与完整性证据有明确区分。“全部”仅指本服务实际保留且允许私有读取的资料，不代表公众号全网历史。
 
-## 当前事实与缺口
+## 规划时事实与缺口（实施前快照）
 
 源码基线：00d525351ac6f735431306679493514098b75b97。以下为本轮直接取证，未将仓内说明当成当前生产读数。
 
@@ -30,7 +30,7 @@
 | 生产 articles 只读盘点 | 当前账号来源 7 篇、archive-radar-wx-mp2rss 85 篇、archive-radar-wx-wechat2rss 16 篇，合计 108；三组正文非空数分别为 7、85、16，超过 12,000 字数分别为 0、0、0。查询条件为当前来源或精确作者名；该样本仍须用正式身份规则复核 |
 | 原材料盘点边界 | backfill_items 的 material JSON 聚合达到本次 20 秒探索预算并被 statement_timeout 取消，未取得数量。此读数不说明资料不存在或生产服务失效，后续不在生产重复全表扫描 |
 
-108 篇正文非空只证明存储存在，不能证明逐篇完整。本轮没有全量下载和审校正文。账号目前恰好可通过公开接口读取，也不代表其他非精选、自动过滤或受限资料具有相同可见性。
+108 篇正文非空只证明存储存在，不能证明逐篇完整。规划阶段没有全量下载和审校正文；U5 已下载并核对全部已存正文，仍未逐篇审校上游网页完整性。账号目前恰好可通过公开接口读取，也不代表其他非精选、自动过滤或受限资料具有相同可见性。
 
 代码显示的主要缺口：
 
@@ -109,7 +109,7 @@ AIHOT 仓拥有服务端和 API 定义；ai-agent-config 的 connector-workflows
 
 内部检查沿 [AGENTS.md](../AGENTS.md)：typecheck、空隔离库迁移和 npm test、Web build 与 Web tests，启动隔离站点后 smoke。权限边界做一次独立审查和覆盖其状态的越权验证；普通查询与 CLI 沿已确认 A1/V1 检查，不扩建评测体系或无依据增加审查轮。现有 docs/contracts/ux-contract.md 不存在，不为本任务预建。
 
-已同步 README、docs/architecture.md、私有 API 文档、docs/operations/production.md 的配置/轮换与发布说明，以及 connector 使用入口；文档和 OpenAPI 明确资料范围、身份、时间、完整性、错误与分页限制。源码已实现，生产尚未发布。
+已同步 README、docs/architecture.md、私有 API 文档、docs/operations/production.md 的配置/轮换与发布说明，以及 connector 使用入口；文档和 OpenAPI 明确资料范围、身份、时间、完整性、错误与分页限制。源码已实现并完成生产发布，实测见 U5 记录。
 
 ## 隔离、发布与回退
 
@@ -125,15 +125,16 @@ AIHOT 仓拥有服务端和 API 定义；ai-agent-config 的 connector-workflows
 
 已核对的既有决定：[20261005 来源身份](../docs/references/20261005-source-labels.md)、[20261006 来源目录](../docs/references/20261006-source-directory.md)、[20261004 内容保留](../docs/references/20261004-content-retention.md)、[20261012 公众号正文](../docs/references/20261012-wechat-fulltext.md)。后者已明确替代早期“本站全文关闭”，RSS 许可未改变。这些决定及其当次读数不替代本轮生产盘点；ai-agent-config 的 20261004-5dce 只维护 connector 入口命名与既有权限边界。
 
-本轮决策记录由本文承载，供实施前核对；尚未改变运行架构，不另初始化 ADR 目录。待实施形成当前事实后按项目文档组织同步。
+决策及实施记录由本文承载；当前架构与使用方式已同步项目文档，不另初始化 ADR 目录。
 
-| 未决或未验证 | 归属与处理时点 |
+| 验收边界或后续事项 | 当前状态与归属 |
 | --- | --- |
-| 生产原材料当前数量、去重集合 | 执行者 U5；开发已用隔离材料集合核对身份与权限，生产数量仍未知，不继续线上全表扫描 |
-| 逐篇正文是否完整 | 当前未核实；接口交付已存内容和证据，不把修复采集扩大为本任务默认义务 |
-| 生产首次构建时长与真实规模 | 执行者 U5；U2 已验证可恢复批次及隔离数据开销，不将本机计时外推生产 |
-| 人工限制与来源模式出现语义冲突 | 执行者 U0 带具体数据与行为差异提问；仅阻塞受影响的权限映射 |
-| 生产发布 | 用户决定是否授权 U5；获授权后由执行者完成发布、配置及消费者验收 |
+| 生产材料、身份与正文 | 执行者已完成索引与独立身份对账；目标账号 108 篇正文逐篇校验通过 |
+| 上游逐篇完整性 | 4 篇 complete、104 篇 unverified；本任务准确返回已有证据，补采／审校不属于本计划 |
+| 人工限制语义 | 隔离允许／withdrawn／summary-only 样本已验证；生产没有人工 override，未制造线上限制样本 |
+| 生产发布与凭据 | 用户已授权，执行者完成配置、发布、撤销验证及真实 CLI 消费 |
+| 服务器剩余空间 | 约 1.3 GB，旧 releases 约 15 GB；记录于生产运维，清理或扩容由维护者另行确定范围，本次未清理 |
+| 查询耗时 | 目标账号 108 条／3 页一次读取 16.051 秒；无既定 SLA，不外推为稳定延迟，优化候选留待实际使用评估 |
 
 2026-10-13 独立审查：原生 collaboration、gpt-6-astra/high、独立上下文，审阅完整方案快照及本地承重源码；decision-review 七项均成立，支持创建计划。单轮 plan review 指出生产发布不能归入 A1，已将 U5 明列 A2；另两项 bounded TODO（summary-only 的正文搜索侧漏、材料转文章的 ID 连续性）已写入权限设计、U2 和验收。本轮未另开复审循环，未处置 finding：无。令牌撤销和关闭路由只能止损，不能撤回已泄露内容。
 
@@ -143,8 +144,35 @@ AIHOT 仓拥有服务端和 API 定义；ai-agent-config 的 connector-workflows
 
 - 实现：专用摘要令牌、私有 REST/OpenAPI、共享权限读取层、按 identity 去重的完整正文投影、同步触发器、可恢复初始构建、真实 preparation.dataJson 原文兼容；共享 connector CLI 提供来源、查询、读取、分页和原子保存。服务端保留原始版本与完整性证据，不重新抓取或调用模型。
 - 真实消费：隔离 HTTP/API → Python CLI → JSON/Markdown 文件。私有套件 10/10、CLI 5/5，零跳过；身份样本覆盖当前账号、两个历史采集源、raw-only、未知归属；权限覆盖允许、withdrawn、summary-only、错误／撤销令牌；分页覆盖正常、多页、修订、新增、转文章、空候选页；正文覆盖超过 16,000 字尾部、NUL／孤立代理项。特殊 Unicode 的 JSON 文件解析后与原文等值。两种片段格式（ASCII／中文）的允许／撤回路径均通过。
-- 检查：npm run typecheck 通过；0048 空隔离库迁移通过；Web build 与 19/19 Web tests 通过；隔离 API/Web 的 scripts/smoke.ts 退出 0，未发布排行榜三条路径按现有脚本允许 503。未验证生产反代／CDN；本机未安装 Nginx，配置尚未运行验收。
+- 检查：npm run typecheck 通过；0048 空隔离库迁移通过；Web build 与 19/19 Web tests 通过；隔离 API/Web 的 scripts/smoke.ts 退出 0，未发布排行榜三条路径按现有脚本允许 503。本机未安装 Nginx；生产反代／CDN 的后续实际验证见 U5。
 - 完整套件：基线 380 项、354 通过、26 失败；首版改动 387 项、361 通过、26 失败，失败集合相同。切换已安装的 Python 3.14 后，修复版 389 项、364 通过、25 失败，无新增失败名称；最终三项修复后仅复跑受影响的 10 项全部通过，不冒称最终完整套件全绿。基线问题已落 [ISSUE-TEST-20261013-valves](../docs/issues/general.md#issue-test-20261013-valves全量测试与关闭模型安全阀的开发约束不一致)。
 - 性能：最终读取层在本机 PostgreSQL 17、500／5,000 条合成 JSON 正文（每条约 16,000 字）、单调用者事务内测量，事务结束回滚。列表 40 条分别 6／3 ms；稀有尾词 1 条分别 52／462 ms；常见中文词 40 条分别 42／360 ms。每个组合一次计时，不是分位数、生产容量或并发承诺。既有搜索容量 4 在途／8 排队，批构建不进入读请求；5,000 条旧探针的 EXPLAIN 使用时间索引而非正文 GIN，稀有匹配仍随候选规模增长，未来真实规模出现主导等待再按查询计划优化。
 - 审查：首轮三项 HIGH（真实原材料漏读、完整性包装、章节 identity）修复；复核发现两条修复引入的问题及章节中文未覆盖。用户通过 MCP 选择“定向修复三项”，授权继续；补红测试后修复 JSON 候选精确匹配、JSON 导出 Unicode 和原样 URL identity。原 reviewer 定向复核通过：搜索 4 页含 3 空页仍前进、仅 1 真命中；片段 2 格式 × 2 访问结果；CLI 2 正文类型 × 2 输出通道。遗留承重／新增／独立／未处置 findings：无。
-- 交付边界：生产 retained 数量、首轮构建时长、CDN 私有 bypass、线上账号全量列表／正文尚未验收，归 U5。当前未执行部署、未配置真实令牌，未下载全量生产正文；“108”仍仅是计划时的 articles 基线。
+- U4 阶段将生产构建、CDN、令牌和全量正文验收留给 U5；以下记录已完成这些事项，不以本地测试替代。
+
+## U5 发布执行记录
+
+2026-10-13 用户选择“发布并配置令牌”，授权发布已审提交、0048 迁移、受控索引构建、服务/Nginx 更新；服务端摘要沿 0600 shared/app.env，客户端原始令牌存本机 ~/.config/aihot/research.env（0600，不入 Git）。发布固定功能提交 982479af7a8931e7d37c233462f9bd106eddd6fb；旧 release wechat-fulltext-20261012 保留。
+
+A2/L1 发布决定经独立评审后补齐 F1/F2，并获“放行”：统一使用既有 release/service.sh install 更新 API/Web/worker（非无中断滚动发布）；worker 先停止接新任务并等待已派发处理，不强杀。当前 backfill_runs 仅 complete 13、needs_attention 1，无 drain 可领取批次；安装返回后停 timer、核 runner inactive，构建完成恢复原 active 状态。
+
+F1：生产根分区实测余量约 3.9 GiB，文章/材料表估计 479/817 MB；不据此推断全量容量够。使用 buildResearchBatch(100)，每组最多 10 批，逐批核数据库/WAL 所在文件系统可用量、投影/材料/WAL 总字节；不足 1 GiB 即非零停止，组间据实际增长决定继续。1 GiB 为本次探索保护预算，非 SLA；超时或容量停止保留已提交游标、私有入口关闭，不清他人数据。
+
+F2：回滚先清令牌并令 API 加载，验证旧令牌不可读；再切回旧 release，原材料和 0048 保留。旧 writer 会移除派生 research 包装，因此再次升级须先让全部 writer 加载新版本，重置 article_cursor/material_cursor=NULL 与 articles_complete/materials_complete=false，重新完整构建和身份对账后才启用令牌。不得把已完成状态下普通重跑当成重建。
+
+F1 等价有界执行经原 reviewer 放行：首组1000条新增约9.3MB后，保持100条/批、10批/组，单次最多50组；逐批1GiB保护，组间要求余量扣除1GiB后至少为前组消耗两倍，材料阶段首批写入前强制退出。主线程每60秒内回收进展，有限脚本替代逐组SSH往返。估算条件不证明全量容量足够。
+
+生产阶段读数：AIHOT origin/main 与发布功能 SHA 均为 982479a；current 指向 private-research-20261013-982479a，API/Web/worker 的 /proc/<pid>/cwd 均属于该 release，schema_migrations 为 0048。正常停止旧 worker 后 pending 回执为0；安装返回0，backfill timer 已停、runner inactive，既有 complete13/needs_attention1 状态未变。公网 smoke 共34入口全部成功，包括已发布 leaderboard、公开 API、RSS、MCP initialize。Nginx diff 仅新增私有 location，配置校验及 reload 成功；此时接口仍未配置令牌，返回404。
+
+存量构建先完成约154961个正式文章身份。材料阶段整组最近消耗约186MB时触发容量保护并退出2，游标保留；WAL自然回收到1GiB后余量约1.44GB。按原“每组最多10批”边界缩至1批/组、每批100，实测一批新增约1.8MB投影后继续；不降低1GiB保护或删历史数据。只读盘点旧release总占约15GB，三个早期release的node_modules各约228MB逻辑字节；未清理。
+
+独立目标账号对账直接读取articles与原始preparation.dataJson，不从research投影派生预期：108篇正式文章（当前来源7、两历史来源85/16）；扫描4937个微信材料identity后未发现该账号额外material-only资料；全库editorial_overrides为空。随后经生产 API→共享 CLI→本地 JSON，108/108 的 text 与 html 按 UTF-16LE code unit 计算的 SHA-256 均与该独立预期相同，无静默截断。
+
+
+U5 最终结果：文章与材料构建状态均 ready，完成时 research_documents 为176442条，投影约1.28GB；容量保护未降低，最终根分区剩余约1.32–1.34GB。API/Web/worker 与 backfill timer 已恢复 active；旧 release 保留，未清理历史目录或重放回执。服务器仅存主令牌摘要，客户端配置为已授权的0600文件。
+
+公网私有 OpenAPI 的7次顺序检查覆盖主令牌200、轮换临时令牌200、匿名401、错误令牌401、撤销后的临时令牌401、主令牌仍200、匿名仍401；均 no-store、Vary: Authorization、CDN MISS。同一文章详情另验证正常200之后匿名／错误令牌均401，不返回正文，均 no-store、CDN MISS。这是本次实际请求读数，不宣称穷尽 CDN 所有状态。
+
+真实 CLI 找到目标账号；108条列表分3页，独立预期集合差集为0、重复为0，nextCursor=null、traversalComplete=true。此次分页约16.051秒，changedSinceStart=true（数据库快照标记可被无关写入改变），因此不是固定事务快照。正文108篇全部 available，完整性4篇complete、104篇unverified；原URL定位、Markdown读取及关键词AI的10条返回均成功。合并正文存于 `~/.local/share/aihot-private-research-20261013/kazike/all-articles-with-content.json`，权限0600，不入Git。
+
+完成对账：U0–U5无未完成项。未处置的本次增量缺陷：无。既有完整套件安全阀冲突、worker停止预算问题继续由既有issue承载，本次不扩大为测试框架或付费任务生命周期修复；磁盘余量和列表耗时已明确记录，未承诺容量或延迟SLA。查询和导出未发起采集、模型调用或内容修补。

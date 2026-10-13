@@ -12,7 +12,9 @@
 
 ## 环境与持久数据
 
-私有文章资料 API 的仓库实现及发布步骤见 [私有资料 API](../private-research-api.md)。`RESEARCH_TOKEN_SHA256` 为空时关闭；启用需要完成 0048 迁移、显式存量构建和专用令牌配置，并发布 `news.conf` 的私有路径策略。此说明不代表生产已部署。令牌摘要可沿现有 0600 `shared/app.env` 配置；客户端原始令牌的持久载体须另获授权，不能写进 Web 配置、普通 Git 文件或命令行。
+私有文章资料 API 于2026-10-13部署功能提交 `982479af7a8931e7d37c233462f9bd106eddd6fb`，current 指向 `private-research-20261013-982479a`；API/Web/worker 加载同一 release，0048迁移与存量构建完成。令牌摘要沿0600 `shared/app.env` 配置，用户已授权客户端原始令牌存于本机 `~/.config/aihot/research.env`（0600、不入Git）。`RESEARCH_TOKEN_SHA256` 为空时关闭。配置、轮换及回滚后的重建要求见[私有资料API](../private-research-api.md)，实测见[计划U5](../../plans/20261013-private-article-research-api.md#u5-发布执行记录)。
+
+本次真实CLI已核对目标公众号108篇列表及正文；公网34项smoke全部成功，正常／错误／匿名／已撤销令牌和CDN no-store行为均已检查。backfill timer恢复active。构建结束时根分区剩余约1.32–1.34GB（df约99%），历史releases约15GB；容量仍需维护者关注，清理或扩容另行确定范围，本次没有删除旧release。一次三页列表读取16.051秒，仅为现场读数，不是延迟SLA。
 
 生产模板使用 `LLM_GATEWAY_ATTEMPT_TIMEOUT_MS=60000`，在线 worker 与 backfill 的 Gateway 客户端实例均读取它；共享 SDK 缺省仍为 30000。次数预算仍默认 3 次（含首次），backoff 仍为 3 秒、6 秒，每次请求派发后独立计算最多 60 秒，backoff 与路由冷却不扣该时间。修改 `app.env` 后需让 worker 和 backfill 在途任务结算退出，再启动新进程；以新回执的 `request.gateway.retry.attemptTimeoutMs` 和 Gateway attempt 关联核对实际值。更长超时不保证每条新闻成功，也不自动清除历史 unknown 回执。
 

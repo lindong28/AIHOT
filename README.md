@@ -4,7 +4,7 @@
 
 从[文档总入口](docs/README.md)了解当前状态；两套系统在数据源、架构和算法上的差异见[AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md)，后续开发入口见[融合开发指南](docs/development.md)。
 
-私有[资料查询 API](docs/private-research-api.md)支持按来源、关键词和日期搜索保留资料，并读取已存原文；共享 agent CLI 提供分页及 JSON/Markdown 保存。接口默认关闭，生产发布及专用令牌配置另行执行，公开阅读权限不变。
+私有[资料查询 API](docs/private-research-api.md)支持按来源、关键词和日期搜索保留资料，并读取已存原文；共享 agent CLI 提供分页及 JSON/Markdown 保存。接口未配置令牌时关闭；2026-10-13 已在本站完成生产启用与真实 CLI 验收，公开阅读权限不变。
 
 每条新闻详情在阅读栏顶部提供“阅读原文”，公众号、RSS 和 X 等来源使用相同入口与文案；手机顶部工具栏和桌面侧栏也保留该入口。没有站内正文时会提示前往来源网站阅读；站内全文是否展示仍由信源配置与授权决定。
 
