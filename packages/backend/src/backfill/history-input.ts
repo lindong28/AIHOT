@@ -32,7 +32,18 @@ export interface PreparationState {
 }
 // PostgreSQL JSONB rejects NUL and lone surrogates found in real archived text.
 // Keep the JSON-encoded payload as a string so every original code unit survives.
-export function storePreparation(state: PreparationState) { return { dataJson: JSON.stringify(state) }; }
+export function storePreparation(state: PreparationState) {
+  const version = state.versions.find(v=>v.material);
+  const m = version?.material;
+  // JSON scalars stay encoded strings: PostgreSQL can index them without decoding NUL or lone
+  // surrogates. dataJson remains the authoritative original; no model/extraction is involved.
+  const research = m ? {versionKey:version!.key,contentHash:sha256(JSON.stringify(m)),
+    sourceId:m.sourceId,url:m.url,title:m.title.toWellFormed().replaceAll("\0","�"),
+    author:m.author?.toWellFormed().replaceAll("\0","�")??null,language:m.language??null,publishedAt:m.publishedAt,
+    titleJson:JSON.stringify(m.title),authorJson:JSON.stringify(m.author??null),
+    bodyTextJson:JSON.stringify(m.bodyText??null),bodyHtmlJson:JSON.stringify(m.bodyHtml??null)} : null;
+  return { dataJson: JSON.stringify(state), research };
+}
 export function loadPreparation(value: { dataJson: string }): PreparationState { return JSON.parse(value.dataJson); }
 
 export async function* jsonLines(file: string): AsyncGenerator<{ line: string; value: any; ordinal: number }> {

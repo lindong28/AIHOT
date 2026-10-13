@@ -42,6 +42,7 @@
 | [selection.md](selection.md) | 站点运营者：精选逻辑、样本准备与校准 |
 | [leaderboard.md](leaderboard.md) | 站点运营者：模型排行榜与 Codex 重置监控 |
 | [architecture.md](architecture.md) | 开发者：当前服务、数据流、算法阶段与代码入口 |
+| [private-research-api.md](private-research-api.md) | 维护者与 Agent：私有资料接口、权限、正文完整性、游标与索引构建 |
 | [development.md](development.md) | 开发者：基于 AIHOT 迭代 AI Radar 的能力迁移地图与待定边界 |
 | [references/ai-radar-comparison.md](references/ai-radar-comparison.md) | 开发者：标注版本的两仓数据源、架构、算法及评测资产对比 |
 | [references/20261001-history-backfill-audit.md](references/20261001-history-backfill-audit.md) | 开发者：原始历史候选、连续性、清洗边界和 AIHOT 回填 token/费用情景 |

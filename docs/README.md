@@ -12,6 +12,7 @@
 | 运行服务、迁移 Wechat2RSS | [服务运维](operations/services.md) |
 | 更新腾讯云部署、起停、检查状态或回滚公网 | [生产运维](operations/production.md)；公网已切到新站 |
 | 准备历史原文、执行回填并查看进度 | [历史回填](operations/backfill.md) |
+| 私有查询、搜索与读取已保留原文 | [资料 API](private-research-api.md)；须部署并配置专用令牌后启用 |
 | 批量恢复异常付费回执、幂等续跑并自动结案 | [回执恢复](operations/receipt-recovery.md) |
 | 配置 Gateway 每次超时、退避与应用 JSON 重试 | [Gateway 接入](deploy.md#使用个人-llm-gateway) |
 | 理解精选门槛、准备样本并校准 | [精选与校准](selection.md) |

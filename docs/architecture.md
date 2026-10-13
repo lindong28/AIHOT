@@ -26,6 +26,8 @@ flowchart LR
 
 ## 三个进程
 
+私有资料读取另由 `packages/backend/src/research/` 提供，鉴权入口是 `/api/private/v1`。`articles` 和 `backfill_items` 的数据库触发器同步 `research_documents`，初始存量通过显式分批构建；请求只读，不启动采集、索引重建或模型。人工覆盖在每次读取和正文匹配时检查。此路径独立于公开 `publication/` 的发布资格，协议与运维见 [私有资料 API](private-research-api.md)；仓库实现不代表生产已开启。
+
 | 进程 | 位置 | 做什么 |
 |---|---|---|
 | api | [apps/api/](../apps/api/) | Fastify。网站自用接口（`/api/site/`）、公开 API（`/api/v1/`）、RSS、MCP、后台接口、图片代理、分享图 |

@@ -1,5 +1,12 @@
 # 未解决问题
 
+## ISSUE-TEST-20261013-valves：全量测试与关闭模型安全阀的开发约束不一致
+
+- 状态：open；负责人：AIHOT 维护者，后续单独调整测试出口隔离；不属于本次私有资料接口修复。
+- 2026-10-13：在独立 PostgreSQL 17 空库迁移后，以 COLLECT_ENABLED=false、MODEL_CALLS_ENABLED=false 和外发阀关闭运行 npm test。未改动基线 33af310 共 380 项，354 通过、26 失败；本次实现首次 387 项，361 通过、26 失败，失败测试集合相同。25 项模型 stub 测试被 MODEL_CALLS_ENABLED=false 拦住，另 1 项由本机默认 Python 3.9 缺 SQLite serialize 造成。
+- 保持阀关闭、PATH 优先已安装的 Python 3.14 后，本次修复版完整套件 389 项，364 通过、25 失败；失败名称均包含在未改动基线中。随后定向增加搜索转义回归，私有 HTTP/CLI 10 项全部通过。没有开启真实模型或外部请求来获得全绿。
+- 后续：用项目测试入口明确 pin 所有付费调用到本机 stub，并解决与项目安全阀约束的冲突；验收应同时证明外部出口不可达及模型场景通过。Python 版本／SQLite 能力需在开发环境说明中固定。
+
 ## ISSUE-SOURCE-20261006-openmoss：OpenMOSS 来源待接入
 
 - 状态：open；负责人：AIHOT 维护者。用户于 2026-10-06 明确要求暂不添加，留待后续处理。
