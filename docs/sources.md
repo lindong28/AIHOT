@@ -65,6 +65,8 @@ X 使用 AIHOT 原生 SocialData，支持 `SOCIALDATA_API_KEY` 和别名 `SOCIAL
 - `detail`：列表缺日期、标题或摘要时抓详情页补齐（`publishedAtSelector`、`titleSelector`、`summarySelector` 等）。
 - `allowUrlPrefixes` / `denyUrlPrefixes`：只收某些路径下的文章。
 
+Claude Blog（`radar-claude-blog`）从 2026-10-14 起读取 `https://claude.com/resources/articles`：旧 `/blog` 入口已重定向，原 Webflow 卡片选择器不再匹配。当前配置读取包含 `h3` 的 `/resources/articles/` 链接，保留 60 分钟采集间隔；列表里的外部链接（如 `anthropic.com`、`claude.dev`）不在该来源范围内。生产数据库与当前发布目录的来源配置已同步，11:11（UTC+8）的采集记录 `112244` 成功新增 6 篇，连续失败次数清零；未执行历史分页回填。回归样本与测试见 `tests/fixtures/claude-articles.html`、`tests/claude-blog-source.test.ts`。
+
 ### json_list
 
 使用 `url`、`titlePaths`、`publishedAtPath` 和 `urlTemplate` 映射列表字段。网页内嵌 JSON 可使用 `mode: "html_json_key"` 与 `jsonKey`。可选 `requireValue: { "path": "fields.category", "equals": "threat-intelligence" }` 只保留指定栏目；`equals` 支持字符串、数字、布尔值和 null，按严格相等比较，不转换类型，缺失字段不等同 null。与 `requireBoolean` 同时配置时必须同时满足两项，例如再排除草稿。合法过滤后没有条目会返回空列表；配置格式错误会被拒绝。
