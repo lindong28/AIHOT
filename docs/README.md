@@ -5,6 +5,8 @@
 | 要做什么 | 从哪里开始 |
 |---|---|
 | 了解项目、安装并运行 | [根 README](../README.md) → [部署](deploy.md) |
+| 选择或维护亮色、暗色、Feedly、GitHub 外观 | [网页外观维护](development.md#网页外观维护) |
+| 排查公众号正文缺失、恢复历史正文 | [公众号正文排障](operations/wechat2rss.md#正文展示与缺口排查) |
 | 配置站点品牌、行业和分类 | [行业定制](customize.md) |
 | 调整主题大事记与公司人工历史 | [大事记配置](customize.md#主题大事记)；[设计与验收](references/20261007-topic-chronicle.md) |
 | 添加信源、试抓、调整参与方式 | [信源](sources.md) |

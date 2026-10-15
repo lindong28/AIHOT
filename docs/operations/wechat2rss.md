@@ -2,6 +2,14 @@
 
 部署定义由本仓 `deploy/wechat2rss/` 维护。公众号在 AIHOT 中按独立 `mp_account` 保存，`provider=wechat2rss` 使用原服务的逐账号 RSS，复用文章、去重、处理与公开读取层。私有许可证和固定密钥归 ai-agent-config 的加密 `env`，不提交到 AIHOT；动态登录态和数据库的持久边界见下文。Mp2RSS 不在接入范围。
 
+## 正文展示与缺口排查
+
+2026-10-12 的正文修复已将公众号（包括历史归档）本站全文开启，新建公众号默认开启，仍可显式关闭；RSS 全文许可独立控制。下文新增账号时“站内与外发全文均关闭”记录的是接入当时状态，不能作为修复后的当前配置说明。操作定义、历史修复结果及尚未恢复的三篇见[公众号正文修复](../references/20261012-wechat-fulltext.md)，通常全文策略见[信源说明](../sources.md#分级参与方式与全文)。
+
+排查时区分来源是否允许本站全文、保存的正文是否可用，以及公开投影是否已重建；`body_status=ok` 或文字非空不能证明与微信原文一致。`repair-wechat-fulltext.ts audit` 只识别已知空壳与展示缺口，不是全文完整性审核。`enable` 和 `apply` 都会写数据库，须按修复页的快照、hash 和审核材料要求执行；不要为排障直接全量重新分析或改写旧回填材料。
+
+采集器 `packages/backend/src/sources/wechat2rss.ts` 只对当前窗口缺少可用正文的条目尝试直接原文补抓；正常内容不增加一次请求。仍失败时有效文章照常保存，来源抓取报告失败并留待下一次检查；暂停的历史来源不会自动恢复旧空壳。先核来源和 fetch_runs，再按修复页取得合法原文或留存版本；微信验证页不当作正文。
+
 ## 新增公众号与配置生效
 
 公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。
