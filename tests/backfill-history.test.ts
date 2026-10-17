@@ -223,7 +223,7 @@ test('different raw keys share a settled prefilter receipt only for the identica
 test('old unknown cache resumes only after its exact receipt is reconciled, with zero dispatch',async()=>{
   const v=version('reconciled'),ready=await preflightBackfill(models),ctx={runId:'cache-reconciled',models:ready.models,beforeCall:async()=>{}};
   const response=await backfillContext.run(ctx,()=>runPrefilter(preparationArticle(v.prefilter!.row),{}));
-  const [original]=await sql`SELECT response FROM receipts WHERE id=${response.receiptId}`;
+  const [original]=await sql`SELECT receipt_response(receipts) AS response FROM receipts WHERE id=${response.receiptId}`;
   await sql`UPDATE receipts SET status='unknown',response=NULL WHERE id=${response.receiptId}`;
   const save=await oldCache();await save(v,{state:'error',label:null,errorKind:'receipt_unknown',receiptId:response.receiptId,receiptCompleted:null});
   const before=calls;await assert.rejects(()=>cachedPrefilter(v,models),/requires reconciliation/);

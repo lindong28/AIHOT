@@ -18,6 +18,23 @@ import { buildApp } from "../apps/api/src/app.ts";
 const token = `research-fixture-${tag()}`, digest = createHash("sha256").update(token).digest("hex");
 const source = `research-${tag()}`, author = `研究账号-${tag()}`, run = `research-run-${tag()}`;
 const app = await buildApp();
+test('unchanged projection avoids physical row updates while real source changes remain visible', async()=>{
+  const a = await article();
+  const snapshot = async()=> (await sql`SELECT xmin::text AS version,body_text FROM research_documents WHERE identity_key=${a.key}`)[0]!;
+  const first = await snapshot();
+  await sql`UPDATE articles SET body_text=body_text WHERE id=${a.id}`;
+  assert.equal((await snapshot()).version,first.version);
+  await sql`UPDATE articles SET body_text='新的原文' WHERE id=${a.id}`;
+  const changed = await snapshot();
+  assert.notEqual(changed.version,first.version);
+  await sql`UPDATE research_index_state SET articles_complete=true,materials_complete=true`;
+  assert.equal((await get(`/articles/${a.doc}`)).data.body.text,'新的原文');
+  const m = await material();
+  const [before] = await sql`SELECT xmin::text AS version FROM research_documents WHERE identity_key=${m.key}`;
+  await sql`UPDATE backfill_items SET state='failed',updated_at=clock_timestamp() WHERE run_id=${run} AND identity_key=${m.key}`;
+  const [after] = await sql`SELECT xmin::text AS version FROM research_documents WHERE identity_key=${m.key}`;
+  assert.equal(after!.version,before!.version);
+});
 let base: string;
 before(async()=>{
   await sql`INSERT INTO sources(id,name,kind) VALUES(${source},${author},'mp_account')`;

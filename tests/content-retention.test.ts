@@ -58,7 +58,7 @@ test('real-time processing clears non-WeChat BLOCK and preserves a WeChat BLOCK 
     for(const kind of ['rss','mp_account']) {
       const a=await material(kind);assert.equal((await processArticle(a.id)).state,'block');
       if(kind==='rss') await assertCleared(a.id);else assert.equal((await row(a.id)).body_text,a.input.bodyText);
-      const [r]=await sql`SELECT status,response FROM receipts WHERE subject=${'article:'+a.id+'@1'}`;
+      const [r]=await sql`SELECT status,receipt_response(receipts) AS response FROM receipts WHERE subject=${'article:'+a.id+'@1'}`;
       assert.equal(r!.status,'completed');assert.ok(r!.response);
     }
   } finally {config.modelCallsEnabled=false;await provider.close();}

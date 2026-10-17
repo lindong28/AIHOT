@@ -78,7 +78,7 @@ export async function collectPosts(opts: { lookbackHours?: number } = {}): Promi
   if (!cursor) {
     const received = await sql<{ tweet: SdTweet }[]>`
       SELECT DISTINCT ON (t->>'id_str') t AS tweet FROM receipts r,
-        jsonb_array_elements(coalesce(r.response->'tweets', '[]'::jsonb)) t
+        jsonb_array_elements(coalesce(receipt_response(r)->'tweets', '[]'::jsonb)) t
       WHERE r.service = 'socialdata' AND r.purpose = 'monitor.scan' AND r.origin = 'live'
         AND r.status IN ('received', 'completed') AND r.request->>'query' = ${`from:${AUTHOR}`}
         AND t->'user'->>'screen_name' = ${AUTHOR}`;
@@ -91,7 +91,7 @@ export async function collectPosts(opts: { lookbackHours?: number } = {}): Promi
     // An old run may have stopped after fewer than its five initial pages. Keep its oldest
     // continuation as well as its newest watermark; raw recovery must not imply completeness.
     const pages = await sql<{ response: { tweets?: SdTweet[]; next_cursor?: string } }[]>`
-      SELECT DISTINCT response FROM receipts WHERE service = 'socialdata' AND purpose = 'monitor.scan'
+      SELECT DISTINCT receipt_response(receipts) AS response FROM receipts WHERE service = 'socialdata' AND purpose = 'monitor.scan'
         AND origin = 'live' AND status IN ('received', 'completed') AND request->>'query' = ${`from:${AUTHOR}`}`;
     const unique = new Map(pages.map((p) => [(p.response.tweets ?? []).map((t) => t.id_str).join(","), p.response]));
     if (newest && unique.size < MAX_PAGES) {

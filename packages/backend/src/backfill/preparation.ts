@@ -58,8 +58,8 @@ export async function cachedPrefilter(v: HistoryVersion, models: BackfillBinding
         project: process.env.LLM_GATEWAY_PROJECT?.trim(), mode: process.env.LLM_GATEWAY_MODE ?? 'stream', model: models.prefilter.model,
         timeoutMs: 120_000, routes: bindingIdentityRoutes(models.prefilter) } } });
   const [receipt] = r.receiptId === null
-    ? await sql`SELECT * FROM receipts WHERE logical_key=${logicalKey}`
-    : await sql`SELECT * FROM receipts WHERE id=${r.receiptId}`;
+    ? await sql`SELECT id,logical_key,service,purpose,model,status,attempts,receipt_response(receipts) AS response FROM receipts WHERE logical_key=${logicalKey}`
+    : await sql`SELECT id,logical_key,service,purpose,model,status,attempts,receipt_response(receipts) AS response FROM receipts WHERE id=${r.receiptId}`;
   if (!receipt || receipt.logical_key !== logicalKey || receipt.service !== 'backfill' || receipt.purpose !== request.purpose || receipt.model !== models.prefilter.model) {
     throw new Error("Old preparation result receipt request identity mismatch; no-dispatch evidence cannot substitute for identity");
   }

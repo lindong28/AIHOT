@@ -35,6 +35,8 @@ function bool(name: string, fallback: boolean): boolean {
 
 export const config = {
   databaseUrl: str("DATABASE_URL", "postgres://127.0.0.1:5432/aihot"),
+  // Enable only after all receipt readers support receipt_response().
+  receiptSingleCopy: bool("RECEIPT_SINGLE_COPY", false),
   apiPort: int("API_PORT", 3001),
   webPort: int("WEB_PORT", 3000),
   apiBaseUrl: str("API_BASE_URL", "http://127.0.0.1:3001"),

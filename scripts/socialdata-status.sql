@@ -4,7 +4,8 @@ SELECT now() AS observed_at, '1 hour' AS request_window;
 SELECT per_minute, per_hour, per_day FROM budgets WHERE service = 'socialdata';
 
 WITH attempts AS (
-  SELECT a.*, r.purpose, CASE WHEN a.status = 'received' THEN r.response END AS response
+  SELECT a.status,a.cost,a.cost_basis,a.currency,r.purpose,
+    coalesce(a.response, CASE WHEN a.attempt=r.attempts AND a.status='received' THEN r.response END) AS response
   FROM receipt_attempts a JOIN receipts r ON r.id = a.receipt_id
   WHERE a.service = 'socialdata' AND a.origin = 'live' AND a.started_at > now() - interval '1 hour'
 ), posts AS (

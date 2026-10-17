@@ -64,7 +64,7 @@ for (const misaligned of [false, true]) test(`SIGTERM finishes the sent ${misali
   active.hold.open();
   assert.deepEqual(await interrupted.done, { done: [], quotes: 0 });
   assert.equal(active.calls, 1, 'no later fragment or half-batch starts after shutdown');
-  const receiptRows = await sql`SELECT status,response FROM receipts WHERE purpose='translate_body' AND subject LIKE ${`article:${articleId}@1#%`}`;
+  const receiptRows = await sql`SELECT status,receipt_response(receipts) AS response FROM receipts WHERE purpose='translate_body' AND subject LIKE ${`article:${articleId}@1#%`}`;
   assert.equal(receiptRows.length, 1);
   assert.equal(receiptRows[0]!.status, 'received');
   assert.ok(receiptRows[0]!.response, 'the paid answer arrived and remains reusable');

@@ -7,6 +7,7 @@
 //    A fresh generation requires explicit recovery authority and shares the JSON attempt budget.
 //    Other unknown calls still require reconciliation or the legacy direct-provider policy.
 import { sql, type Db } from "../db.ts";
+import { config } from "../config.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { GatewayResponseError, safeGatewayFailure } from "./gateway-error.ts";
 
@@ -171,9 +172,11 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
       FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
     if (existing) {
       if (existing.status === "received" || existing.status === "completed") {
-        const [attempt] = await tx<{ id: number }[]>`SELECT id FROM receipt_attempts WHERE receipt_id = ${existing.id} ORDER BY attempt DESC LIMIT 1`;
+        // A separate statement sees the attempt committed by a writer we waited for above.
+        const [attempt] = await tx<{ id: number; response: unknown }[]>`
+          SELECT id,response FROM receipt_attempts WHERE receipt_id = ${existing.id} AND attempt = ${existing.attempts}`;
         if (!attempt) throw new Error(`Receipt ${existing.id} has no attempt record`);
-        return { kind: "reuse" as const, row: existing, attemptId: attempt.id };
+        return { kind: "reuse" as const, row: { ...existing, response: existing.response ?? attempt.response }, attemptId: attempt.id };
       }
       if (existing.status === "pending") {
         if (Date.now() - existing.updated_at.getTime() < PENDING_STALE_MS) return { kind: "busy" as const, row: existing };
@@ -272,7 +275,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
       UPDATE receipts SET
         status = 'received',
         error = NULL, retry_after = NULL, recovery_exhausted = false,
-        response = ${tx.json((outcome.response ?? null) as never)},
+        response = ${config.receiptSingleCopy ? null : tx.json((outcome.response ?? null) as never)},
         request_id = ${outcome.requestId ?? null},
         usage = ${outcome.usage ? tx.json(outcome.usage as never) : null},
         cost = ${outcome.cost?.amount ?? null},

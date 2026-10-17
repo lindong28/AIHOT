@@ -109,7 +109,7 @@ for (const model of values.models!.split(",")) {
   const [usage] = receiptIds.length
     ? await sql<{ tin: number; tout: number; latency: number }[]>`
         SELECT sum((usage->>'prompt_tokens')::int) AS tin, sum((usage->>'completion_tokens')::int) AS tout,
-               avg((response->>'_latencyMs')::int) AS latency
+               avg((receipt_response(receipts)->>'_latencyMs')::int) AS latency
         FROM receipts WHERE id IN ${sql(receiptIds)}`
     : [{ tin: 0, tout: 0, latency: 0 }];
   const precision = tp / Math.max(1, tp + fp);

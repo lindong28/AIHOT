@@ -240,7 +240,7 @@ test("Gateway chat needs no provider key, persists identity before send, and reu
   assert.deepEqual(first.data, { ok: true });
   assert.equal((await ask(subject)).reused, true);
   assert.equal(hits - before, 1);
-  const [row] = await sql`SELECT request_id, response, usage, cost FROM receipts WHERE id = ${first.receiptId}`;
+  const [row] = await sql`SELECT request_id, receipt_response(receipts) AS response, usage, cost FROM receipts WHERE id = ${first.receiptId}`;
   assert.equal(row!.request_id, row!.response.llm_gateway.logical_request_id);
   assert.equal(row!.usage.total_tokens, 20);
   assert.equal(row!.cost, null);
@@ -373,7 +373,7 @@ test("compressed Gateway chat and embeddings use header identity and retain it i
   mode = "gzip";
   const result = await ask(tag());
   assert.deepEqual(result.data, { ok: true });
-  const [row] = await sql`SELECT request_id, response FROM receipts WHERE id = ${result.receiptId}`;
+  const [row] = await sql`SELECT request_id, receipt_response(receipts) AS response FROM receipts WHERE id = ${result.receiptId}`;
   assert.equal(row!.response.llm_gateway.logical_request_id, row!.request_id);
   assert.deepEqual(row!.response.llm_gateway.retry_policy, { version: 1, max_attempts: 3, attempt_timeout_ms: 30000, initial_backoff_ms: 3000 });
   const vectors = await ensureEmbeddings("article", [{ id: tag(), text: tag() }]);
