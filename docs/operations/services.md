@@ -10,8 +10,8 @@
 | 历史回填监督 | Mac launchd `live.aiplanet.aihot-backfill-probe`，每 300 秒只读生产；scheduler inactive、恢复与批次 needs_attention 通知均已发送，重复批次通知 skipped(unchanged) | [Mac 监督与通知](backfill.md#mac-监督与通知)；`deploy/production/backfill-monitor.py` |
 | PostgreSQL | 腾讯云 PostgreSQL 16，已完成迁移与 seed | [生产运维](production.md)；系统原生 `systemctl status postgresql` |
 | 个人 Gateway／代理反向隧道 | Mac Studio launchd：`live.aiplanet.aihot-gateway-tunnel`；腾讯云回环入口已取得响应，未验重启恢复 | [隧道运维](production.md#个人-gateway-与代理隧道)；`deploy/production/gateway-tunnel.py` |
-| 公网 Nginx | 腾讯云代理到 AIHOT；2026-10-17 旧 RADAR 8000/8001 Web 已停止并禁用，旧库已删除；仅保留 Nginx 仍引用的微小旧 upstream 配置 | [公网切换与回滚](production.md#公网切换与回滚)、[旧数据退役](../references/20261017-old-radar-retirement.md)；Nginx 使用系统原生接口 |
-| 旧 RADAR 采集、处理、同步 | Mac mini 四条 cron 已移除，在途同步已停；腾讯云 `ai-radar-db-apply.service` 已停止并禁用 | [停止记录与恢复边界](production.md#旧链路保留与恢复边界) |
+| 公网 Nginx | 腾讯云代理到 AIHOT；2026-10-17 旧 RADAR 服务、部署和旧库已清理，旧 upstream 引用已移除并完成 reload | [公网切换与回滚](production.md#公网切换与回滚)、[旧数据退役](../references/20261017-old-radar-retirement.md)；Nginx 使用系统原生接口 |
+| 旧 RADAR 采集、处理、同步 | Mac mini 四条 cron 已移除，在途同步已停；腾讯云旧 Web、db-apply、alert 和图片隧道服务定义已移除；共享 SSH 密钥及 SJTU 隧道保留 | [停止记录与恢复边界](production.md#旧链路保留与恢复边界) |
 | AIHOT 本机 MVP | 独立本机环境；既有读数不代表生产状态 | [部署](../deploy.md)、[带日期的本机记录](../migration.md#本机-mvp) |
 | Wechat2RSS | 腾讯云 Compose 容器，回环 18480，与 X ingest 同机；31 个公众号已登记启用。Mac mini 旧容器已停、旧隧道已卸载，保留旧数据 | [部署与验证](wechat2rss.md)；随 `deploy/production/service.sh` 统一启停 |
 | Wechat2RSS 外部健康探针 | Mac mini 原 cron 频率与 im-notify 身份保留；专用受限 SSH 检查腾讯，身份/目标/主机信任由中央 env 维护 | `deploy/wechat2rss/probe-install.ts` 生成入口，`healthcheck.sh`、`login-status.ts` 执行；故障 key 为 `wechat2rss-{unreachable,apierr,noaccount,login,riskctl}`，恢复为 `wechat2rss-recovered` |

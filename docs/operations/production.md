@@ -159,11 +159,11 @@ sudo systemctl reload nginx
 
 只有 `nginx -t` 成功才 reload。检查 `https://news.aiplanet.live/` 的实际新站内容、详情及公开出口；仅有 200 不能区分新旧站。记录切换时间和结果。2026-10-17 用户取消旧站回滚，旧数据库已删除，旧 8000/8001 Web 已停止并禁用；不要再用 `news.conf.before-aihot` 把公网恢复到旧站。配置变更失败时应使用指向当前 AIHOT 的已知有效配置恢复。
 
-旧上游文件 `/home/ubuntu/ai-radar/data/nginx/ai-radar-active-upstream.conf` 仍被 `/etc/nginx/conf.d/` 的符号链接加载，所以保留该约 8 KiB 配置，避免 Nginx 后续 reload 失败；保留它不表示旧站可用。若需回退当前 AIHOT 代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，不恢复旧数据库覆盖新产生的数据。删除范围、容量变化和核验见[退役记录](../references/20261017-old-radar-retirement.md)。
+2026-10-17 第二阶段清理已移除无消费者的旧 upstream 引用，通过配置测试并 reload 后删除旧部署目录。现役 `news.conf`、`news-http.conf`、TLS 和 ACME 保留。若需回退当前 AIHOT 代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，不恢复旧数据库覆盖新产生的数据。删除范围、容量变化和核验见[退役记录](../references/20261017-old-radar-retirement.md)。
 
 ## 旧链路保留与恢复边界
 
-Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。2026-10-17 进一步停止并禁用了旧双槽 Web、旧 db-apply/alert 服务及 timer，删除腾讯云旧库和同步副本；源码、信源配置、少量部署元数据与 `ai-radar-img-tunnel` 保留。Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
+Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。2026-10-17 已删除腾讯云旧库和同步副本，随后清理旧部署、虚拟环境、bare 仓、ops 和私有配置，并注销旧双槽 Web、db-apply/alert 服务及 timer、`ai-radar-img-tunnel`。独有源码历史已归档到本机，位置与校验见[退役记录](../references/20261017-old-radar-retirement.md#继续清理旧部署资源)。`sg_img_tunnel` 私钥与公钥仍供 `sjtu-aaa-fetch-tunnel.service` 使用，必须保留；新加坡代理未在本轮清理。Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
 
 用户要求停旧采集，并已取消旧站回滚。本次未核实完整异机备份，旧链路不再有可直接使用的本机数据库；恢复旧链路属于新的任务，需要先确认可用数据来源，不能只启动旧服务或恢复历史 crontab。
 
