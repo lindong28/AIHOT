@@ -149,6 +149,8 @@ python3 deploy/production/gateway-tunnel.py uninstall
 
 本次 [2026-10-17 历史 release 清理记录](../references/20261017-release-cleanup.md) 保存范围、归档及执行状态。后续版本清理重新核对当时的回滚用途和在途任务，不把本次候选清单作为周期删除规则。业务数据、配置、续跑与审计材料按自身用途保留，不能随 release 名称一起删除。实际释放空间以目标文件系统前后 df 为准。
 
+持续写入的容量与生命周期另见 [2026-10-17 存储审计](../references/20261017-storage-audit.md)：包括业务数据库、缓存、日志和备份。该审计是现场快照及候选改进，不是新的自动删除授权或保留策略。
+
 ## 公网切换与回滚
 
 公网已切到新站。当前配置是 `/etc/nginx/sites-available/news.conf`，由 `/etc/nginx/sites-enabled/news.conf` 链接；HTTP 配置 `news-http.conf` 和现有证书保持。切换时 `nginx -t` 成功后执行 reload，并从公网健康接口、首页、详情和 smoke 核对了新站。

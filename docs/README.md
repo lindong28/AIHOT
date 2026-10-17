@@ -14,6 +14,7 @@
 | 运行服务、迁移 Wechat2RSS | [服务运维](operations/services.md) |
 | 更新腾讯云部署、起停、检查状态或回滚公网 | [生产运维](operations/production.md)；公网已切到新站 |
 | 清理腾讯云旧部署与历史版本 | [生产清理入口](operations/production.md#旧部署与历史版本清理)；[2026-10-17 记录](references/20261017-release-cleanup.md) |
+| 分析磁盘增长、数据保留与冷热存储 | [2026-10-17 存储审计](references/20261017-storage-audit.md) |
 | 准备历史原文、执行回填并查看进度 | [历史回填](operations/backfill.md) |
 | 私有查询、搜索与读取已保留原文 | [资料 API](private-research-api.md)；须部署并配置专用令牌后启用 |
 | 批量恢复异常付费回执、幂等续跑并自动结案 | [回执恢复](operations/receipt-recovery.md) |
