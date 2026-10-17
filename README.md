@@ -1,6 +1,6 @@
 # AI Radar 开发基线
 
-本仓库以 AIHOT 开源框架为基础，结合既有 Python 版 AI Radar 的信源，迭代 AI Radar 网站。已加入公开来源与 X 账号配置，沿用 AIHOT 采集和内容处理链路。2026-10-02，公网 `news.aiplanet.live` 已切到本仓代码，腾讯云 API、Web、worker 与数据库运行，已观察到自动采集、模型处理和公开内容更新；旧 RADAR 采集已停，旧 Web 与数据保留供回滚。当前状态和剩余迁移项见[迁移清单](docs/migration.md)。`~/research/ai-radar` 是迁移参照，不是本仓的运行依赖。
+本仓库以 AIHOT 开源框架为基础，结合既有 Python 版 AI Radar 的信源，迭代 AI Radar 网站。已加入公开来源与 X 账号配置，沿用 AIHOT 采集和内容处理链路。2026-10-02，公网 `news.aiplanet.live` 已切到本仓代码，腾讯云 API、Web、worker 与数据库运行，已观察到自动采集、模型处理和公开内容更新。2026-10-17 用户取消旧站回滚，腾讯云旧 RADAR Web 已停用，旧数据库及同步副本已删除，当前 AIHOT 的 PostgreSQL 与共享文件保持独立，见[退役记录](docs/references/20261017-old-radar-retirement.md)。当前状态和剩余迁移项见[迁移清单](docs/migration.md)。`~/research/ai-radar` 是迁移参照，不是本仓的运行依赖。
 
 从[文档总入口](docs/README.md)了解当前状态；两套系统在数据源、架构和算法上的差异见[AIHOT 与 AI Radar 对比](docs/references/ai-radar-comparison.md)，后续开发入口见[融合开发指南](docs/development.md)。
 

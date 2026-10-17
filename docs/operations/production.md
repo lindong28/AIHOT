@@ -157,22 +157,15 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-只有 `nginx -t` 成功才 reload。检查 `https://news.aiplanet.live/` 的实际新站内容、详情及公开出口；仅有 200 不能区分新旧站。记录切换时间和结果。配置检查或公网验证失败时，恢复旧配置：
+只有 `nginx -t` 成功才 reload。检查 `https://news.aiplanet.live/` 的实际新站内容、详情及公开出口；仅有 200 不能区分新旧站。记录切换时间和结果。2026-10-17 用户取消旧站回滚，旧数据库已删除，旧 8000/8001 Web 已停止并禁用；不要再用 `news.conf.before-aihot` 把公网恢复到旧站。配置变更失败时应使用指向当前 AIHOT 的已知有效配置恢复。
 
-```bash
-set -e
-sudo cp -a /home/ubuntu/aihot/shared/news.conf.before-aihot /etc/nginx/sites-available/news.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-再核对公网确实回到旧站。此回滚只恢复公开路由，保留新库和所有回执，不自动回退数据库 schema 或恢复旧采集。旧上游文件 `/home/ubuntu/ai-radar/data/nginx/ai-radar-active-upstream.conf` 仍保留，切站前指向 8001；旧 8000/8001 Web 与数据库保留供回滚，本次未删除。若需回退新站代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，而不是恢复旧数据库覆盖新产生的数据。
+旧上游文件 `/home/ubuntu/ai-radar/data/nginx/ai-radar-active-upstream.conf` 仍被 `/etc/nginx/conf.d/` 的符号链接加载，所以保留该约 8 KiB 配置，避免 Nginx 后续 reload 失败；保留它不表示旧站可用。若需回退当前 AIHOT 代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，不恢复旧数据库覆盖新产生的数据。删除范围、容量变化和核验见[退役记录](../references/20261017-old-radar-retirement.md)。
 
 ## 旧链路保留与恢复边界
 
-Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。旧数据库与 Web 保留；Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
+Mac mini 于 `2026-10-01T15:38:51Z` 精确移除了含 `collector.sh`、`pipeline.sh`、`deploy/sync/sync-db-cron.sh`、`scripts/collect_aihot_supervised.sh` 的四条 cron，在途同步随后停止；备份位于该机 `~/.local/state/aihot-cutover/20261001T153851Z/`。腾讯云 `ai-radar-db-apply.service` 已 stop 并 disable。2026-10-17 进一步停止并禁用了旧双槽 Web、旧 db-apply/alert 服务及 timer，删除腾讯云旧库和同步副本；源码、信源配置、少量部署元数据与 `ai-radar-img-tunnel` 保留。Wechat2RSS 于 10 月 4 日迁到腾讯，旧实例保持停止，见[专页](wechat2rss.md)。
 
-用户要求停旧采集，公网回滚不改变这一决定。若另行恢复旧链路，维护者须先核对备份与届时 crontab 的差异，只恢复获授权的任务，并单独决定是否启用旧库应用服务；不要用整份旧 crontab 覆盖后来新增的任务。
+用户要求停旧采集，并已取消旧站回滚。本次未核实完整异机备份，旧链路不再有可直接使用的本机数据库；恢复旧链路属于新的任务，需要先确认可用数据来源，不能只启动旧服务或恢复历史 crontab。
 
 ## 2026-10-07 暂态恢复发布
 
