@@ -8,7 +8,7 @@
 
 2026-10-04 首次公众号接入后，release `wechat-colocate-20261004` 已将 Wechat2RSS 迁到腾讯，与调用 SocialData 的 worker 同机。后端私有 `WECHAT2RSS_BASE_URL` 改为 `http://127.0.0.1:18480`，token 保持，22 个来源继续由 worker 的 mp 队列采集。`deploy/production/service.sh` 统一管理 API/Web/worker 和已配置的 Wechat2RSS 容器；Mac mini 旧容器与隧道已停，仅保留外部健康探针。私有目录、起停、验证与迁移边界见[公众号运维](wechat2rss.md)及[同机部署记录](../references/20261004-wechat-colocate.md)。
 
-2026-10-07 主题大事记已发布，`current` 指向 `topic-chronicle-20261007-56e1bbb`，API/Web 运行功能提交 `56e1bbb`。本次只重启 API/Web，worker 与在途回填未重启；无新增迁移、seed 或模型配置变更。公网视频、OpenAI、模型发布三个主题 API 已返回大事记，页面交互与站点 smoke 已检查。旧 release `source-gaps-20261006` 保留供代码回切，部署身份、验证范围和选材局限见[发布记录](../references/20261007-topic-chronicle.md#生产发布记录2026-10-07)。
+2026-10-07 主题大事记已发布，`current` 指向 `topic-chronicle-20261007-56e1bbb`，API/Web 运行功能提交 `56e1bbb`。本次只重启 API/Web，worker 与在途回填未重启；无新增迁移、seed 或模型配置变更。公网视频、OpenAI、模型发布三个主题 API 已返回大事记，页面交互与站点 smoke 已检查。当时旧 release `source-gaps-20261006` 保留供代码回切（该保留已于 2026-10-17 清理时取消），部署身份、验证范围和选材局限见[发布记录](../references/20261007-topic-chronicle.md#生产发布记录2026-10-07)。
 
 ## 环境与持久数据
 
@@ -24,7 +24,7 @@ V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库�
 
 | 位置 | 用途 |
 | --- | --- |
-| 腾讯云 `/home/ubuntu/aihot/releases/` | 各次发布源码；2026-10-02 回执修复与回填状态修复合并运行于 `backfill-content-filter-20261002-r2`，当前版本以 `readlink /home/ubuntu/aihot/current` 为准，旧 release 保留 |
+| 腾讯云 `/home/ubuntu/aihot/releases/` | 各次发布源码；2026-10-02 回执修复与回填状态修复合并运行于 `backfill-content-filter-20261002-r2`，当前版本以 `readlink /home/ubuntu/aihot/current` 为准；2026-10-17 已清理全部非 current 的旧 release，仅保留现役版本 |
 | 腾讯云 `/home/ubuntu/aihot/current` | 指向运行版本的符号链接，systemd 从这里启动 |
 | 腾讯云 `/home/ubuntu/aihot/shared/app.env`、`web.env` | 后端与 Web 运行配置；后端凭据文件权限为 0600，不入 Git、不打印内容 |
 | 腾讯云 `/home/ubuntu/aihot/shared/data` | 应用持久文件；PostgreSQL 数据由系统数据库服务独立管理 |
@@ -140,6 +140,14 @@ python3 deploy/production/gateway-tunnel.py uninstall
 `install` 更新并加载用户 launchd 作业 `live.aiplanet.aihot-gateway-tunnel`；`stop` 保留 plist，`uninstall` 才移除它。Mac Studio 的 `39011` Gateway 和 `59527` 代理分别反向映射到腾讯云回环 `39031`、`39032`。代理端口改变时以 `install --proxy-port 实际端口` 重建；默认 SSH 主机别名为 `tencent-webserver-china`，可用 `--host` 指定已配置别名。
 
 启动经 `/bin/zsh` 读取该机 `.zshenv` 配置的原生 SSH agent socket，不把某次登录的 socket 路径写死。此路径依赖 Mac Studio 的登录环境、本地 Gateway、代理和 SSH 认证。`status` 只证实 launchd 注册；还须从腾讯云实际请求 Gateway health，并通过 `http://127.0.0.1:39032` 请求所需上游以核对代理出口。已有一次成功响应，尚未做重启/重新登录恢复验证。日志位于 Mac Studio `~/Library/Logs/aihot/gateway-tunnel.log` 和 `gateway-tunnel.err.log`。隧道脚本不管理本地 Gateway 服务本身。
+
+## 旧部署与历史版本清理
+
+复用 `service-workflows cleanup-services`，明确目标为腾讯云 AIHOT、版本回收或整套退役，再按现场的 current、进程实际 cwd/打开文件、挂载和消费者引用裁定。迁移后切换 current 不代表旧任务已经退出；保留目录内指向旧版本的符号链接也属于消费者。
+
+2026-10-17 已按本次明确批准删除 50 个旧 release 和 37 个旁置文件，取消其直接回切用途；保留现役 `private-research-20261013-982479a`。实际释放 13.8 GiB，根分区使用率 58% → 37%，服务 PID 未变。独有源码与资料已保全到本机，需恢复历史代码时先确认源码、依赖、构建和当前 schema 的兼容性，不能再直接切到已删目录。
+
+本次 [2026-10-17 历史 release 清理记录](../references/20261017-release-cleanup.md) 保存范围、归档及执行状态。后续版本清理重新核对当时的回滚用途和在途任务，不把本次候选清单作为周期删除规则。业务数据、配置、续跑与审计材料按自身用途保留，不能随 release 名称一起删除。实际释放空间以目标文件系统前后 df 为准。
 
 ## 公网切换与回滚
 
