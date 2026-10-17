@@ -151,6 +151,8 @@ python3 deploy/production/gateway-tunnel.py uninstall
 
 持续写入的容量与生命周期另见 [2026-10-17 存储审计](../references/20261017-storage-audit.md)：包括业务数据库、缓存、日志和备份。该审计是现场快照及候选改进，不是新的自动删除授权或保留策略。
 
+2026-10-17 已经批准部署 `23c5c78`，current 为 `storage-20261017-23c5c78`，迁移 0049/0050 和 `RECEIPT_SINGLE_COPY=true` 已生效。API/Web/worker 与回填均使用新版，旧 release 暂留发布对照；关闭开关不会恢复省略字段，不能直接回退旧读者。启用/回退和每日清理见[存储运维](storage.md)，真实回执、私有读取与公网验证见[部署记录](../references/20261017-storage-optimization.md#生产部署与消费验证)。worker 现有 120 秒 systemd 停止期限短于应用 195 秒，本次以定向 SIGTERM 和回执/作业结算读数排空，后续修复见[项目问题](../issues/general.md)。
+
 ## 公网切换与回滚
 
 公网已切到新站。当前配置是 `/etc/nginx/sites-available/news.conf`，由 `/etc/nginx/sites-enabled/news.conf` 链接；HTTP 配置 `news-http.conf` 和现有证书保持。切换时 `nginx -t` 成功后执行 reload，并从公网健康接口、首页、详情和 smoke 核对了新站。

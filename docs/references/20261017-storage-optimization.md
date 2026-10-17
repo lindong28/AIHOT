@@ -20,7 +20,19 @@
 
 验证按付费回执与数据完整性保证覆盖正常复用、拒绝/未知/重试上限、费用保留、锁等待、删除失败和重跑，以及研究查询与实际正文变化；独立审查和原有测试共同提供证据。生产部署及数据迁移属于单独的动作范围，不能以本地代码可逆代替其授权。测试实际模块解析位于本次私树，源码清单保存在 `final-source-manifest.json`。较早 `targeted.log` 的断言类型错误、`research-cli.log` 的复用脏库失败、`final-tests.log` 的模型开关误关闭均为中间轮，不作为最终验收读数。
 
-原始输出在执行主机 `~/.local/state/aihot-storage-optimize/20261017/`。代码、迁移、开关与生产生效分别判断；此记录不表示生产已部署或启用单副本。启用和回退见[运维入口](../operations/storage.md)。
+原始输出在执行主机 `~/.local/state/aihot-storage-optimize/20261017/`。启用和回退见[运维入口](../operations/storage.md)；后续生产执行另记如下。
+
+## 生产部署与消费验证
+
+用户通过明确选择批准部署并启用后，经独立 A2 决策审查，于 2026-10-17 23:23:48 +08 启用单副本。发布源码为已推送的 `23c5c785d1717152a2872c6371c2ab96f6e6820e`，current 为 `/home/ubuntu/aihot/releases/storage-20261017-23c5c78`；699 个源码文件与发布归档逐文件校验一致。生产 PostgreSQL 16.15 应用 0049/0050，无历史数据批量重写，只有 `RECEIPT_SINGLE_COPY=true` 一项配置增量。API、Web、worker 实际 cwd 均已切换，回填 timer 恢复且新一轮于 23:26:20 正常结束；未重装 Wechat2RSS、改变模型路由、预算或原调度周期。
+
+排空前停止回填 timer，捕获 1 条 pending 回执（568506）和 1 个 active 作业。worker 的 systemd 停止上限为 120 秒，短于应用 195 秒，所以本次对主 PID 发送 SIGTERM，不启动 systemd 的强杀倒计时。40.46 秒后原 worker 与回填退出，pending/active 作业均为 0，无新 unknown；正常退出本身未被当作结算证据。该既有配置缺口另记[项目问题](../issues/general.md)。准备探针曾误用 API `/health`（404），依据实际路由改为 `/api/health`（200）；没有因此更改业务配置。
+
+生产观察窗口内新增 15 条 received/completed 回执，15 条均为 receipt 原字段空、当前 attempt 有响应且 accessor 读回一致，0 条新 unknown。真实 `paidRequest` 分别复用历史回执 568489 与单副本回执 568518，响应一致、attempt 数不变，验证回调的供应商派发数为 0。首次复用取样误限定 completed，未找到 SocialData 的 received 样本；修正为实际生命周期并限制 ID 范围和 SQL 时限后完成两种模式验收，没有创建测试付费调用。
+
+源站与公网 smoke 均通过：19 个页面、14 个机器出口、1 次 MCP 握手，无模型榜跳过。私有研究客户端通过公网实际读取 2 个来源、3 条列表和其中 1 篇正文：身份匹配、1980 字符、truncated=false；完整性仍为原记录的 unverified，不能据非空正文改称完整。清理修复已进入现役 worker，删除失败/重跑的读数来自隔离测试，未为验收手动触发生产全量清理；下一次按既有每日 03:30 调度执行。
+
+发布后根盘仍为 37%，可用约 41.56 GiB；新 release 增加部署文件占用，数据库约 8.32 GiB。单副本减少后续响应重复写入，无效投影更新也已由生产函数替换，但短窗口不足以证明长期增长率、物理返还或月费下降。旧 release 暂保留作此次发布诊断对照，不可在单副本启用后直接回切其旧读者。生产迁移、排空及 smoke 日志与私有配置回退副本位于 `shared/ops/storage-20261017-23c5c78/`，配置副本不入 Git、不输出凭据。
 
 ## improve-skill 实跑结论
 
