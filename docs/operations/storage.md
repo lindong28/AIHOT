@@ -1,6 +1,77 @@
-# 持续存储维护
+# 存储治理 spec
 
-当前优化保留 PostgreSQL、原文检索、付费回执和既定保留周期。容量基线见 [存储审计](../references/20261017-storage-audit.md)，实施证据见 [优化记录](../references/20261017-storage-optimization.md)。没有新增对象存储或 OLAP；数据年龄不是删除账本或原文的依据。
+本文是 AIHOT 项目存储治理的维护入口，面向维护者与后续审计、优化 agent；保留决定、数据用途、实现入口与观察证据分别记录。负责人为 AIHOT 维护者。当前优化保留 PostgreSQL、原文检索、付费回执和既定保留周期；没有新增对象存储或 OLAP。数据年龄不是删除账本或原文的依据。
+
+## 覆盖范围与证据身份
+
+本版按 `service-workflows sync-storage-spec` 整理，源码核对基线为 `5c4df6e302651df93ea3ef4e7d672fdc9b282c46`。覆盖腾讯云主部署的已识别主要增长数据族及共享配套资源，非所有表、对象和云费用的完整普查；本次没有刷新生产读数、触发任务或改变保留策略。
+
+| 证据 | 环境、时点及用途 |
+| --- | --- |
+| [存储审计](../references/20261017-storage-audit.md) | 2026-10-17 21:23 起（UTC+8），`tencent-webserver-china`、PostgreSQL 16.15、旧现役源码 `982479a`；表/文件尺寸、三日写入计数、调度与日志配置的历史基线。 |
+| [优化与部署记录](../references/20261017-storage-optimization.md#生产部署与消费验证) | 2026-10-17 23:23:48（UTC+8）启用源码 `23c5c78`，release `storage-20261017-23c5c78`；记录单副本、研究投影与清理修复的部署及实际消费者验收。 |
+| [内容保留决定与操作说明](content-retention.md) | 业务保留资格、清除范围、恢复保护及历史候选边界的权威入口，本文引用，不另定义资格。 |
+
+下表尺寸均来自第一份历史审计，不代表优化后重测值。数据库总量当时 8.31 GiB；根盘 37%、可用约 41.92 GiB。部署后记录为数据库约 8.32 GiB、根盘仍 37%、可用约 41.56 GiB。没有代表性物理增长序列或账单，不据这些短窗口读数推算耗尽日期、增长斜率或月费节省。
+
+## 数据族、增长与保留边界
+
+数据库表尺寸含表、TOAST 与索引；文件尺寸注明 du 或逻辑口径。数据库各行是分项，不与全库总量重复相加；研究/搜索投影与原文在物理上独立，在业务计数上可能重叠。下列“未设期限”表示缺少已确认边界，不表示已决定永久保留，也不表示可立即删除。
+
+| 数据族与历史占用 | 写入、消费者与副本性质 | 增长及现有生命周期 |
+| --- | --- | --- |
+| `receipts` / `receipt_attempts`：合计 4.23 GiB | [paidRequest](../../packages/backend/src/providers/receipts.ts) 随供应商调用及重试写入；幂等复用、恢复、费用和逐 attempt 诊断使用。单副本模式下当前 attempt 是响应来源，历史双副本仍在。 | 随调用累计；10 月 14–16 日每天新增 6,387–6,638 条 receipt，不等于净字节增长。无年龄清理；received/unknown、失败记录、usage 与费用语义继续保留。 |
+| `research_documents`：1.31 GiB，其中索引约 800 MiB | [投影触发器](../../database/migrations/0050_research_noop_updates.sql)及[私有读取层](../../packages/backend/src/research/read.ts)；来源/日期/关键词搜索、分页和原文读取。正文投影可由仍保留的来源材料重建，源材料已清除时不能假设可重建。 | 随保留资料与索引增长；有效投影字段未变时不 UPDATE。没有独立年龄 TTL，不能仅因索引统计为零移除。 |
+| `backfill_items`：约 1,002 MiB | [历史输入](../../packages/backend/src/backfill/history-input.ts)与回填处理保存 material/preparation；续跑、来源证明及私有原文后备用途。 | 随导入增长，可能批量突增；只有符合既定终态资格才清正文材料，保留身份与判定。 |
+| `articles` / `publications` / `article_revisions` / `analyses`：约 500 / 314 / 176 / 166 MiB | 采集和 worker 写入，经 [publication](../../packages/backend/src/publication) 服务网站/RSS/API/MCP；包含原始材料、修订、分析和公开投影。 | 随采集、修订和处理增长；按[内容资格](content-retention.md)清理，非统一 TTL。公众号及合格内容保留；失败与未结算不得当作过滤结果。 |
+| `pool_search`：约 359 MiB | 业务内容检索投影；与源内容关联。 | 源内容按资格清除时同步回收；不能单独按年龄删除而改变搜索结果。 |
+| `fetch_runs` / `story_heat_hourly`：约 49 / 22 MiB | [采集](../../packages/backend/src/sources/collect.ts)诊断及[事件热度](../../packages/backend/src/events/hot.ts)趋势；采集批次/小时快照写入，非内容正文缓存。 | fetch_runs 三日每天约 10,600 条；小时快照定时写。未纳入 dailyRetention，保留期与是否汇总待定；查询 LIMIT 不限制存量。 |
+| `job_runs` / `delivery_leases` / pg-boss 队列 | [作业队列](../../packages/backend/src/jobs/queue.ts)及[调度](../../apps/worker/src/schedules.ts)；运行诊断、在途任务和投递并发。job_runs 约 16 MiB，pgboss.job_common 约 56 MiB。 | dailyRetention 清过期租约，作业历史普通 30 天、失败 90 天；35 个队列现场配置曾为 retention 14 天、deletion 7 天，维护语义归 pg-boss，不把两值当成统一删除承诺。 |
+| `hot_rankings`：约 30 MiB | 事件热榜计算保存快照，公开热榜读取；[计算入口](../../packages/backend/src/events/hot.ts)。 | 成功生成后清 30 天前快照；依赖生成任务成功，非独立容量上限。 |
+| `audit_log` / `ingest_events`：约 1.6 MiB / 空表 24 KiB | 操作审计与摄取记录，审计用途独立于普通任务历史。 | 应用定期清理未覆盖，具体保留决定待定；不能沿用 job_runs 周期。 |
+| `imgcache` / `ogcache`：du 约 1.10 GiB，逻辑约 1.04 GiB | [图片代理](../../packages/backend/src/media/images.ts)、[分享卡](../../apps/api/src/og/render.ts)与[海报](../../apps/api/src/og/poster.ts)按需生成；可再生派生文件，依赖原图或渲染输入仍可用。目录位于有效 `AIHOT_DATA_DIR` 下。 | dailyRetention 按 mtime 清 30 天前文件；未设总字节预算。7 天现存文件约 416 MiB 是分布，不是净增长；TTL 不保证容量固定。 |
+| `stored_files`、上传 QR、反馈截图 | 文件写入与[反馈转发](../../packages/backend/src/operations/feedback.ts)、[后台设置](../../packages/backend/src/admin/settings.ts)有关；数据库过期记录和实体共同构成回收依据。 | stored_files 按 expires_at 清理；旧 QR hash、关闭转发/超过重试窗口的截图仍有回收缺口。审计时 stored_files 为 0，uploads/feedback 目录不存在；不能把风险当成已发生大占用。 |
+| journal、Nginx/PG/Docker 日志 | 服务 stdout、访问和数据库诊断；含同机其他服务，需先区分资源归属。journal du 约 1.76 GiB，其余当时均不足 10 MiB。 | 当时 journal 未设应用独立预算，系统默认上限 4 GiB；Nginx daily/14/compress，PG weekly/10/compress，Docker max-size=100m、默认单文件。审计时配置不是未来不变的保证。 |
+| WAL、临时文件、备份与云快照 | PostgreSQL 写入、恢复及[备份入口](../../packages/backend/src/operations/backup.ts)；不等同业务归档。WAL 当时约 960 MiB、复制槽 0；临时目录当时为空。 | 自动应用备份当时未配置、无备份目录与运行记录；云快照未知。源码本地 keep3 不能保证上传失败后裁剪；云 daily/weekly/monthly 前缀不代表配置了生命周期。恢复窗口和费用待核。 |
+| release、冻结回填文件、Wechat2RSS 数据 | [生产发布](production.md)、[回填](backfill.md)与[公众号服务](wechat2rss.md)；历史输入还可能是续跑或唯一来源。history-full/unified/Wechat2RSS 当时约 605/356/214 MiB。 | release 随部署增加，现有[清理流程](production.md)为人工执行；历史回填逐批唯一性未核。旧 RADAR 已退役不等于这些现役共享数据可删；不使用统一目录年龄策略。 |
+
+其他业务表和辅助产物未在上述审计单独量化时，沿表尺寸重测发现新增主导项后补入；本表不宣称已覆盖每个 writer。大字段、索引、WAL 与备份各自计量，避免只看表行数遗漏成本。
+
+## 重测入口与治理顺序
+
+先按[生产运维](production.md)核目标主机、实际 release、进程与有效配置；连接使用现有受控环境，不把连接串、正文或日志原文复制到报告。数据库只读取证可从以下查询开始，保存采集时点、发布 SHA 与原始数值，再与同口径记录比较：
+
+```sql
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '20s';
+SELECT now() AS observed_at, current_database(), pg_database_size(current_database()) AS database_bytes;
+SELECT schemaname, relname,
+       pg_table_size(relid) AS table_bytes,
+       pg_indexes_size(relid) AS index_bytes,
+       pg_total_relation_size(relid) AS total_bytes,
+       n_live_tup AS estimated_rows
+FROM pg_stat_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 30;
+SELECT started_at, finished_at, status,
+       detail->>'prunedCache' AS deleted_cache_files,
+       detail->>'deletedFiles' AS cleared_file_records,
+       detail->>'deletedJobRuns' AS deleted_job_runs,
+       error IS NOT NULL AS has_error
+FROM job_runs
+WHERE job = 'ops.retention'
+ORDER BY started_at DESC
+LIMIT 5;
+ROLLBACK;
+```
+
+这是后续只读重测入口，本次同步未执行。文件系统用目标挂载点的 `df`、有效数据目录的 `du`；表统计只估算行数。增长比较需保留至少两个同口径时点及覆盖窗口，同时记录采集量、付费调用量、回填/发布和清理事件；两个时点也不自动代表长期趋势。
+
+后台“运行”页显示 `ops.retention` 状态和截断错误；成功清理计数保存在 `job_runs.detail`，用上述受控只读查询取得，页面不提供这些明细。失败时部分完成计数位于 `error` 摘要，detail 缺值不能当成零；必要时在受控环境检查并脱敏错误，勿直接导出原文。系统未记录候选总数，需按[实际保留实现](../../packages/backend/src/operations/retention.ts)另行只读核候选。删除记录数、库内复用和文件系统返还分别判断。
+
+当前优先级与未决项沿[生命周期 issue](../issues/general.md#issue-storage-20261017-lifecycle存储生命周期与写入放大)：先核缓存字节预算、运行/热度/审计历史用途、外部备份与恢复，再评估历史响应去重或低频 payload 分离。批准的业务保留资格仍归[内容保留](content-retention.md)，本 spec 不新增期限。
+
+存储费用、请求/取回、出网、计算和维护总成本尚未核账；目前没有依据承诺具体金额收益。保留 PostgreSQL 的决定沿[优化记录](../references/20261017-storage-optimization.md#决定与范围)；未来分层或 OLAP 候选须核查询语义、取回时效、事务与恢复需求，不能只因数据变旧或变大就迁移。责任人为 AIHOT 维护者，下一动作及验收继续在上述 issue 跟踪。
 
 ## 回执单副本的启用与回退
 

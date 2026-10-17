@@ -21,7 +21,7 @@
 | [operations/services.md](operations/services.md) | 维护者：生产、本机、旧站与 Wechat2RSS 服务入口 |
 | [operations/production.md](operations/production.md) | 部署维护者：腾讯云发布、服务与隧道起停、公网切换及回滚 |
 | [references/20261017-storage-audit.md](references/20261017-storage-audit.md) | 维护者：生产写入、保留执行、占用与存储优化候选（未实施） |
-| [operations/storage.md](operations/storage.md) | 维护者：回执单副本启用、清理失败重试与成本边界 |
+| [operations/storage.md](operations/storage.md) | 维护者：数据族、增长与保留边界、证据时点、重测入口及持续维护 |
 | [references/20261017-storage-optimization.md](references/20261017-storage-optimization.md) | 开发者：去重、研究投影、清理修复与 improve-skill 实跑 |
 | [references/20261017-release-cleanup.md](references/20261017-release-cleanup.md) | 维护者：腾讯云 AIHOT 历史 release 回收、源码保全及消费者核验 |
 | [references/20261001-production-cutover.md](references/20261001-production-cutover.md) | 开发者：生产拓扑决定、停止旧链路与准备阶段记录 |
