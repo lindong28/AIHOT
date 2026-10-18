@@ -50,6 +50,8 @@
 
 ## ISSUE-STORAGE-20261017-lifecycle：存储生命周期与写入放大
 
+指令执行与剩余项处置的诊断见 [harness 跟踪项](harness-issues.md#harness-20261018-storage-followthrough存储治理剩余项需要可执行的处置与验收)。
+
 - 状态：open；负责人：AIHOT 维护者。2026-10-17 首轮只读审计后，用户授权实施优化；业务保留语义未改变。事实与消费者见[生产存储审计](../references/20261017-storage-audit.md)，实施与验证见[优化记录](../references/20261017-storage-optimization.md)。
 - 已发生：数据库 8.31 GiB，回执/attempt 占 4.23 GiB；日回执约 6,400–6,600、fetch_runs 约 10,600。现役 response 双写，研究/回填多层正文复制；backfill 状态更新触发正文投影刷新。dailyRetention 正常运行，但不覆盖回执、fetch_runs、小时热度、审计等全部增长族。
 - 清理可靠性：cache unlink 失败仍计成功；stored_files 先删行再删文件可能遗留；最前正文清理抛错会跳过其余维护。当前缓存无超 30 天文件，未复现删除失败，不能把代码风险说成已发生漏清。
