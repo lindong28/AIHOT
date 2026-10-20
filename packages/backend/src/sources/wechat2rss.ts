@@ -7,6 +7,10 @@ import { queueProcessing } from "../jobs/content.ts";
 import { parseRss } from "./rss.ts";
 import type { SourceRow } from "./types.ts";
 
+// Full-text account feeds can exceed the public collector’s 8 MiB limit. Keep this loopback-only read bounded.
+const MAX_FEED_BYTES = 16 * 1024 * 1024;
+class FeedReadError extends Error {}
+
 /** Only an operator-configured loopback tunnel may bypass public collector SSRF checks. */
 export async function readWechat2Rss(source: SourceRow) {
   const base = credential("collectors", "WECHAT2RSS_BASE_URL");
@@ -28,17 +32,18 @@ export async function readWechat2Rss(source: SourceRow) {
     const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(25_000) });
     if (response.status !== 200) {
       await response.body?.cancel();
-      throw new Error("http");
+      throw new FeedReadError(`Wechat2RSS feed HTTP ${response.status}`);
     }
     const chunks: Uint8Array[] = [];
     let size = 0;
     for await (const chunk of response.body!) {
       size += chunk.byteLength;
-      if (size > 8 * 1024 * 1024) throw new Error("size");
+      if (size > MAX_FEED_BYTES) throw new FeedReadError("Wechat2RSS feed exceeds 16 MiB response limit");
       chunks.push(chunk);
     }
     xml = Buffer.concat(chunks).toString("utf8");
-  } catch {
+  } catch (error) {
+    if (error instanceof FeedReadError) throw error;
     // Do not expose token-bearing URLs or upstream response bodies in source errors/logs.
     throw new Error("Wechat2RSS feed unavailable; check the tunnel, token and service");
   }

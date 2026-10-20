@@ -10,6 +10,12 @@
 
 采集器 `packages/backend/src/sources/wechat2rss.ts` 只对当前窗口缺少可用正文的条目尝试直接原文补抓；正常内容不增加一次请求。仍失败时有效文章照常保存，来源抓取报告失败并留待下一次检查；暂停的历史来源不会自动恢复旧空壳。先核来源和 fetch_runs，再按修复页取得合法原文或留存版本；微信验证页不当作正文。
 
+### RSS 响应大小与传输错误
+
+回环 Wechat2RSS 读取上限为 16 MiB，按实际接收字节限制，超限报 `Wechat2RSS feed exceeds 16 MiB response limit`；公共互联网采集器的大小限制不随之改变。非 200 响应仅报告 `Wechat2RSS feed HTTP <状态码>`，其余传输异常继续使用脱敏的通用错误，不输出认证 URL、token 或响应正文。25 秒超时、禁止重定向及文章账号检查保持原有规则。
+
+2026-10-20 排查 Z Finance 连续采集失败时，生产回环 feed 实际返回 HTTP 200、8,702,231 字节，超过旧上限 8,388,608 字节；旧实现将超限误报为隧道、token 或服务不可用。遇到这类错误先核对状态码和接收大小，不应仅凭泛化错误轮换凭据或重建订阅。修复仅扩大有界读取容量，不减少上游条目、不扩大采集日期窗口。
+
 ## 新增公众号与配置生效
 
 公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。
