@@ -1,10 +1,20 @@
 # 未解决问题
 
+## ISSUE-SOURCE-20261020-youtube-rss：Claude YouTube 官方 RSS 间歇失败
+
+- 状态：open；负责人：AIHOT 维护者。现有 worker 按数据库配置每 60 分钟重试；当前依赖 RSS 服务或可用访问路径恢复，不能将一次重试成功当作稳定修复。
+- 2026-10-20 生产 `radar-claude-youtube`：11:09（UTC+8）正式采集成功、发现 15 条；12:09 返回 HTTP 500。13:30 后通过生产 `guardedFetch` 再读为 404/500，响应标识为 `YouTube RSS Feeds server`。Google Developers 对照频道的 RSS 同样返回 500；Mac 代理路径两频道均 404。两代理是否共用公网出口未核实，因此不能断言全球故障；直连请求失败也未进一步归因为 DNS 或防火墙。
+- 官方频道页 `https://www.youtube.com/channel/UCV03SRZXJEz-hchIAogeJOg/videos` 返回 200，metadata 的 `externalId` 与来源配置一致，`rssUrl` 仍为现有 `https://www.youtube.com/feeds/videos.xml?channel_id=UCV03SRZXJEz-hchIAogeJOg`。频道 ID 错误或官方 RSS 已迁移的假设不获支持；移动域名、裸域名、playlist 和查询参数变体均未恢复读取。
+- 不改为仅 videos 页：最近入库 15 个视频 ID 中 10 个在 videos 页、5 个在 shorts 页。条目身份已对应，但精确发布时间、描述与后续覆盖尚未证明等价，既有 `json_list` 的网页 JSON 能力不能据此认定为无损替代。
+- 另外核过 4 条已分析文章的空标题：均有 `content_discarded_at`、`visibility=withdrawn`、`eligible=false` 和 `relevance=unknown`，与既有 `content/retention.ts` 的过滤清除行为相符；不将其归为此次 RSS 失败或另开采集缺陷。
+- 后续由原调度继续采集；维护者以真实 `fetch_runs` 和后台来源 API 确认恢复。持续失败时再验证其他已有出口；若要用频道网页替代，需同时覆盖 videos/shorts 与准确日期，另行验证后决定，不清零失败状态或跳过文章来伪造成功。
+
 ## ISSUE-TEST-20261013-valves：全量测试与关闭模型安全阀的开发约束不一致
 
 - 状态：open；负责人：AIHOT 维护者，后续单独调整测试出口隔离；不属于本次私有资料接口修复。
 - 2026-10-13：在独立 PostgreSQL 17 空库迁移后，以 COLLECT_ENABLED=false、MODEL_CALLS_ENABLED=false 和外发阀关闭运行 npm test。未改动基线 33af310 共 380 项，354 通过、26 失败；本次实现首次 387 项，361 通过、26 失败，失败测试集合相同。25 项模型 stub 测试被 MODEL_CALLS_ENABLED=false 拦住，另 1 项由本机默认 Python 3.9 缺 SQLite serialize 造成。
 - 保持阀关闭、PATH 优先已安装的 Python 3.14 后，本次修复版完整套件 389 项，364 通过、25 失败；失败名称均包含在未改动基线中。随后定向增加搜索转义回归，私有 HTTP/CLI 10 项全部通过。没有开启真实模型或外部请求来获得全绿。
+- 2026-10-20 来源修复复验：全量 400 项为 373 通过、26 失败、1 跳过；Python 3.9 的同一失败在 PATH 优先 Python 3.14 后定向通过，微信与 Claude Blog 相关 14 项全部通过，其余 25 项模型安全阀相关失败仍保留。未开启模型安全阀。
 - 后续：用项目测试入口明确 pin 所有付费调用到本机 stub，并解决与项目安全阀约束的冲突；验收应同时证明外部出口不可达及模型场景通过。Python 版本／SQLite 能力需在开发环境说明中固定。
 
 ## ISSUE-SOURCE-20261006-openmoss：OpenMOSS 来源待接入
