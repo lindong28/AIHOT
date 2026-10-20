@@ -2,7 +2,7 @@
 
 ## ISSUE-SOURCE-20261020-youtube-rss：Claude YouTube 官方 RSS 间歇失败
 
-- 状态：open；负责人：AIHOT 维护者。现有 worker 按数据库配置每 60 分钟重试；当前依赖 RSS 服务或可用访问路径恢复，不能将一次重试成功当作稳定修复。
+- 状态：open；负责人：AIHOT 维护者。现有 worker 的基础采集间隔为 60 分钟，失败后按失败次数延长等待、最长 360 分钟，以 `sources.next_fetch_at` 为实际调度时间；当前依赖 RSS 服务或可用访问路径恢复，不能将一次重试成功当作稳定修复。
 - 2026-10-20 生产 `radar-claude-youtube`：11:09（UTC+8）正式采集成功、发现 15 条；12:09 返回 HTTP 500。13:30 后通过生产 `guardedFetch` 再读为 404/500，响应标识为 `YouTube RSS Feeds server`。Google Developers 对照频道的 RSS 同样返回 500；Mac 代理路径两频道均 404。两代理是否共用公网出口未核实，因此不能断言全球故障；直连请求失败也未进一步归因为 DNS 或防火墙。
 - 官方频道页 `https://www.youtube.com/channel/UCV03SRZXJEz-hchIAogeJOg/videos` 返回 200，metadata 的 `externalId` 与来源配置一致，`rssUrl` 仍为现有 `https://www.youtube.com/feeds/videos.xml?channel_id=UCV03SRZXJEz-hchIAogeJOg`。频道 ID 错误或官方 RSS 已迁移的假设不获支持；移动域名、裸域名、playlist 和查询参数变体均未恢复读取。
 - 不改为仅 videos 页：最近入库 15 个视频 ID 中 10 个在 videos 页、5 个在 shorts 页。条目身份已对应，但精确发布时间、描述与后续覆盖尚未证明等价，既有 `json_list` 的网页 JSON 能力不能据此认定为无损替代。
