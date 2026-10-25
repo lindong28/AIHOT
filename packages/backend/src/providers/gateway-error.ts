@@ -8,9 +8,10 @@ export interface GatewayFailure {
   category: Category;
   retryable: boolean | null;
   contentFilter?: { role: "user" | "assistant"; level: number };
+  gatewayCode?: "restart_required";
 }
 const CODES = new Set(["1301", "content_filtered", "insufficient_quota"]);
-const GATEWAY_CODES = new Set(["ledger_unavailable", "ledger_busy", "route_cooldown", "no_route", "dispatch_constraint_rejected", "http_error", "timeout", "transport_error"]);
+const GATEWAY_CODES = new Set(["ledger_unavailable", "ledger_busy", "route_cooldown", "no_route", "dispatch_constraint_rejected", "http_error", "timeout", "transport_error", "restart_required"]);
 
 export interface GatewayRecovery {
   version: 1;
@@ -41,6 +42,7 @@ export function safeGatewayFailure(value: unknown): GatewayFailure | null {
     providerCode: typeof v.providerCode === "string" && CODES.has(v.providerCode) ? v.providerCode : null,
     category: v.category as Category,
     retryable: typeof v.retryable === "boolean" ? v.retryable : null,
+    ...(v.gatewayCode === 'restart_required' ? { gatewayCode: 'restart_required' as const } : {}),
     ...(filter && (filter.role === "user" || filter.role === "assistant") && Number.isInteger(filter.level) && Number(filter.level) >= 0 && Number(filter.level) <= 3
       ? { contentFilter: { role: filter.role as "user" | "assistant", level: Number(filter.level) } } : {}),
   };
@@ -50,7 +52,9 @@ export function gatewayFailure(body: unknown, headers: Headers, status: number):
   const error = (body as { error?: Record<string, unknown> } | null)?.error;
   let metadata: unknown = error?.failure;
   try { if (!metadata && headers.has("x-llm-gateway-error")) metadata = JSON.parse(decodeURIComponent(headers.get("x-llm-gateway-error")!)); } catch { /* Optional metadata cannot replace the original failure. */ }
-  const safe = safeGatewayFailure(metadata);
+  const projected = safeGatewayFailure(metadata);
+  const restart = error?.code === 'restart_required' ? { gatewayCode: 'restart_required' as const } : {};
+  const safe = projected ? { ...projected, ...restart } : null;
   // Historical Gateway/provider responses have no projection. Only recognize known codes.
   const code = error?.code === 1301 ? "1301" : typeof error?.code === "string" ? error.code : null;
   const rejected = status === 400 && (code === "1301" || code === "content_filtered");
@@ -61,7 +65,7 @@ export function gatewayFailure(body: unknown, headers: Headers, status: number):
     ? { ...safe, providerCode: code, category: rejected ? "content_policy_rejected" : "quota_exhausted", retryable: false } : safe;
   return { version: 1, httpStatus: status, providerCode: code && CODES.has(code) ? code : null,
     category: rejected ? "content_policy_rejected" : quota ? "quota_exhausted" : status === 429 ? "rate_limited" : status >= 500 ? "upstream_unavailable" : "unknown",
-    retryable: rejected || quota ? false : status === 408 || status === 429 || status >= 500 ? true : null };
+    retryable: rejected || quota ? false : status === 408 || status === 429 || status >= 500 ? true : null, ...restart };
 }
 
 export class GatewayResponseError extends Error {

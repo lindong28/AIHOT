@@ -10,6 +10,7 @@ import { sql, type Db } from "../db.ts";
 import { config } from "../config.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { GatewayResponseError, safeGatewayFailure } from "./gateway-error.ts";
+import { receiptOutcome, recordReceiptOutcome } from "./receipt-review.ts";
 
 export class BudgetExceededError extends Error {
   readonly service: string;
@@ -158,7 +159,7 @@ async function checkBudget(tx: Db, service: string): Promise<void> {
  * Reuses settled results and bounds opted-in recovery of the same logical key.
  * The caller parses the response and commits business results, then calls completeReceipt.
  */
-export async function paidRequest(req: ReceiptRequest, call: (requestId?: string) => Promise<CallOutcome>): Promise<ReceiptResult> {
+export async function paidRequest(req: ReceiptRequest, call: (requestId?: string, outputRetry?: boolean) => Promise<CallOutcome>): Promise<ReceiptResult> {
   const logicalKey = logicalKeyFor(req);
   if (req.outputMaxAttempts !== undefined && (!Number.isSafeInteger(req.outputMaxAttempts) || req.outputMaxAttempts < 1)) {
     throw new Error("outputMaxAttempts must be a positive integer");
@@ -171,6 +172,16 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
       SELECT id, status, response, created_at, updated_at, attempts, request_id, retry_after, recovery_exhausted
       FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
     if (existing) {
+      const [current] = await tx`SELECT a.*,v.disposition,v.outcome,
+        EXISTS (SELECT 1 FROM receipt_attempts p WHERE p.receipt_id=a.receipt_id AND p.output_validation_error IS NOT NULL) AS output_retry
+        FROM receipt_attempts a
+        LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
+        WHERE a.receipt_id=${existing.id} AND a.attempt=${existing.attempts}`;
+      const known = receiptOutcome(current?.error_details, current?.error ?? null, current?.response ?? existing.response);
+      if (['stopped','superseded'].includes(current?.disposition) || known !== 'unknown') {
+        await recordReceiptOutcome(tx, existing.id, existing.attempts, known);
+        return { kind: "stopped" as const, row: existing };
+      }
       if (existing.status === "received" || existing.status === "completed") {
         // A separate statement sees the attempt committed by a writer we waited for above.
         const [attempt] = await tx<{ id: number; response: unknown }[]>`
@@ -197,7 +208,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
           if (prior.recovery_sends >= MAX_RECOVERY_SENDS) throw new ReceiptRecoveryExhaustedError(existing.id);
           await tx`UPDATE receipts SET status='pending',retry_after=NULL,updated_at=now() WHERE id=${existing.id}`;
           await tx`UPDATE receipt_attempts SET recovery_sends=recovery_sends+1 WHERE id=${prior.id}`;
-          return { kind: "call" as const, id: existing.id, attemptId: prior.id, requestId: existing.request_id };
+          return { kind: "call" as const, id: existing.id, attemptId: prior.id, requestId: existing.request_id, outputRetry: !!current?.output_retry_hint };
         }
         // A fresh generation is allowed only by explicit Gateway evidence. The
         // earlier attempt remains unknown, including any unknown provider cost.
@@ -214,8 +225,8 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
         UPDATE receipts SET status = 'pending', attempts = attempts + 1, error = NULL,
           request_id = ${req.gatewayRequestId ?? null}, request = ${tx.json((req.requestSummary ?? {}) as never)}, retry_after=NULL, updated_at = now()
         WHERE id = ${existing.id} RETURNING attempts`;
-      const attemptId = await startAttempt(tx, existing.id, r!.attempts, req);
-      return { kind: "call" as const, id: existing.id, attemptId, requestId: req.gatewayRequestId };
+      const attemptId = await startAttempt(tx, existing.id, r!.attempts, req, !!current?.output_retry);
+      return { kind: "call" as const, id: existing.id, attemptId, requestId: req.gatewayRequestId, outputRetry: !!current?.output_retry };
     }
     await checkBudget(tx, req.service);
     const [row] = await tx<{ id: number }[]>`
@@ -224,10 +235,11 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
               ${tx.json((req.requestSummary ?? {}) as never)}, ${req.gatewayRequestId ?? null}, 1)
       RETURNING id`;
     const attemptId = await startAttempt(tx, row!.id, 1, req);
-    return { kind: "call" as const, id: row!.id, attemptId, requestId: req.gatewayRequestId };
+    return { kind: "call" as const, id: row!.id, attemptId, requestId: req.gatewayRequestId, outputRetry: false };
   });
 
   if (claimed.kind === "reuse") return { receiptId: claimed.row.id, response: claimed.row.response, reused: true, attemptId: claimed.attemptId };
+  if (claimed.kind === "stopped") throw new ReceiptRecoveryStoppedError(claimed.row.id);
   if (claimed.kind === "busy") throw new ReceiptBusyError(`Receipt ${claimed.row.id} is in flight`);
   if (claimed.kind === "unknown") {
     throw new ReceiptUnknownError(claimed.row.id, `Receipt ${claimed.row.id} has an unknown outcome; reconcile it before retrying`);
@@ -237,7 +249,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
   const started = Date.now();
   let outcome: CallOutcome;
   try {
-    outcome = await call(requestId ?? undefined);
+    outcome = await call(requestId ?? undefined, claimed.outputRetry);
   } catch (error) {
     const rejected = requestId
       ? error instanceof GatewayNotDispatchedError && error.requestId === requestId
@@ -252,16 +264,19 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
       const recovery = req.gatewayRecovery && error instanceof GatewayResponseError && error.recovery?.logical_request_id === requestId ? error.recovery : null;
       stopped = recovery?.action === "stop";
       const [attempt] = await tx`SELECT recovery_sends,attempt FROM receipt_attempts WHERE id=${attemptId}`;
-      if (recovery && recovery.action !== 'stop') {
+      const details = error instanceof GatewayResponseError ? safeGatewayFailure(error.details) : null;
+      const known = receiptOutcome(details, message);
+      stopped ||= known !== "unknown";
+      if (recovery && recovery.action !== 'stop' && !stopped) {
         exhausted = recovery.action === 'retry_same_request' ? attempt!.recovery_sends >= MAX_RECOVERY_SENDS : attempt!.attempt >= (req.outputMaxAttempts ?? 3);
         if (!exhausted) retrySeconds = Math.max(recovery.retry_after_s, 3 * 2 ** (attempt!.recovery_sends-1));
       }
       await tx`UPDATE receipts SET status = ${status}, error = ${message},
         retry_after=${retrySeconds === null ? null : new Date(Date.now()+retrySeconds*1000)},
         recovery_exhausted=${exhausted}, updated_at = now() WHERE id = ${receiptId}`;
-      const details = error instanceof GatewayResponseError ? safeGatewayFailure(error.details) : null;
       await tx`UPDATE receipt_attempts SET status = ${status}, error = ${message}, error_details = ${tx.json(details as never)},
-        recovery_action=${recovery?.action ?? null}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
+        recovery_action=${stopped ? "stop" : recovery?.action ?? null}, latency_ms = ${Date.now() - started}, finished_at = now() WHERE id = ${attemptId}`;
+      await recordReceiptOutcome(tx, receiptId, attempt!.attempt, known);
     });
     if (exhausted) throw new ReceiptRecoveryExhaustedError(receiptId);
     if (stopped) throw new ReceiptRecoveryStoppedError(receiptId);
@@ -295,10 +310,10 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
   return { receiptId, response: outcome.response, reused: false, attemptId };
 }
 
-async function startAttempt(tx: Db, receiptId: number, attempt: number, req: ReceiptRequest): Promise<number> {
+async function startAttempt(tx: Db, receiptId: number, attempt: number, req: ReceiptRequest, outputRetry = false): Promise<number> {
   const [row] = await tx<{ id: number }[]>`
-    INSERT INTO receipt_attempts (receipt_id, attempt, service, model, status, request_id)
-    VALUES (${receiptId}, ${attempt}, ${req.service}, ${req.model ?? null}, 'pending', ${req.gatewayRequestId ?? null})
+    INSERT INTO receipt_attempts (receipt_id, attempt, service, model, status, request_id, output_retry_hint)
+    VALUES (${receiptId}, ${attempt}, ${req.service}, ${req.model ?? null}, 'pending', ${req.gatewayRequestId ?? null}, ${outputRetry})
     RETURNING id`;
   return row!.id;
 }
@@ -333,6 +348,19 @@ export async function completeReceipt(db: Db, receiptId: number): Promise<void> 
 /** Marks a received response that could not be used (e.g. unparsable) so a fresh attempt can be made. */
 export async function rejectReceivedResponse(receiptId: number, reason: string, reconcile = false): Promise<void> {
   await sql`UPDATE receipts SET status = ${reconcile ? "unknown" : "failed"}, error = ${reason.slice(0, 2000)}, updated_at = now() WHERE id = ${receiptId}`;
+}
+
+/** Refusal is a known response, not an authorization to pay for another generation. */
+export async function rejectReceivedContent(receiptId: number, attemptId: number): Promise<void> {
+  await sql.begin(async tx => {
+    const [r] = await tx`SELECT attempts,status FROM receipts WHERE id=${receiptId} FOR UPDATE`;
+    const [a] = await tx`SELECT attempt FROM receipt_attempts WHERE id=${attemptId} AND receipt_id=${receiptId}`;
+    if (!r || !a || r.attempts !== a.attempt || r.status !== 'received') throw new ReceiptBusyError("Receipt changed during refusal classification");
+    await recordReceiptOutcome(tx, receiptId, a.attempt, "content_policy_rejected");
+    await tx`UPDATE receipts SET error='Model refused the requested content',retry_after=NULL WHERE id=${receiptId}`;
+    await tx`UPDATE receipt_attempts SET error='Model refused the requested content',recovery_action='stop'
+      WHERE id=${attemptId}`;
+  });
 }
 
 /** Fence validation to the received attempt, retaining its response and unknown cost. */

@@ -2,6 +2,25 @@
 
 后台“需要核对的付费回执”包含结果未知、近期失败及长时间未返回的请求。业务恢复和供应商核账是两件事：新闻处理成功可以结案，但不能因此推断旧调用没有计费。历史异常的授权恢复入口为 `scripts/recover-receipts.ts`，恢复关联保存在 PostgreSQL `receipt_recoveries`；原 `receipt_attempts` 和费用字段保留。新请求的有界自动恢复见下一节。
 
+## 运行页核对与历史结案
+
+运行页按完整结果统计，每页40条，可翻页并切换“处置历史”。“回执结果未知”只统计仍待处理且没有明确结果分类的请求；“请求被拒绝”和“计费未知”可以同时成立，不能据结果分类推断免费。核对窗口默认计费未知，提交时绑定当前 attempt；有新 attempt 或请求仍在调用则拒绝陈旧操作。
+
+- 仅记录核账：保存计费判断和说明，不排队、不放行。
+- 停止该请求：保存处置，阻止所有恢复入口原样派发；旧费用和响应不改。
+- 授权重放：只对未停止、未结案且结果仍未知的当前请求开放，须单独确认可能再次计费。它放行父回执并恢复对应业务，原 attempt 的状态、错误、usage、response、cost 保持原样。
+
+明确审核拒绝（安全分类或保存响应的 `content_filter` / `refusal`）自动停止同一请求。HTTP400/422的 `invalid_request` 单列待修输入；缺少安全细节时不能猜具体原因。`restart_required` 提示核对 Gateway 已加载的配置版本，只有完整 ledger 证实零派发才能沿生产文档的核对工具放行，不能单凭409认定未计费。
+
+每十分钟 `ops.recover` 根据已持久化的后续成功结果结案；时间下界为当前 attempt.started_at。事件综述要求当前 story 版本、对应 story_digests 和完成回执一致。停止或结案均保持禁止原样派发，新 attempt 的异常不会被旧处置遮蔽。可先预览再应用历史分类与结案；下列命令均不排队、不调用模型、不改原费用：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/resolve-receipt-reviews.ts
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/resolve-receipt-reviews.ts --apply
+```
+
+`finish_reason=length` 的输出即使能解析JSON也不视为完整综述。后续新 generation 在原次数与 token 预算内携带精简反馈；反馈模式保存在 attempt，升级前 UUID 恢复保持原请求体。反馈不保证模型输出合格，不增加生成次数或修改路由。实现与验收见[本次修复记录](../references/20261025-receipt-resolution.md)。
+
 ## 新请求的暂态自动恢复
 
 新版本支持 Gateway request recovery v1：AIHOT 默认启用，可用 `LLM_GATEWAY_REQUEST_RECOVERY_ENABLED=false` 关闭。须先升级支持该能力的 Gateway 和配套 SDK，再运行 AIHOT 的 `0047_receipt_transient_recovery.sql` 增量迁移与新版 worker；能力协商不通过时不会派发模型请求。2026-10-07 已完成生产部署，验证范围见[部署记录](../references/20261007-transient-recovery.md#部署与验证记录)。
@@ -74,11 +93,11 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
 
 ## 恢复边界
 
-后台侧栏“运行”的数字统计尚未结案的回执与待核实投递，复用运行页列表的筛选条件：回执包含结果未知、近三天失败及超过十五分钟未完成，排除当前 attempt 已恢复的记录；投递包含结果未知、失败及超过十五分钟仍在发送的记录。尚在自动恢复窗口内的 unknown 暂不列为人工核对项；超过 `retry_after` 十五分钟或恢复额度耗尽后重新显示。侧栏统计完整数量，列表各最多展示 40 条。结案不会清除历史费用未知状态，旧 attempt 的恢复也不会隐藏新 attempt 的失败。
+后台侧栏“运行”的数字统计尚未结案的回执与待核实投递，复用运行页列表的筛选条件：回执包含结果未知、近三天失败及超过十五分钟未完成，排除当前 attempt 已恢复的记录；投递包含结果未知、失败及超过十五分钟仍在发送的记录。尚在自动恢复窗口内的 unknown 暂不列为人工核对项；超过 `retry_after` 十五分钟或恢复额度耗尽后重新显示。侧栏统计完整数量，回执列表每页40条并可翻页；投递列表最多展示40条。结案不会清除历史费用未知状态，旧 attempt 的恢复也不会隐藏新 attempt 的失败。
 
 新版业务结果可以结案旧版本异常：必须是同一 article_id，当前文章版本不小于捕获版本，publication 引用的 analysis.input_revision 等于当前文章版本，且文章已完成分析或过滤。只有 revision 增长、旧分析仍留在 publication，均不能结案。证据中的 `superseded_revision` 会记录捕获版本和成功版本，后台显示“新版已替代”。原调用状态、attempt 与未知费用保留；后续新 failed/unknown attempt 仍会显示。
 
-`--status`、`--apply` 和每十分钟的 `ops.recover` 都会重评已有批次的业务证据（包括此前因版本不符或审核拒绝而 blocked 的记录）。定时重评只结案，不授权调用、不新建重放任务；尚未纳入批次的异常仍通过统一脚本冻结。
+`--status`、`--apply` 和每十分钟的 `ops.recover` 都会重评已有批次的业务证据（包括此前因版本不符或审核拒绝而 blocked 的记录）。定时重评只结案，不授权调用、不新建重放任务；未纳入批次的异常也由证据处置流程核验业务结案；需要重放时仍通过授权入口冻结。
 
 明确的 `content_policy_rejected`（例如 HTTP 400 / 1301）会被批量脚本标记 blocked，并跳过整个冻结业务目标的放行和入队；不通过同一新闻的其他回执间接重放。以后该目标出现合格成功证据时仍可结案。普通 429 不等于额度耗尽；`retryable` 也不代表已获准重放费用未知的调用。
 

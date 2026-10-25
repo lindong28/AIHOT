@@ -3,6 +3,8 @@ import { z } from "zod";
 import { sql, type Db } from "../db.ts";
 import { queueProcessing } from "../jobs/content.ts";
 import { enqueue, QUEUES } from "../jobs/queue.ts";
+import { receiptOutcome } from "../providers/receipt-review.ts";
+import { Conflict } from "./sources.ts";
 
 export const GatewayEvidenceSchema = z.object({
   receiptId: z.number().int().positive(),
@@ -93,21 +95,30 @@ async function evidenceProblem(db: Db, r: Receipt, e: GatewayEvidence): Promise<
 }
 
 export async function releaseUnknownReceipt(id: number, input: {
-  error: string; actor: string; note: string; billed: boolean | null; evidence?: GatewayEvidence; dryRun?: boolean;
+  error: string; actor: string; note: string; billed: boolean | null; evidence?: GatewayEvidence; dryRun?: boolean; expectedAttempt?: number;
 }) {
   return sql.begin(async (tx) => {
     const [r] = await tx<Receipt[]>`SELECT * FROM receipts WHERE id = ${id} FOR UPDATE`;
     if (!r || r.status !== "unknown") return null;
+    if (input.expectedAttempt !== undefined && r.attempts !== input.expectedAttempt) throw new Conflict("回执已产生新 attempt，请刷新后核对");
+    const [current] = await tx`SELECT a.error_details,a.error,a.response,v.disposition FROM receipt_attempts a
+      LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
+      WHERE a.receipt_id=${id} AND a.attempt=${r.attempts}`;
+    if (current?.disposition === 'stopped' || current?.disposition === 'superseded'
+      || receiptOutcome(current?.error_details,current?.error ?? null,current?.response) !== 'unknown') {
+      throw new Conflict("已停止、已结案或明确拒绝的请求不能原样重放；请先修正业务输入");
+    }
     if (input.evidence) {
       const problem = await evidenceProblem(tx, r, input.evidence);
       if (problem) return { id, status: "unknown", requeued: false, recovery: problem };
     }
     if (input.dryRun) return { id, status: "unknown", requeued: false, recovery: "eligible_not_dispatched" };
     await tx`UPDATE receipts SET status = 'failed', error = ${input.error}, updated_at = now() WHERE id = ${id}`;
-    // Earlier attempts may have incurred cost. Do not rewrite their history.
-    await tx`UPDATE receipt_attempts SET status = 'failed', error = ${input.error}
-      WHERE receipt_id = ${id} AND attempt = ${r.attempts} AND status = 'unknown'`;
+    // Authorization changes the parent's dispatch state, never the original attempt facts.
     const recovered = await recoverTask(tx, r);
+    if (input.expectedAttempt !== undefined) await tx`INSERT INTO receipt_reviews (receipt_id,attempt,billed,note,actor)
+      VALUES (${id},${r.attempts},${input.billed},${input.note},${input.actor})
+      ON CONFLICT (receipt_id,attempt) DO UPDATE SET billed=excluded.billed,note=excluded.note,actor=excluded.actor,updated_at=now()`;
     await tx`INSERT INTO audit_log (actor, action, subject, reason, before, after)
       VALUES (${input.actor}, ${input.evidence ? "receipt.reconcile" : "receipt.release"}, ${`receipt:${id}`}, ${input.note},
         ${tx.json({ status: "unknown", requestId: r.request_id })},

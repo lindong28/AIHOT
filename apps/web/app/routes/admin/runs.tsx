@@ -1,6 +1,6 @@
 import { SITE } from "@aihot/industry/site";
 import { useState } from "react";
-import { Link, useFetcher } from "react-router";
+import { Link, useFetcher, useLocation } from "react-router";
 import { useEffect } from "react";
 import type { Route } from "./+types/runs";
 import { adminGet } from "../../lib/admin.server";
@@ -17,7 +17,7 @@ interface Runs {
   queues: Array<{ name: string; state: string; n: number; oldest: string }>;
   failedJobs: Row[];
   lagging: Row[];
-  receipts: { counts: Record<string, number>; issues: Row[] };
+  receipts: { counts: Record<string, number>; issues: Row[]; issueTotal: number; unknownTotal: number; openTotal: number; page: number; pageSize: number; view: string };
   deliveries: Row[];
   errors: Row[];
   retrying: { count: number; next: string | null };
@@ -27,21 +27,25 @@ interface Runs {
 
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return adminGet<Runs>(request, "/api/admin/runs");
+  const query = new URL(request.url).searchParams;
+  return adminGet<Runs>(request, `/api/admin/runs?page=${encodeURIComponent(query.get('page') ?? '1')}&view=${encodeURIComponent(query.get('view') ?? 'open')}`);
 }
 
 export const meta: Route.MetaFunction = () => [{ title: `运行 · ${SITE.name} 后台` }];
 
 const STATE_LABEL: Record<string, string> = { created: "排队", retry: "等待重试", active: "执行中" };
-const RECEIPT_LABEL: Record<string, string> = { recovered: "业务已恢复", superseded: "新版已替代", unknown: "费用待核对", failed: "失败", received: "已收到", completed: "已完成", pending: "处理中" };
-const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不自动重放", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
+const RECEIPT_LABEL: Record<string, string> = { recovered: "业务已恢复", superseded: "后续业务已恢复", stopped: "已停止", unknown: "结果未知", failed: "失败", received: "已收到", completed: "已完成", pending: "处理中" };
+const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不重放", invalid_request: "请求被拒绝 · 需修正请求", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
 
 export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
   const refresh = useFetcher<typeof loader>();
-  const r = refresh.data ?? loaderData;
+  const location = useLocation();
+  const r = refresh.data?.receipts.page === loaderData.receipts.page && refresh.data?.receipts.view === loaderData.receipts.view ? refresh.data : loaderData;
   const { run, pending } = useAdminAction();
   const [receipt, setReceipt] = useState<Row | null>(null);
-  const [billed, setBilled] = useState("false");
+  const [billed, setBilled] = useState("unknown");
+  const [receiptAction, setReceiptAction] = useState("record");
+  const [acceptDuplicateCharge, setAcceptDuplicateCharge] = useState(false);
   const [delivery, setDelivery] = useState<Row | null>(null);
   const [outcome, setOutcome] = useState<"sent" | "drop" | "resend">("sent");
   // Failure group to put back into processing ("" = every failure of the last 30 days).
@@ -49,9 +53,9 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
 
   // Live view: refresh every 20 s while visible.
   useEffect(() => {
-    const t = setInterval(() => document.visibilityState === "visible" && refresh.state === "idle" && refresh.load("/admin/runs"), 20_000);
+    const t = setInterval(() => document.visibilityState === "visible" && refresh.state === "idle" && refresh.load(`/admin/runs${location.search}`), 20_000);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, location.search]);
 
   const backlog = new Map<string, Record<string, { n: number; oldest: string }>>();
   for (const q of r.queues) backlog.set(q.name, { ...(backlog.get(q.name) ?? {}), [q.state]: { n: q.n, oldest: q.oldest } });
@@ -69,7 +73,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
         />
         <Stat label="队列积压" value={num(queued)} tone={queued > 500 ? "warn" : undefined} hint="排队与等待重试" />
         <Stat label="失败的定时任务" value={num(failing.length)} tone={failing.length ? "bad" : "ok"} hint="最近一次运行失败" />
-        <Stat label="回执结果未知" value={num(r.receipts.issues.filter((x) => x.status === "unknown").length)} tone={r.receipts.issues.some((x) => x.status === "unknown") ? "bad" : "ok"} hint={`7 天 ${num(Object.values(r.receipts.counts).reduce((a, b) => a + b, 0))} 次付费请求`} />
+        <Stat label="回执结果未知" value={num(r.receipts.unknownTotal)} tone={r.receipts.unknownTotal ? "bad" : "ok"} hint={`全部未结案中待核对 ${num(r.receipts.openTotal)} 条；计费另行记录`} />
         <Stat label="投递待核实" value={num(r.deliveries.filter((d) => d.status === "unknown").length)} tone={r.deliveries.some((d) => d.status === "unknown") ? "bad" : "ok"} />
       </div>
 
@@ -125,7 +129,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
       )}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <Card className="xl:col-span-2" title="需要核对的付费回执" right={<span>{Object.entries(r.receipts.counts).map(([k, v]) => `${RECEIPT_LABEL[k] ?? k} ${v}`).join(" · ")}</span>} pad={false}>
+        <Card className="xl:col-span-2" title={r.receipts.view === 'history' ? '回执处置历史' : '需要核对的付费回执'} right={<span className="flex gap-3"><Link to="/admin/runs">待处理</Link><Link to="/admin/runs?view=history">处置历史</Link><span>共 {num(r.receipts.issueTotal)} 条</span></span>} pad={false}>
           <DataTable
             dense
             rows={r.receipts.issues}
@@ -133,20 +137,30 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
             empty="没有待处理的回执"
             columns={[
               { key: "id", label: "回执", render: (x) => <span className="num">#{x.id}</span> },
-              { key: "s", label: "状态", render: (x) => <><Badge tone={x.status === "unknown" ? "bad" : "warn"}>{RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div></> },
+              { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' ? 'muted' : 'warn'}>{['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
               { key: "w", label: "服务", render: (x) => <span className="whitespace-nowrap">{x.service}{x.model ? ` · ${x.model}` : ""}</span> },
               { key: "p", label: "用途", render: (x) => (x.subject && /^[\w-]{10,}$/.test(x.subject) && x.purpose.includes("analy") ? <Link className="text-accent" to={`/admin/content/${x.subject}`}>{x.purpose}</Link> : x.purpose) },
               { key: "e", label: "错误", render: (x) => <div className="max-w-md break-all text-[12px] text-ink-3">
                 <span className="line-clamp-2" title={x.error ?? ""}>{x.error}</span>
                 {x.error_details && <div>HTTP {x.error_details.httpStatus ?? "未返回"} · 错误码 {x.error_details.providerCode ?? "未返回"}</div>}
+                {x.error_details?.gatewayCode === 'restart_required' && <div>Gateway 配置版本冲突；核对服务已加载版本和完整请求账本后再恢复。</div>}
+                {x.recovery_status === 'invalid_request' && <div>上游未提供可安全保存的具体参数原因。请按请求标识核查模型和参数；不要原样重复调用。</div>}
                 {x.recovery_status === "content_policy_rejected" && <div>{x.error_details?.contentFilter
                   ? `审核对象：${x.error_details.contentFilter.role === "user" ? "输入" : "输出"} · 等级 ${x.error_details.contentFilter.level}`
                   : "上游未返回具体审核原因"}</div>}
                 {x.request_id && <details><summary>请求标识</summary><span className="break-all">{x.request_id}</span></details>}
+                {x.review_history && <Json value={x.review_history} label="处置记录（原调用与费用保留）" />}
               </div> },
-              { key: "a", label: "", render: (x) => (x.status === "unknown" ? <Button size="sm" onClick={() => setReceipt(x)}>核对</Button> : null) },
+              { key: "a", label: "", render: (x) => <Button size="sm" onClick={() => { setReceipt(x); setBilled(x.review?.billed === true ? 'true' : x.review?.billed === false ? 'false' : 'unknown'); setReceiptAction('record'); setAcceptDuplicateCharge(false); }}>核对</Button> },
             ]}
           />
+          <div className="flex items-center justify-between border-t border-line p-3 text-[13px]">
+            <span>第 {r.receipts.page} 页 · 每页 {r.receipts.pageSize} 条；结果、业务恢复与计费分别核对</span>
+            <span className="flex gap-4">
+              {r.receipts.page > 1 && <Link to={`/admin/runs?view=${r.receipts.view}&page=${r.receipts.page-1}`}>上一页</Link>}
+              {r.receipts.page*r.receipts.pageSize < r.receipts.issueTotal && <Link to={`/admin/runs?view=${r.receipts.view}&page=${r.receipts.page+1}`}>下一页</Link>}
+            </span>
+          </div>
         </Card>
         <Card title="需要核实的投递" pad={false}>
           <DataTable
@@ -284,18 +298,25 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
       <ReasonDialog
         open={!!receipt}
         title={`核对回执 #${receipt?.id ?? ""}`}
-        description="结果未知的请求不会自动重发。先到供应商控制台确认这次请求有没有计费，再放行：放行后下一次处理会重新发起调用。"
-        confirmLabel="记录并放行"
+        description="核账不触发调用；停止保留原回执；重放会重新进入业务队列，可能再次计费。明确拒绝的请求须先修正输入，不能原样重放。"
+        confirmLabel={receiptAction === 'replay' ? '授权重放' : receiptAction === 'stop' ? '记录并停止' : '只记录核账'}
         busy={pending === "release"}
         onClose={() => setReceipt(null)}
-        onSubmit={async (note) => (await run("POST", `/api/admin/receipts/${receipt!.id}/release`, { billed: billed === "true", note }, { label: "release", success: "已放行" })) !== null}
+        onSubmit={async (note) => (await run("POST", `/api/admin/receipts/${receipt!.id}/review`, { attempt: receipt!.attempts, action: receiptAction, billed: billed === 'unknown' ? null : billed === "true", note, acceptDuplicateCharge }, { label: "release", success: receiptAction === 'replay' ? '已记录重放授权' : '处置已记录' })) !== null}
       >
         <Field label="供应商是否计费">
           <Select value={billed} onChange={(e) => setBilled(e.target.value)}>
-            <option value="false">未计费（请求没有被接受）</option>
-            <option value="true">已计费（结果没有取回）</option>
+            <option value="unknown">尚不清楚</option>
+            <option value="false">已核实未计费</option>
+            <option value="true">已核实计费</option>
           </Select>
         </Field>
+        <Field label="本次操作"><Select value={receiptAction} onChange={e => setReceiptAction(e.target.value)}>
+          <option value="record">只记录核账，不重放</option>
+          {receipt?.status !== 'completed' && <option value="stop">停止同一请求，保留历史</option>}
+          {receipt?.status === 'unknown' && !['content_policy_rejected','invalid_request'].includes(receipt?.recovery_status) && !['stopped','superseded'].includes(receipt?.review?.disposition) && <option value="replay">授权业务重放</option>}
+        </Select></Field>
+        {receiptAction === 'replay' && <label className="flex gap-2 text-[13px]"><input type="checkbox" checked={acceptDuplicateCharge} onChange={e => setAcceptDuplicateCharge(e.target.checked)} />我已核查，接受本次重放可能再次计费</label>}
       </ReasonDialog>
       <ReasonDialog
         open={requeue !== null}

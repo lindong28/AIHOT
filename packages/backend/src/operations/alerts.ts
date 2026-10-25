@@ -6,6 +6,7 @@
 // Delivery goes through sendAlert (ops chat, internal-chat fallback; off unless FEISHU_INTERNAL_ENABLED).
 import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { sql } from "../db.ts";
+import { receiptUnknownCondition } from "../admin/runs.ts";
 import { beijingDay, beijingStamp, duration, formatAlert, formatRecovery, sendAlert, type Finding, type Level } from "../notify/feishu.ts";
 import { backupConfigured } from "./backup.ts";
 
@@ -155,11 +156,11 @@ export async function collectFindings(now = Date.now()): Promise<Finding[]> {
 
   // ---- Follow-ups for the daily digest ------------------------------------------------------------
   const [r] = await sql<{ receipts: number; services: string | null; deliveries: number }[]>`
-    SELECT (SELECT count(*)::int FROM receipts WHERE status = 'unknown') AS receipts,
-           (SELECT string_agg(DISTINCT service || '/' || purpose, '、') FROM receipts WHERE status = 'unknown') AS services,
+    SELECT (SELECT count(*)::int FROM receipts r WHERE ${receiptUnknownCondition()}) AS receipts,
+           (SELECT string_agg(DISTINCT service || '/' || purpose, '、') FROM receipts r WHERE ${receiptUnknownCondition()}) AS services,
            (SELECT count(*)::int FROM deliveries WHERE status = 'unknown') AS deliveries`;
   if (r!.receipts > 0) {
-    out.push({ key: "receipts.unknown", level: "digest", title: `${r!.receipts} 个付费请求自动重试过一次，结果仍未知`, detail: `${r!.services}；后台“运行”页核对后放行` });
+    out.push({ key: "receipts.unknown", level: "digest", title: `${r!.receipts} 个付费请求结果仍未知`, detail: `${r!.services}；在后台“运行”页核查请求与账单，记录、停止或明确授权重放：/admin/runs` });
   }
   if (r!.deliveries > 0) out.push({ key: "deliveries.unknown", level: "digest", title: `${r!.deliveries} 条飞书内容群推送不确定是否送达`, detail: "后台“运行”页核对群里有没有，再标记或重发" });
 

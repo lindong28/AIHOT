@@ -64,7 +64,7 @@ test("admin run tag survives recovery and older attempt costs are not rewritten"
   const [job] = await sql`SELECT data FROM pgboss.job WHERE name = ${QUEUES.analyze} AND data->>'articleId' = ${id}`;
   assert.equal(job!.data.attemptTag, root);
   const attempts = await sql`SELECT status, cost FROM receipt_attempts WHERE receipt_id = ${e.receiptId} ORDER BY attempt`;
-  assert.deepEqual(attempts.map((a) => [a.status, a.cost]), [["unknown", 0.1], ["failed", null]]);
+  assert.deepEqual(attempts.map((a) => [a.status, a.cost]), [["unknown", 0.1], ["unknown", null]]);
 });
 
 for (const invalid of ["uuid", "project", "model", "missing", "ambiguous", "active", "attempt", "failed", "app-attempt"]) {

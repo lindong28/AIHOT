@@ -5,7 +5,7 @@ import { z } from "zod";
 import { runJson, OutputValidationError, JSONRetryExhaustedError } from "@lindong/llm-gateway-client";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
-import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, ReceiptOutputExhaustedError, rejectReceivedResponse, rejectReceivedOutput } from "./receipts.ts";
+import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptRecoveryStoppedError, ReceiptOutputExhaustedError, rejectReceivedContent, rejectReceivedOutput } from "./receipts.ts";
 import { prepareGatewayRequest, jsonMaxAttempts } from "./gateway.ts";
 import { sql } from "../db.ts";
 import { backfillBinding, backfillContext } from "../backfill/context.ts";
@@ -166,6 +166,9 @@ function isConnectFailure(error: unknown): boolean {
 }
 
 export function parseChatResponse<S extends z.ZodType>(opts: Pick<ChatJsonOptions<S>, "schema" | "parse">, response: unknown): z.infer<S> {
+  if ((response as { choices?: Array<{ finish_reason?: string }> })?.choices?.[0]?.finish_reason === "length") {
+    throw new ModelOutputError("Model output truncated (finish_reason=length); reduce output length within the token budget");
+  }
   const content = (response as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
   if (typeof content !== "string") throw new ModelOutputError("Model content is not text");
   return opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
@@ -221,10 +224,13 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
           gatewayRequestId: generation?.requestId,
           gatewayRecovery: generation?.recoveryEnabled,
         },
-        async (requestId) => {
+        async (requestId, outputRetry) => {
           const started = Date.now();
+          // Frozen on each generation, so same-UUID recovery keeps its original body.
+          const sendBody = opts.purpose === 'story_digest' && outputRetry ? { ...body, messages: [...body.messages as unknown[],
+            { role: "user", content: "上一轮综述未通过输出校验。请压缩为150–400字，只保留主要进展，返回完整、闭合的JSON对象。" }] } : body;
           if (generation) {
-            const json = await generation.send("chat/completions", body, requestId);
+            const json = await generation.send("chat/completions", sendBody, requestId);
             return { response: { ...json, _latencyMs: Date.now() - started }, requestId, usage: (json.usage as Record<string, unknown> | undefined) ?? null, cost: null };
           }
           let res: Response;
@@ -232,7 +238,7 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
             res = await fetch(`${baseUrl!.replace(/\/$/, "")}/chat/completions`, {
               method: "POST",
               headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-              body: JSON.stringify(body),
+              body: JSON.stringify(sendBody),
               signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
             });
           } catch (error) {
@@ -266,8 +272,8 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
       };
       const choice = response?.choices?.[0];
       if (choice?.finish_reason === "content_filter" || choice?.message?.refusal) {
-        await rejectReceivedResponse(receipt.receiptId, "Model refused the requested content", !!generation);
-        if (generation) throw new ReceiptUnknownError(receipt.receiptId, "Gateway content refusal requires reconciliation");
+        await rejectReceivedContent(receipt.receiptId, receipt.attemptId);
+        if (generation) throw new ReceiptRecoveryStoppedError(receipt.receiptId, "content_policy_rejected");
         throw new ModelOutputError("Model refused the requested content");
       }
       return { receipt, response, usage: raw.usage as Record<string, unknown> | null };

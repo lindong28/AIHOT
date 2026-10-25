@@ -11,6 +11,7 @@ import { contentChain, detachFromFact, mergeStories, overrideFields, rerun, sear
 import { banSource, eraseFeedback, feedbackScreenshot, listFeedback, unbanSource, updateFeedback } from "@aihot/backend/admin/feedback";
 import { listMonitorEvents, listMonitorPosts, relinkPost, resolveMonitorPost, reviewReceipt, setWithdrawn, updateMonitorEvent } from "@aihot/backend/admin/monitor";
 import { deliveryIssueCondition, receiptIssueCondition, releaseReceipt, requeueFailedArticles, resolveDelivery, runsOverview } from "@aihot/backend/admin/runs";
+import { reviewReceipt as reviewPaidReceipt } from "@aihot/backend/admin/receipt-reviews";
 import { listBudgets, listTargets, replaceContactQr, setTargetEnabled, updateBudget } from "@aihot/backend/admin/settings";
 import { createSource, fetchNow, listSources, previewSource, sourceDetail, updateSource } from "@aihot/backend/admin/sources";
 import { sql } from "@aihot/backend/db";
@@ -91,11 +92,12 @@ export function registerAdmin(app: FastifyInstance) {
   }));
 
   // Runs (F20)
-  app.get("/api/admin/runs", adminHandler(async () => runsOverview()));
+  app.get("/api/admin/runs", adminHandler(async req => runsOverview({ page: page(req), view: q(req).view })));
   app.get("/api/admin/backfill", adminHandler(async () => backfillOverview()));
   app.post("/api/admin/backfill/:id/:action", adminHandler(async (req, _reply, admin) =>
     controlBackfill(param(req, "id"), param(req, "action") as "pause" | "resume" | "retry", actorOf(admin))));
   app.post("/api/admin/receipts/:id/release", adminHandler(async (req, reply, admin) => orNotFound(req, reply, await releaseReceipt(Number(param(req, "id")), body(req) as never, actorOf(admin)))));
+  app.post("/api/admin/receipts/:id/review", adminHandler(async (req, reply, admin) => orNotFound(req, reply, await reviewPaidReceipt(Number(param(req, "id")), body(req) as never, actorOf(admin)))));
   app.post("/api/admin/deliveries/:id/resolve", adminHandler(async (req, reply, admin) => orNotFound(req, reply, await resolveDelivery(Number(param(req, "id")), body(req) as never, actorOf(admin)))));
   app.post("/api/admin/processing/requeue", adminHandler(async (req, _reply, admin) => requeueFailedArticles(body(req) as never, actorOf(admin))));
 

@@ -7,6 +7,7 @@ import { failureGroupSql, requeueFailed } from "../jobs/content.ts";
 import { releaseUnknownReceipt } from "./receipt-recovery.ts";
 import { settleReceiptRecoveries } from "./receipt-batch-recovery.ts";
 import { contentPolicyRejected, safeGatewayFailure } from "../providers/gateway-error.ts";
+import { settleReceiptReviews, reviewReceipt } from "./receipt-reviews.ts";
 
 const STALE_HEARTBEAT_MS = 3 * 60_000;
 
@@ -14,15 +15,25 @@ const STALE_HEARTBEAT_MS = 3 * 60_000;
 export function receiptIssueCondition() {
   return sql`(r.status = 'unknown' OR (r.status = 'failed' AND r.updated_at > now() - interval '3 days') OR (r.status = 'pending' AND r.updated_at < now() - interval '15 minutes'))
     AND NOT (r.status='unknown' AND r.retry_after IS NOT NULL AND NOT r.recovery_exhausted AND r.retry_after>now()-interval '15 minutes')
-    AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')`;
+    AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered')
+    AND NOT EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts AND v.disposition IN ('stopped','superseded'))`;
+}
+
+export function receiptUnknownCondition() {
+  return sql`r.status='unknown' AND ${receiptIssueCondition()}
+    AND NOT EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts AND v.outcome<>'unknown')`;
 }
 
 export function deliveryIssueCondition() {
   return sql`status IN ('unknown', 'failed') OR (status = 'sending' AND updated_at < now() - interval '15 minutes')`;
 }
 
-export async function runsOverview() {
-  const [heartbeats, latest, timeline, queues, failedJobs, lagging, receipts, receiptIssues, deliveries, errors, ingest, leaderboard] = await Promise.all([
+export async function runsOverview(input: { page?: number; view?: string } = {}) {
+  const page = Math.max(1, Math.min(100000, Math.floor(input.page || 1)));
+  const view = input.view === 'history' ? 'history' : 'open';
+  const condition = view === 'history' ? sql`EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id)
+    OR EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id)` : receiptIssueCondition();
+  const [heartbeats, latest, timeline, queues, failedJobs, lagging, receipts, receiptIssues, deliveries, errors, ingest, leaderboard, totals] = await Promise.all([
     sql<{ key: string; value: Record<string, unknown>; updated_at: Date }[]>`SELECT key, value, updated_at FROM settings WHERE key LIKE 'heartbeat.%' ORDER BY key`,
     sql`
       WITH latest AS (
@@ -56,10 +67,12 @@ export async function runsOverview() {
       SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at,
         (SELECT a.error_details FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS error_details,
         (SELECT a.error FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS attempt_error,
-        (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id
+        (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id,
+        (SELECT row_to_json(v) FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts) AS review,
+        (SELECT json_agg(v ORDER BY v.attempt DESC) FROM receipt_reviews v WHERE v.receipt_id=r.id) AS review_history
       FROM receipts r
-      WHERE ${receiptIssueCondition()}
-      ORDER BY status = 'unknown' DESC, updated_at DESC LIMIT 40`,
+      WHERE ${condition}
+      ORDER BY status = 'unknown' DESC, updated_at DESC, id DESC LIMIT 40 OFFSET ${(page-1)*40}`,
     sql`
       SELECT id, target_key, subject_kind, subject_id, status, attempts, left(response, 240) AS response, created_at, updated_at FROM deliveries
       WHERE ${deliveryIssueCondition()}
@@ -71,6 +84,10 @@ export async function runsOverview() {
     sql`SELECT client, kind, status, left(error, 200) AS error, summary, created_at FROM ingest_events ORDER BY created_at DESC LIMIT 20`,
     sql<{ value: { at: string; sources: Record<string, { ok: boolean; at: string; lastOkAt: string | null; changed?: boolean; rows?: number; error?: string }> } }[]>`
       SELECT value FROM settings WHERE key = 'leaderboard.fetch'`,
+    sql<{ total: number; unknown: number; open: number }[]>`SELECT
+      (SELECT count(*)::int FROM receipts r WHERE ${condition}) AS total,
+      (SELECT count(*)::int FROM receipts r WHERE ${receiptUnknownCondition()}) AS unknown,
+      (SELECT count(*)::int FROM receipts r WHERE ${receiptIssueCondition()}) AS open`,
   ]);
   // Articles waiting to retry after a passing provider problem (they are not failed).
   const [retrying] = await sql<{ n: number; next: Date | null }[]>`
@@ -89,9 +106,12 @@ export async function runsOverview() {
     queues,
     failedJobs,
     lagging,
-    receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issues: receiptIssues.map(({ attempt_error, ...r }) => {
+    receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issueTotal: totals[0]!.total,
+      unknownTotal: totals[0]!.unknown, openTotal: totals[0]!.open, page, pageSize: 40, view,
+      issues: receiptIssues.map(({ attempt_error, ...r }) => {
       const details = safeGatewayFailure(r.error_details);
-      return { ...r, error_details: details, recovery_status: contentPolicyRejected(details, attempt_error) ? "content_policy_rejected"
+      const review = r.review as { outcome?: string } | null;
+      return { ...r, error_details: details, recovery_status: review?.outcome && review.outcome !== 'unknown' ? review.outcome : contentPolicyRejected(details, attempt_error) ? "content_policy_rejected"
         : details?.retryable === true ? "retryable" : "needs_review" };
     }) },
     deliveries,
@@ -114,13 +134,8 @@ async function release(id: number, error: string, actor: string, note: string, b
 }
 
 /** Admin, after checking the provider's console: records whether it was billed and releases it. */
-export async function releaseReceipt(id: number, input: { billed: boolean; note: string }, actor: string) {
-  if (!input.note?.trim()) throw new Error("note is required");
-  const [row] = await sql<{ status: string }[]>`SELECT status FROM receipts WHERE id = ${id}`;
-  if (!row) return null;
-  if (row.status !== "unknown") throw new Conflict("只有结果未知的回执需要人工核对");
-  const error = `人工核对：${input.billed ? "供应商已计费但结果未取回" : "供应商未计费"}。${input.note}`;
-  return release(id, error, actor, input.note, input.billed);
+export async function releaseReceipt(id: number, input: { attempt: number; billed: boolean | null; note: string; acceptDuplicateCharge: boolean }, actor: string) {
+  return reviewReceipt(id, { ...input, action: "replay" }, actor);
 }
 
 const AUTO_RELEASE_AFTER_MS = 30 * 60_000;
@@ -133,16 +148,27 @@ const AUTO_RELEASE_NOTE = "自动放行：结果未知超过 30 分钟，未核�
  */
 export async function autoReleaseUnknownReceipts(now = Date.now()) {
   await settleReceiptRecoveries();
+  await settleReceiptReviews();
   const rows = await sql<{ id: number }[]>`
     SELECT r.id FROM receipts r
     WHERE r.status = 'unknown' AND r.updated_at < ${new Date(now - AUTO_RELEASE_AFTER_MS)}
       AND NOT (r.request ? 'gateway')
+      AND NOT EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts
+        AND (v.disposition IN ('stopped','superseded') OR v.outcome<>'unknown'))
+      AND NOT EXISTS (SELECT 1 FROM audit_log l WHERE l.subject='receipt:' || r.id::text
+        AND l.actor='ops.recover' AND l.action='receipt.release')
       AND NOT EXISTS (SELECT 1 FROM receipt_attempts a WHERE a.receipt_id = r.id AND a.error LIKE ${AUTO_RELEASE_NOTE + "%"})
     ORDER BY r.id LIMIT 200`;
   let released = 0;
   let requeued = 0;
   for (const r of rows) {
-    const done = await release(r.id, AUTO_RELEASE_NOTE, "ops.recover", "结果未知，自动放行一次", null);
+    let done;
+    try {
+      done = await release(r.id, AUTO_RELEASE_NOTE, "ops.recover", "结果未知，自动放行一次", null);
+    } catch (error) {
+      if (error instanceof Conflict) continue; // The operator may have stopped it after selection.
+      throw error;
+    }
     if (done) released += 1;
     if (done?.requeued) requeued += 1;
   }

@@ -9,7 +9,7 @@ import { config } from "@aihot/backend/config";
 import { closeDb, sql } from "@aihot/backend/db";
 import { chatJson, ModelOutputError } from "@aihot/backend/providers/llm";
 import { prepareGatewayRequest } from "@aihot/backend/providers/gateway";
-import { completeReceipt, GatewayNotDispatchedError, ReceiptUnknownError, ReceiptRetryError } from "@aihot/backend/providers/receipts";
+import { completeReceipt, GatewayNotDispatchedError, ReceiptUnknownError, ReceiptRetryError, ReceiptRecoveryStoppedError } from "@aihot/backend/providers/receipts";
 import { autoReleaseUnknownReceipts } from "@aihot/backend/admin/runs";
 import { backfillContext, type BackfillBindings } from "@aihot/backend/backfill/context";
 
@@ -184,12 +184,12 @@ test("capability failure during recovery cannot discard the previous UUID or aut
 test("native and compatibility failure metadata persist safe details without changing unknown billing", async () => {
   for (mode of ["failure-native", "failure-compat"]) {
     const subject=tag(), before=hits;
-    await assert.rejects(ask(subject),ReceiptUnknownError);
+    await assert.rejects(ask(subject),ReceiptRecoveryStoppedError);
     const [row]=await sql`SELECT a.error_details,a.status,a.cost,a.error,a.request_id FROM receipt_attempts a JOIN receipts r ON r.id=a.receipt_id WHERE r.subject=${subject}`;
     assert.deepEqual(row!.error_details,{version:1,httpStatus:400,providerCode:"1301",category:"content_policy_rejected",retryable:false,contentFilter:{role:"user",level:2}});
     assert.equal(row!.status,"unknown"); assert.equal(row!.cost,null);
     assert.ok(row!.request_id); assert.doesNotMatch(JSON.stringify(row),/must-not-persist/);
-    await assert.rejects(ask(subject),ReceiptUnknownError);
+    await assert.rejects(ask(subject),ReceiptRecoveryStoppedError);
     assert.equal(hits-before,1);
   }
 });
@@ -341,14 +341,14 @@ for (const failure of ["http-error", "disconnect", "missing", "mismatch", "refus
     mode = failure;
     const subject = tag();
     const before = hits;
-    await assert.rejects(ask(subject), ReceiptUnknownError);
+    await assert.rejects(ask(subject), ['refusal','filtered'].includes(failure) ? ReceiptRecoveryStoppedError : ReceiptUnknownError);
     await sql`UPDATE receipts SET updated_at = now() - interval '31 minutes' WHERE subject = ${subject}`;
     await autoReleaseUnknownReceipts();
     mode = "ok";
-    await assert.rejects(ask(subject), ReceiptUnknownError);
+    await assert.rejects(ask(subject), ['refusal','filtered'].includes(failure) ? ReceiptRecoveryStoppedError : ReceiptUnknownError);
     assert.equal(hits - before, 1, "no second send");
     const [row] = await sql`SELECT status, request_id FROM receipts WHERE subject = ${subject}`;
-    assert.equal(row!.status, "unknown");
+    assert.equal(row!.status, ['refusal','filtered'].includes(failure) ? "received" : "unknown");
     assert.ok(row!.request_id);
   });
 }
