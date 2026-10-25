@@ -39,6 +39,7 @@ interface RunDetail {
   pages?: number;
   backlog?: number;
   dropped?: number;
+  body?: { checked: number; ready: number; missing: number };
 }
 
 interface Detail {
@@ -46,6 +47,9 @@ interface Detail {
   runs: Array<{ id: number; started_at: string; finished_at: string | null; status: string; found_count: number | null; new_count: number | null; error: string | null; detail: RunDetail | null }>;
   items: Array<{ id: string; title: string; url: string; discovered_at: string; published_at: string | null; processing_state: string; selected: boolean | null; visibility: string | null; title_zh: string | null }>;
   stats: { total: number; last7d: number; selected: number };
+  bodyIssues: Array<{ article_id: string; title: string; url: string; first_seen_at: string; last_attempt_at: string | null; failed_attempts: number; last_error: string }>;
+  issueTotal: number;
+  issuePage: number;
   history: Array<{ created_at: string; actor: string; action: string; reason: string | null; before: unknown; after: unknown }>;
 }
 
@@ -56,7 +60,8 @@ interface Preview {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  return adminGet<Detail>(request, `/api/admin/sources/${encodeURIComponent(params.id)}`);
+  const issuePage = new URL(request.url).searchParams.get("issuePage") ?? "1";
+  return adminGet<Detail>(request, `/api/admin/sources/${encodeURIComponent(params.id)}?issuePage=${encodeURIComponent(issuePage)}`);
 }
 
 export const meta: Route.MetaFunction = ({ loaderData }) => [{ title: `${loaderData?.source.name ?? "信源"} · ${SITE.name} 后台` }];
@@ -173,6 +178,22 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
         <Stat label="入选精选" value={num(stats.selected)} />
       </div>
       {s.last_error && s.health !== "ok" && <div className="mb-5 rounded-card bg-hot-soft px-4 py-3 text-[13px] text-hot ring-1 ring-hot/20">{s.last_error}</div>}
+      {(s.config.provider === "wechat2rss" || loaderData.issueTotal > 0) && <div className="mb-5">
+        <Card title={`正文待修复 · ${num(loaderData.issueTotal)} 篇`} pad={false}>
+          <p className="p-3 text-[13px] text-ink-3">其他文章继续采集。问题保留至正文修复，退出最近列表后仍可查看；进入内容诊断可重试并查看原始报错。</p>
+          <DataTable rows={loaderData.bodyIssues} rowKey={r => r.article_id} empty="没有待修复的正文问题" columns={[
+            { key: "title", label: "文章", render: r => <Link className="text-accent hover:underline" to={`/admin/content/${r.article_id}`}>{r.title}</Link> },
+            { key: "error", label: "最近原因", render: r => <span className="break-words text-[12px]">{r.last_error}</span> },
+            { key: "first", label: "首次发现", render: r => <Time at={r.first_seen_at} /> },
+            { key: "last", label: "最近失败", render: r => <Time at={r.last_attempt_at} /> },
+            { key: "attempts", label: "失败尝试", render: r => r.failed_attempts ? num(r.failed_attempts) : "历史次数未知" },
+          ]} />
+          <div className="flex gap-4 p-3 text-[13px]">
+            {loaderData.issuePage > 1 && <Link to={`?issuePage=${loaderData.issuePage-1}`}>上一页</Link>}
+            {loaderData.issuePage * 25 < loaderData.issueTotal && <Link to={`?issuePage=${loaderData.issuePage+1}`}>下一页</Link>}
+          </div>
+        </Card>
+      </div>}
 
       {preview && (
         <Card className="mb-5" title={`预览：${preview.count} 条（${preview.ms}ms，未入库）`} right={<button onClick={() => setPreview(null)}>收起</button>}>
@@ -292,13 +313,14 @@ export default function SourceDetail({ loaderData }: Route.ComponentProps) {
                   label: "结果",
                   render: (r) => (
                     <span className="inline-flex gap-1">
-                      <Badge tone={r.status === "ok" ? "ok" : r.status === "failed" ? "bad" : "muted"} title={r.error ?? undefined}>{r.status}</Badge>
+                      <Badge tone={r.status === "ok" ? r.detail?.body?.missing ? "warn" : "ok" : r.status === "failed" ? "bad" : "muted"} title={r.error ?? undefined}>{r.status === "ok" && r.detail?.body?.missing ? "部分完成" : r.status}</Badge>
                       {!!r.detail?.dropped && <Badge tone="bad" title="有一段更早的帖子没能读完，其中的内容可能漏采">可能漏采</Badge>}
                       {!r.detail?.dropped && !!r.detail?.backlog && <Badge tone="warn" title="帖子多于一轮能读的页数，余下的在后面几轮接着读">续读 {r.detail.backlog} 段</Badge>}
                     </span>
                   ),
                 },
                 { key: "n", label: "发现/新增", align: "right", render: (r) => `${r.found_count ?? "—"}/${r.new_count ?? "—"}` },
+                { key: "body", label: "正文", render: r => r.detail?.body ? `检查 ${r.detail.body.checked} · 可用 ${r.detail.body.ready} · 待修复 ${r.detail.body.missing}` : "—" },
                 { key: "ms", label: "耗时", align: "right", render: (r) => duration(r.started_at, r.finished_at) },
               ]}
             />

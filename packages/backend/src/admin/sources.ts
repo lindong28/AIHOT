@@ -23,6 +23,7 @@ export interface SourceListFilters {
   health?: string;
   enabled?: "true" | "false";
   mode?: string;
+  bodyIssues?: boolean;
   page?: number;
 }
 
@@ -32,6 +33,8 @@ export async function listSources(f: SourceListFilters) {
   const rows = await sql`
     SELECT s.id, s.name, s.kind, s.tier, s.participation_mode, s.enabled, s.health, s.fail_count, s.interval_minutes,
            s.last_ok_at, s.last_fetch_at, s.last_error, s.first_party, s.next_fetch_at,
+           (SELECT count(*)::int FROM wechat_body_issues i JOIN articles a ON a.id=i.article_id WHERE i.resolved_at IS NULL
+             AND (a.source_id=s.id OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=a.id AND d.source_id=s.id))) AS body_issues,
            (SELECT count(*)::int FROM articles a WHERE a.source_id = s.id AND a.discovered_at > now() - interval '7 days') AS items_7d,
            (SELECT count(*)::int FROM publications p WHERE p.source_id = s.id AND p.selected AND p.discovered_at > now() - interval '30 days') AS selected_30d
     FROM sources s
@@ -40,16 +43,20 @@ export async function listSources(f: SourceListFilters) {
       AND (${f.health ?? null}::text IS NULL OR s.health = ${f.health ?? null})
       AND (${f.mode ?? null}::text IS NULL OR s.participation_mode = ${f.mode ?? null})
       AND (${f.enabled ?? null}::text IS NULL OR s.enabled = (${f.enabled ?? null} = 'true'))
+      AND (${!f.bodyIssues} OR EXISTS (SELECT 1 FROM wechat_body_issues i JOIN articles a ON a.id=i.article_id WHERE i.resolved_at IS NULL
+        AND (a.source_id=s.id OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=a.id AND d.source_id=s.id))))
     ORDER BY s.enabled DESC, CASE s.health WHEN 'failing' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, s.name
     LIMIT 100 OFFSET ${(page - 1) * 100}`;
   const [totals] = await sql<{ total: number; enabled: number; failing: number; degraded: number }[]>`
     SELECT count(*)::int AS total, count(*) FILTER (WHERE enabled)::int AS enabled,
            count(*) FILTER (WHERE health = 'failing')::int AS failing, count(*) FILTER (WHERE health = 'degraded')::int AS degraded
     FROM sources`;
-  return { page, rows, totals };
+  const [issues] = await sql`SELECT count(*)::int AS total FROM wechat_body_issues WHERE resolved_at IS NULL`;
+  return { page, rows, totals: { ...totals, body_issues: issues!.total } };
 }
 
-export async function sourceDetail(id: string) {
+export async function sourceDetail(id: string, requestedIssuePage = 1) {
+  const issuePage = Number.isSafeInteger(requestedIssuePage) && requestedIssuePage > 0 ? Math.min(requestedIssuePage, 1000000) : 1;
   const [source] = await sql`SELECT * FROM sources WHERE id = ${id}`;
   if (!source) return null;
   const runs = await sql`SELECT id, started_at, finished_at, status, found_count, new_count, error, detail FROM fetch_runs WHERE source_id = ${id} ORDER BY started_at DESC LIMIT 30`;
@@ -62,7 +69,12 @@ export async function sourceDetail(id: string) {
     FROM articles a WHERE a.source_id = ${id}`;
   const history = await sql`SELECT created_at, actor, action, reason, before, after FROM audit_log WHERE subject = ${`source:${id}`} ORDER BY created_at DESC LIMIT 20`;
   const [republish] = await sql<{ value: Record<string, unknown> }[]>`SELECT value FROM settings WHERE key = ${republishKey(id)}`;
-  return { source, runs, items, stats, history, republish: republish?.value ?? null };
+  const bodyIssues = await sql`SELECT i.*,a.title,a.url FROM wechat_body_issues i JOIN articles a ON a.id=i.article_id
+    WHERE i.resolved_at IS NULL AND (a.source_id=${id} OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=a.id AND d.source_id=${id}))
+    ORDER BY i.first_seen_at,i.article_id LIMIT 25 OFFSET ${(issuePage-1)*25}`;
+  const [issueCount] = await sql`SELECT count(*)::int AS total FROM wechat_body_issues i JOIN articles a ON a.id=i.article_id
+    WHERE i.resolved_at IS NULL AND (a.source_id=${id} OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=a.id AND d.source_id=${id}))`;
+  return { source, runs, items, stats, history, bodyIssues, issuePage, issueTotal: issueCount!.total, republish: republish?.value ?? null };
 }
 
 /** Fetches a source (saved or draft) and returns what it would collect, without storing anything. */

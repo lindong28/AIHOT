@@ -22,6 +22,7 @@ interface Chain {
   decisions: Row[];
   deliveries: Row[];
   history: Row[];
+  bodyIssue: { first_seen_at: string; last_attempt_at: string | null; failed_attempts: number; first_error: string; last_error: string; stage: string; resolved_at: string | null } | null;
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
@@ -134,6 +135,19 @@ export default function ContentItem({ loaderData }: Route.ComponentProps) {
               </div>
             </Step>
             <Step title="正文与修订" meta={`第 ${a.revision} 版 · 正文 ${a.body_status} · ${a.body_chars ?? 0} 字符`}>
+              {c.bodyIssue && <div className="mb-3 rounded-control bg-bg-sunk/60 p-3 ring-1 ring-line">
+                <Badge tone={c.bodyIssue.resolved_at ? "ok" : "warn"}>{c.bodyIssue.resolved_at ? "正文问题已修复" : "正文待修复"}</Badge>
+                <KV items={[
+                  ["首次发现", bj(c.bodyIssue.first_seen_at, true)],
+                  ["最初原因", c.bodyIssue.first_error],
+                  ["最近阶段", ({fetch_body:"读取原文正文",save_material:"保存候选",save_repair:"保存修复",legacy:"升级前历史记录"} as Record<string,string>)[c.bodyIssue.stage] ?? c.bodyIssue.stage],
+                  ["最近原因", c.bodyIssue.last_error],
+                  ["最近失败", c.bodyIssue.last_attempt_at ? bj(c.bodyIssue.last_attempt_at, true) : "未记录"],
+                  ["失败尝试", c.bodyIssue.failed_attempts ? String(c.bodyIssue.failed_attempts) : "历史次数未知"],
+                  ["修复时间", c.bodyIssue.resolved_at ? bj(c.bodyIssue.resolved_at, true) : "尚未修复"],
+                ]} />
+                {!c.bodyIssue.resolved_at && <p className="mt-2">本篇暂不进入分析，其他文章继续处理。原文恢复可读后可重试；失败原因会继续保留。</p>}
+              </div>}
               {c.revisions.length ? (
                 <ul className="space-y-1">
                   {c.revisions.map((r) => (

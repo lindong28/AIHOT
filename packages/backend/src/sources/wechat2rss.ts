@@ -1,5 +1,7 @@
 // The existing Wechat2RSS instance supplies a separate RSS feed for each official account.
 import { fetchWechatBody, wechatBodyIssue } from "../content/wechat.ts";
+import { bodyFailureMessage, updateWechatBodyIssue } from "../content/wechat-body-issues.ts";
+import { repairHash, repairWechatBody } from "../content/wechat-repair.ts";
 import { credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { upsertMaterial } from "../content/materials.ts";
@@ -82,6 +84,7 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
     const stored = missingKeys.length ? await sql`SELECT identity_key,body_text,body_html FROM articles
       WHERE source_id=${sourceId} AND identity_key IN ${sql(missingKeys)} AND body_status='ok' AND content_discarded_at IS NULL` : [];
     const bodies = new Map(stored.filter((a) => !wechatBodyIssue(a.body_text, a.body_html)).map((a) => [a.identity_key, a]));
+    const failures = new Map<string, { stage: string; message: string; at: Date }>();
     let index = 0;
     await Promise.all(Array.from({ length: Math.min(8, batch.length) }, async () => {
       while (index < batch.length) {
@@ -90,26 +93,46 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
           const body = bodies.get(item.identityKey ?? identityKeyForUrl(item.url));
           // A feed's placeholder must not invalidate a body already recovered for this source.
           if (body) Object.assign(item, { bodyText: body.body_text, bodyHtml: body.body_html, bodyStatus: "ok" });
-          else try { Object.assign(item, await fetchWechatBody(item.url)); } catch { /* Retry on the next scheduled check. */ }
+          else {
+            const at = new Date();
+            try { Object.assign(item, await fetchWechatBody(item.url)); }
+            catch (error) { failures.set(item.url, { stage: "fetch_body", message: bodyFailureMessage(error), at }); }
+          }
         }
       }
     }));
     let missing = 0;
     for (const item of batch) {
-      if (item.bodyStatus !== "ok") missing++;
-      const saved = await upsertMaterial({ ...item, sourceId, via: "fetch",
-        backfill: item.publishedAt!.getTime() <= Date.parse(initializedAt) ? "first-import" : null });
+      const saved = await sql.begin(async tx => {
+        // A repair may have finished while this request was in flight; retain it under the row lock.
+        if (item.bodyStatus !== "ok") {
+          const [current] = await tx`SELECT body_text,body_html,body_status FROM articles
+            WHERE source_id=${sourceId} AND identity_key=${item.identityKey ?? identityKeyForUrl(item.url)}
+              AND content_discarded_at IS NULL FOR UPDATE`;
+          if (current?.body_status === "ok" && !wechatBodyIssue(current.body_text, current.body_html)) {
+            Object.assign(item, { bodyText: current.body_text, bodyHtml: current.body_html, bodyStatus: "ok" });
+          }
+        }
+        const result = await upsertMaterial({ ...item, sourceId, via: "fetch",
+          backfill: item.publishedAt!.getTime() <= Date.parse(initializedAt) ? "first-import" : null }, tx);
+        const usable = await updateWechatBodyIssue(result.articleId, failures.get(item.url) ?? {
+          stage: "save_material", message: "已保存候选，但已有归属或回填保护下的文章仍缺正文；请在内容诊断中查看并修复", at: now,
+        }, tx);
+        if (!usable) missing++;
+        if (usable && (result.created || result.revised)) await queueProcessing(result.articleId, { db: tx });
+        return result;
+      });
       created += Number(saved.created);
       revised += Number(saved.revised);
-      if (item.bodyStatus === "ok" && (saved.created || saved.revised)) await queueProcessing(saved.articleId);
     }
-    if (missing) throw new Error(`Wechat2RSS: ${missing}/${batch.length} articles still lack a usable body; valid articles saved, retry on next check`);
+    const body = { checked: batch.length, ready: batch.length - missing, missing };
     const cursor = { ...(source.cursor ?? {}), initializedAt, lastCheckedAt: now.toISOString() };
     await sql`UPDATE sources SET cursor = ${sql.json(cursor)}, last_fetch_at = now(), last_ok_at = now(),
       health = 'ok', fail_count = 0, last_error = NULL,
       next_fetch_at = now() + make_interval(mins => interval_minutes), updated_at = now() WHERE id = ${sourceId}`;
-    await sql`UPDATE fetch_runs SET status = 'ok', finished_at = now(), found_count = ${items.length}, new_count = ${created} WHERE id = ${run!.id}`;
-    return { sourceId, status: "ok" as const, found: items.length, created, revised };
+    await sql`UPDATE fetch_runs SET status = 'ok', finished_at = now(), found_count = ${items.length}, new_count = ${created},
+      detail = ${sql.json({ reason, provider: "wechat2rss", body })} WHERE id = ${run!.id}`;
+    return { sourceId, status: "ok" as const, found: items.length, created, revised, body };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Wechat2RSS collection failed";
     await sql`UPDATE sources SET last_fetch_at = now(), fail_count = fail_count + 1, last_error = ${message},
@@ -117,5 +140,27 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
       next_fetch_at = now() + make_interval(mins => interval_minutes), updated_at = now() WHERE id = ${sourceId}`;
     await sql`UPDATE fetch_runs SET status = 'failed', finished_at = now(), new_count = ${created}, error = ${message} WHERE id = ${run!.id}`;
     return { sourceId, status: "failed" as const, error: message };
+  }
+}
+
+/** One explicit attempt, including articles no longer in the recent feed. Never changes source health. */
+export async function retryWechatBody(sourceId: string, articleId: string) {
+  const [a] = await sql`SELECT a.* FROM articles a JOIN sources s ON s.id=${sourceId}
+    WHERE a.id=${articleId} AND s.kind='mp_account' AND s.config->>'provider'='wechat2rss'
+      AND (a.source_id=s.id OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=a.id AND d.source_id=s.id))`;
+  if (!a) throw new Error("WeChat source article not found");
+  if (a.content_discarded_at || a.managed_backfill_id) throw new Error("Article requires its retention/backfill workflow");
+  if (await updateWechatBodyIssue(articleId)) return { articleId, status: "already_ready" as const };
+  const at = new Date();
+  let stage = "fetch_body";
+  try {
+    const body = await fetchWechatBody(a.url);
+    stage = "save_repair";
+    await repairWechatBody({ articleId, expectedHash: repairHash(a), bodyText: body.bodyText, bodyHtml: body.bodyHtml, evidence: "管理员重试：从同一微信原文地址读取并验证正文" });
+    return { articleId, status: "repaired" as const };
+  } catch (error) {
+    const message = bodyFailureMessage(error);
+    const recovered = await updateWechatBodyIssue(articleId, { stage, message, at });
+    return { articleId, status: recovered ? "already_ready" as const : "failed" as const, error: message };
   }
 }

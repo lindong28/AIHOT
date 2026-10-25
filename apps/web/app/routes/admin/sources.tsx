@@ -23,12 +23,13 @@ interface SourceRow {
   next_fetch_at: string | null;
   items_7d: number;
   selected_30d: number;
+  body_issues: number;
 }
 
 interface SourcesData {
   page: number;
   rows: SourceRow[];
-  totals: { total: number; enabled: number; failing: number; degraded: number };
+  totals: { total: number; enabled: number; failing: number; degraded: number; body_issues: number };
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -54,13 +55,18 @@ export default function Sources({ loaderData }: Route.ComponentProps) {
         <Stat label="失败" value={num(totals.failing)} tone={totals.failing ? "bad" : "ok"} />
         <Stat label="不稳定" value={num(totals.degraded)} tone={totals.degraded ? "warn" : undefined} />
       </div>
+      <p className="mb-4 text-[13px] text-ink-3">
+        <Link to="?bodyIssues=true" className="text-accent hover:underline">正文待修复 {num(totals.body_issues)} 篇</Link>
+        <span> · 单篇正文问题单独保留，不影响其他文章继续采集。</span>
+      </p>
       <Card pad={false}>
         <div className="flex flex-col gap-3 border-b border-line p-3 lg:flex-row lg:items-center lg:justify-between">
           <Form method="get" className="flex w-full max-w-md gap-2" preventScrollReset>
-            {["kind", "health", "mode"].map((k) => sp.get(k) && <input key={k} type="hidden" name={k} value={sp.get(k)!} />)}
+            {["kind", "health", "mode", "bodyIssues"].map((k) => sp.get(k) && <input key={k} type="hidden" name={k} value={sp.get(k)!} />)}
             <Input name="q" defaultValue={sp.get("q") ?? ""} placeholder="名称、ID 或地址" aria-label="搜索信源" />
           </Form>
           <div className="flex flex-wrap items-center gap-3">
+            <FilterChips param="bodyIssues" options={[{ value: "", label: "所有正文" }, { value: "true", label: "待修复" }]} />
             <FilterChips param="health" options={[{ value: "", label: "全部" }, { value: "failing", label: "失败" }, { value: "degraded", label: "不稳定" }, { value: "paused", label: "暂停" }]} />
             <Select
               aria-label="类型"
@@ -123,6 +129,7 @@ export default function Sources({ loaderData }: Route.ComponentProps) {
               ),
             },
             { key: "ok", label: "上次成功", render: (r) => <Time at={r.last_ok_at} /> },
+            { key: "body", label: "正文待修复", render: (r) => r.body_issues ? <Badge tone="warn">{num(r.body_issues)} 篇</Badge> : "—" },
             { key: "interval", label: "频率", align: "right", render: (r) => `${r.interval_minutes} 分` },
             { key: "items", label: "7 天条目", align: "right", render: (r) => num(r.items_7d) },
             { key: "sel", label: "30 天精选", align: "right", render: (r) => num(r.selected_30d) },

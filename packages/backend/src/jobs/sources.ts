@@ -1,5 +1,6 @@
 // Collection jobs: per-source fetch runs and body extraction before analysis.
 import type { PgBoss } from "pg-boss";
+import { retryWechatBody } from "../sources/wechat2rss.ts";
 import { collectSource, collectXShard } from "../sources/collect.ts";
 import { checkMpAccount } from "../sources/mp.ts";
 import { ensureQueue, QUEUES } from "./queue.ts";
@@ -19,8 +20,9 @@ export async function registerSourceJobs(boss: PgBoss) {
   });
   await ensureQueue(QUEUES.mpCheck);
   // Dajiala allows a few requests per second; two accounts at a time stays well under it.
-  await boss.work<{ sourceId: string; reason?: "schedule" | "manual" }>(QUEUES.mpCheck, { localConcurrency: 2, pollingIntervalSeconds: 2 }, async ([job]) => {
+  await boss.work<{ sourceId: string; articleId?: string; reason?: "schedule" | "manual" }>(QUEUES.mpCheck, { localConcurrency: 2, pollingIntervalSeconds: 2 }, async ([job]) => {
     if (!job) return;
+    if (job.data.articleId) return retryWechatBody(job.data.sourceId, job.data.articleId);
     return checkMpAccount(job.data.sourceId, job.data.reason ?? "schedule");
   });
   await registerExtractionJobs(boss);

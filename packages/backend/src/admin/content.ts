@@ -38,7 +38,7 @@ export async function contentChain(id: string) {
            s.name AS source_name, s.kind AS source_kind, s.tier, s.participation_mode, s.site_fulltext, s.syndicate_fulltext
     FROM articles a JOIN sources s ON s.id = a.source_id WHERE a.id = ${id}`;
   if (!article) return null;
-  const [discoveries, revisions, analyses, publication, override, ledger, membership, decisions, deliveries, history] = await Promise.all([
+  const [discoveries, revisions, analyses, publication, override, ledger, membership, decisions, deliveries, history, bodyIssues] = await Promise.all([
     sql`SELECT source_id, via, discovered_at FROM article_discoveries WHERE article_id = ${id} ORDER BY discovered_at`,
     sql`SELECT revision, title, content_hash, created_at FROM article_revisions WHERE article_id = ${id} ORDER BY revision DESC LIMIT 10`,
     sql`
@@ -55,9 +55,10 @@ export async function contentChain(id: string) {
       FROM fact_articles fa JOIN facts f ON f.id = fa.fact_id LEFT JOIN stories st ON st.id = f.story_id WHERE fa.article_id = ${id}`,
     sql`SELECT verdict, fact_id, story_id, receipt_id, candidates, created_at FROM grouping_decisions WHERE article_id = ${id} ORDER BY created_at DESC LIMIT 5`,
     sql`SELECT target_key, dedupe_key, status, attempts, response, created_at, sent_at FROM deliveries WHERE subject_id = ${id} ORDER BY created_at DESC`,
-    sql`SELECT created_at, actor, action, reason, before, after FROM audit_log WHERE subject = ${`content:${id}`} ORDER BY created_at DESC LIMIT 20`,
+    sql`SELECT created_at, actor, action, reason, before, after FROM audit_log WHERE subject IN (${`content:${id}`}, ${`article:${id}`}) ORDER BY created_at DESC LIMIT 20`,
+    sql`SELECT * FROM wechat_body_issues WHERE article_id=${id}`,
   ]);
-  return { article, discoveries, revisions, analyses, publication: publication[0] ?? null, override: override[0] ?? null, ledger, membership, decisions, deliveries, history };
+  return { article, discoveries, revisions, analyses, publication: publication[0] ?? null, override: override[0] ?? null, ledger, membership, decisions, deliveries, history, bodyIssue: bodyIssues[0] ?? null };
 }
 
 
@@ -157,11 +158,20 @@ export async function overrideFields(id: string, input: { fields: unknown; clear
  */
 export async function rerun(id: string, step: "extract" | "analyze" | "group", requestId: string, actor: string) {
   if (!/^[\w-]{8,80}$/.test(requestId)) throw new Error("a stable request id is required");
-  const [a] = await sql`SELECT id, managed_backfill_id FROM articles WHERE id = ${id}`;
+  const [a] = await sql`SELECT a.id,a.source_id,a.managed_backfill_id,a.content_discarded_at,s.kind,s.config
+    FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=${id}`;
   if (!a) return null;
   if (a.managed_backfill_id) throw new Error("这篇历史文章由回填批次管理，请在历史回填页面操作");
+  const [wechatSource] = step === "extract" ? await sql`SELECT s.id FROM sources s
+    WHERE s.kind='mp_account' AND s.config->>'provider'='wechat2rss'
+      AND (s.id=${a.source_id} OR EXISTS (SELECT 1 FROM article_discoveries d WHERE d.article_id=${id} AND d.source_id=s.id))
+    ORDER BY (s.id=${a.source_id}) DESC,s.id LIMIT 1` : [];
   let jobId: string | null;
-  if (step === "group") {
+  if (wechatSource) {
+    if (a.content_discarded_at) throw new Error("文章正文已按保留策略清理，不能直接重试");
+    jobId = await enqueue(QUEUES.mpCheck, { sourceId: wechatSource.id, articleId: id, reason: "manual" },
+      { singletonKey: `mp-body:${id}`, retryLimit: 0 });
+  } else if (step === "group") {
     // An explicit regroup replaces an earlier manual "keep standalone" decision and the automatic membership.
     await sql`DELETE FROM grouping_overrides WHERE article_id = ${id}`;
     jobId = await enqueue(QUEUES.group, { articleId: id, force: true }, { singletonKey: `manual:group:${id}:${requestId}` });

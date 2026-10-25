@@ -1,5 +1,6 @@
 // Explicit, replay-safe repairs. Frozen imports and paid receipts remain immutable.
 import { z } from "zod";
+import { updateWechatBodyIssue } from "./wechat-body-issues.ts";
 import { sql } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { contentHash } from "./materials.ts";
@@ -61,8 +62,11 @@ export async function repairWechatBody(input: unknown) {
       const [lock] = await tx`SELECT pg_try_advisory_xact_lock(hashtext(${'backfill:'+initial.managed_backfill_id})) AS locked`;
       if (!lock!.locked) throw new Error("Original backfill executor is active");
     }
-    const [a] = await tx`SELECT a.*,s.kind FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=${r.articleId} FOR UPDATE OF a`;
-    if (!a || !(a.kind==='mp_account' || WECHAT_ARCHIVE_SOURCES.includes(a.source_id))) throw new Error("Not a WeChat source article");
+    const [a] = await tx`SELECT a.*,s.kind,
+      EXISTS (SELECT 1 FROM article_discoveries d JOIN sources ds ON ds.id=d.source_id
+        WHERE d.article_id=a.id AND ds.kind='mp_account' AND ds.config->>'provider'='wechat2rss') AS wechat_discovery
+      FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=${r.articleId} FOR UPDATE OF a`;
+    if (!a || !(a.kind==='mp_account' || WECHAT_ARCHIVE_SOURCES.includes(a.source_id) || a.wechat_discovery)) throw new Error("Not a WeChat source article");
     if (a.managed_backfill_id !== initial?.managed_backfill_id || repairHash(a)!==r.expectedHash) throw new Error("Article changed since the repair snapshot; audit again");
     const [overridden] = await tx`SELECT 1 FROM editorial_overrides WHERE article_id=${a.id}`;
     if (overridden) throw new Error("Article has editorial overrides; review them before repair");
@@ -102,6 +106,7 @@ export async function repairWechatBody(input: unknown) {
       processing_retry_at=CASE WHEN ${textChanged} THEN NULL ELSE processing_retry_at END,
       processing_queued_at=CASE WHEN ${textChanged} THEN NULL ELSE processing_queued_at END,
       updated_at=now() WHERE id=${a.id}`;
+    await updateWechatBodyIssue(a.id, undefined, tx);
     await publishArticleTx(tx,a.id);
     if (textChanged && !runId) await queueProcessing(a.id,{db:tx});
     const after = { articleId:a.id,revision,textChanged,runId,bodyText:r.bodyText,bodyHtml,evidence:r.evidence };
