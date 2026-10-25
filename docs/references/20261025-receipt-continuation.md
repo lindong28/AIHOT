@@ -65,3 +65,12 @@ AIHOT功能提交`a58b7068e54beaec6a38307671ddd126be0d0cd5`已推送origin/main�
 | 581240 | 2026-10-20 14:35:31 UTC，UUID `ee0ca194-f82f-4e7a-9784-bf4467f89c1b`，一次百炼HTTP400；现有ledger无结构化原因，本机限定日志检索未取得该错误 | 同上；两条分别查证，不能以一条访问受阻结束其他独立调查 |
 
 本轮安全证据位于维护主机 `/Users/lindong/task-evidence/receipt-harness-fix-20261025/diagnostics/`，含请求身份、tokenizer来源、token计数及查询范围。未将完整文章、凭据或原始环境写入本仓。此表为历史调查结果，不是当前后台计数或新业务恢复验收。
+
+
+### 百炼入口核查与最终边界（2026-10-25 18:20 UTC+8）
+
+用户在Mac Studio完成登录后，本轮实际核到本人主账号、北京地域和有效的Token Plan个人版Lite订阅。Token Plan“我的订阅→用量详情”提供聚合token/工具用量。另在“模型→运维管理→模型监控→审计日志”选择最近480小时、qwen3.8-flash，返回3条HTTP200，时间为10月8、15、23日，所示均普通API Key；未找到10月10日与20日的两条目标Token Plan调用。该结果只说明本次入口与筛选未取得目标记录，不能证明目标请求没有失败、没有费用，或供应商所有记录永久不可得；也未确认该审计入口覆盖Token Plan。没有开启额外收费的推理日志/SLS服务。
+
+后续供应商查询材料已准备：530434在`2026-10-10T04:25:24.574673Z`，581240在`2026-10-20T14:35:31.131692Z`；模型均`qwen3.8-flash`，Token Plan北京OpenAI兼容入口，stream、temperature=0、max_tokens=512、json_object、纯文本，各一次HTTP400。对应本地Gateway UUID见上表，**不是已确认的供应商Request ID**。查询目标是两次原始错误码/错误信息、供应商Request ID、请求处理与额度扣减状态，以及Token Plan可用的历史日志入口；不提供API key、cookie或文章正文。本轮用户选择“仅保存查询材料”，未发送工单、没有已受理外部查询，因此不声称正在等待供应商回复。后续发送由用户另行授权，获准后由agent执行。
+
+当前[Token Plan个人版FAQ](https://help.aliyun.com/zh/model-studio/token-plan-personal-faq)明确限制生产自动化、批量脚本和后台定时任务用途；本轮同时核到Gateway的`personal_bailian_token_plan.subscription_api_projects=["aihot"]`。这是后续用途冲突，不是两次历史400的已证实根因。已提出仅将该列表改为`[]`的具体调整及可能转用其他既有付费路由的影响；用户选择“本轮仅记录，稍后决定”。本轮不改此路由，保留这项未处理取舍；后续裁决归用户，实施归agent。旧账、预算和三条业务状态未变。
