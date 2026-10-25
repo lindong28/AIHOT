@@ -9,6 +9,7 @@ import { checkMpAccount } from "@aihot/backend/sources/mp";
 import { readWechat2Rss } from "@aihot/backend/sources/wechat2rss";
 import { assertSupportedConfig } from "@aihot/backend/sources/config-keys";
 import type { SourceRow } from "@aihot/backend/sources/types";
+import { MockAgent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
 const T = tag();
 const ids = [`wechat-a-${T}`, `wechat-b-${T}`];
@@ -27,7 +28,8 @@ const server = http.createServer((req, res) => {
   const entries = Array.from({ length: 10 }, (_, i) => item(biz, String(i), (i + 1) * 3600_000));
   entries.push(item(biz, "old", 9 * 86400_000));
   if (late) entries.push(item(biz, "late", 12 * 3600_000));
-  res.end(`<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>${entries.join("")}</channel></rss>`);
+  const content = entries.join("");
+  res.end(`<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>${mode === "shell" ? content.replace(/完整短文 0。/, "跳转微信打开") : content}</channel></rss>`);
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -74,6 +76,31 @@ test("fixed initial window, duplicate reads and delayed old publication dates", 
   const rows = await sql`SELECT title, revision FROM articles WHERE source_id = ${ids[0]!}`;
   assert.equal(rows.length, 11);
   assert.ok(rows.every((r) => r.revision === 1 && !r.title.endsWith("old")));
+});
+
+test("a degraded feed reuses a verified stored body without fetching or revising it", async () => {
+  const original = getGlobalDispatcher();
+  const mock = new MockAgent();
+  mock.disableNetConnect();
+  mock.enableNetConnect((host) => host.startsWith("127.0.0.1:"));
+  setGlobalDispatcher(mock);
+  mode = "shell";
+  try {
+    const before = await sql`SELECT id,revision,body_text,body_html,body_status FROM articles WHERE source_id=${ids[0]!} ORDER BY id`;
+    for (let repeat = 0; repeat < 2; repeat++) {
+      const result = await checkMpAccount(ids[0]!, "schedule");
+      assert.equal(result.status, "ok");
+      assert.equal("revised" in result && result.revised, 0);
+    }
+    assert.deepEqual(await sql`SELECT id,revision,body_text,body_html,body_status FROM articles WHERE source_id=${ids[0]!} ORDER BY id`, before);
+    const [source] = await sql`SELECT health,fail_count FROM sources WHERE id=${ids[0]!}`;
+    assert.equal(source!.health, "ok");
+    assert.equal(source!.fail_count, 0);
+  } finally {
+    mode = "ok";
+    setGlobalDispatcher(original);
+    await mock.close();
+  }
 });
 
 test("failures keep the success checkpoint and record a redacted failed run", async () => {

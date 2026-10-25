@@ -1,11 +1,12 @@
 // The existing Wechat2RSS instance supplies a separate RSS feed for each official account.
-import { fetchWechatBody } from "../content/wechat.ts";
+import { fetchWechatBody, wechatBodyIssue } from "../content/wechat.ts";
 import { credential } from "../config.ts";
 import { sql } from "../db.ts";
 import { upsertMaterial } from "../content/materials.ts";
 import { queueProcessing } from "../jobs/content.ts";
 import { parseRss } from "./rss.ts";
 import type { SourceRow } from "./types.ts";
+import { identityKeyForUrl } from "../lib/url.ts";
 
 // Full-text account feeds can exceed the public collector’s 8 MiB limit. Keep this loopback-only read bounded.
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
@@ -76,12 +77,20 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
     const candidates = items.filter((item) => item.publishedAt && item.publishedAt.getTime() >= cutoff)
       .sort((a, b) => b.publishedAt!.getTime() - a.publishedAt!.getTime());
     const batch = candidates.slice(0, source.cursor?.initializedAt ? 50 : 8);
+    const missingKeys = batch.filter((item) => item.bodyStatus !== "ok")
+      .map((item) => item.identityKey ?? identityKeyForUrl(item.url)).filter((key): key is string => !!key);
+    const stored = missingKeys.length ? await sql`SELECT identity_key,body_text,body_html FROM articles
+      WHERE source_id=${sourceId} AND identity_key IN ${sql(missingKeys)} AND body_status='ok' AND content_discarded_at IS NULL` : [];
+    const bodies = new Map(stored.filter((a) => !wechatBodyIssue(a.body_text, a.body_html)).map((a) => [a.identity_key, a]));
     let index = 0;
     await Promise.all(Array.from({ length: Math.min(8, batch.length) }, async () => {
       while (index < batch.length) {
         const item = batch[index++]!;
         if (item.bodyStatus !== "ok") {
-          try { Object.assign(item, await fetchWechatBody(item.url)); } catch { /* Retry on the next scheduled check. */ }
+          const body = bodies.get(item.identityKey ?? identityKeyForUrl(item.url));
+          // A feed's placeholder must not invalidate a body already recovered for this source.
+          if (body) Object.assign(item, { bodyText: body.body_text, bodyHtml: body.body_html, bodyStatus: "ok" });
+          else try { Object.assign(item, await fetchWechatBody(item.url)); } catch { /* Retry on the next scheduled check. */ }
         }
       }
     }));
