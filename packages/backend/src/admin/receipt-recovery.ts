@@ -104,7 +104,8 @@ export async function releaseUnknownReceipt(id: number, input: {
     const [current] = await tx`SELECT a.error_details,a.error,a.response,v.disposition FROM receipt_attempts a
       LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
       WHERE a.receipt_id=${id} AND a.attempt=${r.attempts}`;
-    if (current?.disposition === 'stopped' || current?.disposition === 'superseded'
+    const [previousRecovery] = await tx`SELECT 1 FROM receipt_recoveries WHERE receipt_id=${id} AND original_attempt=${r.attempts} AND state='recovered'`;
+    if (previousRecovery || current?.disposition === 'stopped' || current?.disposition === 'superseded'
       || receiptOutcome(current?.error_details,current?.error ?? null,current?.response) !== 'unknown') {
       throw new Conflict("已停止、已结案或明确拒绝的请求不能原样重放；请先修正业务输入");
     }
@@ -116,7 +117,7 @@ export async function releaseUnknownReceipt(id: number, input: {
     await tx`UPDATE receipts SET status = 'failed', error = ${input.error}, updated_at = now() WHERE id = ${id}`;
     // Authorization changes the parent's dispatch state, never the original attempt facts.
     const recovered = await recoverTask(tx, r);
-    if (input.expectedAttempt !== undefined) await tx`INSERT INTO receipt_reviews (receipt_id,attempt,billed,note,actor)
+    if (input.expectedAttempt !== undefined || input.evidence) await tx`INSERT INTO receipt_reviews (receipt_id,attempt,billed,note,actor)
       VALUES (${id},${r.attempts},${input.billed},${input.note},${input.actor})
       ON CONFLICT (receipt_id,attempt) DO UPDATE SET billed=excluded.billed,note=excluded.note,actor=excluded.actor,updated_at=now()`;
     await tx`INSERT INTO audit_log (actor, action, subject, reason, before, after)

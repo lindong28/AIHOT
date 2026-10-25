@@ -65,6 +65,8 @@ test("admin run tag survives recovery and older attempt costs are not rewritten"
   assert.equal(job!.data.attemptTag, root);
   const attempts = await sql`SELECT status, cost FROM receipt_attempts WHERE receipt_id = ${e.receiptId} ORDER BY attempt`;
   assert.deepEqual(attempts.map((a) => [a.status, a.cost]), [["unknown", 0.1], ["unknown", null]]);
+  const [review] = await sql`SELECT billed FROM receipt_reviews WHERE receipt_id=${e.receiptId} AND attempt=2`;
+  assert.equal(review!.billed, false);
 });
 
 for (const invalid of ["uuid", "project", "model", "missing", "ambiguous", "active", "attempt", "failed", "app-attempt"]) {

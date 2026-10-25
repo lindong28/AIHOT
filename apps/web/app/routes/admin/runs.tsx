@@ -137,7 +137,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
             empty="没有待处理的回执"
             columns={[
               { key: "id", label: "回执", render: (x) => <span className="num">#{x.id}</span> },
-              { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' ? 'muted' : 'warn'}>{['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
+              { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' || x.business_recovery ? 'muted' : 'warn'}>{x.business_recovery ? '业务已恢复' : ['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{x.business_recovery ? "历史业务恢复已结案" : RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
               { key: "w", label: "服务", render: (x) => <span className="whitespace-nowrap">{x.service}{x.model ? ` · ${x.model}` : ""}</span> },
               { key: "p", label: "用途", render: (x) => (x.subject && /^[\w-]{10,}$/.test(x.subject) && x.purpose.includes("analy") ? <Link className="text-accent" to={`/admin/content/${x.subject}`}>{x.purpose}</Link> : x.purpose) },
               { key: "e", label: "错误", render: (x) => <div className="max-w-md break-all text-[12px] text-ink-3">
@@ -314,7 +314,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
         <Field label="本次操作"><Select value={receiptAction} onChange={e => setReceiptAction(e.target.value)}>
           <option value="record">只记录核账，不重放</option>
           {receipt?.status !== 'completed' && <option value="stop">停止同一请求，保留历史</option>}
-          {receipt?.status === 'unknown' && !['content_policy_rejected','invalid_request'].includes(receipt?.recovery_status) && !['stopped','superseded'].includes(receipt?.review?.disposition) && <option value="replay">授权业务重放</option>}
+          {receipt?.status === 'unknown' && !receipt?.business_recovery && !['content_policy_rejected','invalid_request'].includes(receipt?.recovery_status) && !['stopped','superseded'].includes(receipt?.review?.disposition) && <option value="replay">授权业务重放</option>}
         </Select></Field>
         {receiptAction === 'replay' && <label className="flex gap-2 text-[13px]"><input type="checkbox" checked={acceptDuplicateCharge} onChange={e => setAcceptDuplicateCharge(e.target.checked)} />我已核查，接受本次重放可能再次计费</label>}
       </ReasonDialog>

@@ -177,8 +177,9 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
         FROM receipt_attempts a
         LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
         WHERE a.receipt_id=${existing.id} AND a.attempt=${existing.attempts}`;
+      const [recovered] = await tx`SELECT 1 FROM receipt_recoveries WHERE receipt_id=${existing.id} AND original_attempt=${existing.attempts} AND state='recovered'`;
       const known = receiptOutcome(current?.error_details, current?.error ?? null, current?.response ?? existing.response);
-      if (['stopped','superseded'].includes(current?.disposition) || known !== 'unknown') {
+      if (recovered || ['stopped','superseded'].includes(current?.disposition) || known !== 'unknown') {
         await recordReceiptOutcome(tx, existing.id, existing.attempts, known);
         return { kind: "stopped" as const, row: existing };
       }

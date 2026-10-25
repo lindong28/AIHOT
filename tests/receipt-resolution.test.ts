@@ -179,3 +179,18 @@ test("malformed review input is a client error", async () => {
     await assert.rejects(reviewReceipt(1, input as any, 'test'), (e: any) => e.statusCode === 400);
   }
 });
+
+
+test("legacy recovered attempts stay closed in history and all replay entry points", async () => {
+  const r = await uncertain();
+  await sql`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,state,note,original_status)
+    VALUES (${r.id},1,${tag()},${tag()},'{}','recovered','fixture','unknown')`;
+  await assert.rejects(reviewReceipt(r.id, { attempt: 1, action: 'replay', billed: null, note: 'test', acceptDuplicateCharge: true },'test'), /不能原样重放/);
+  await assert.rejects(paidRequest(r.req,async()=>{assert.fail('closed attempt must not dispatch');}),ReceiptRecoveryStoppedError);
+  const history = await runsOverview({view:'history'});
+  assert.equal((history.receipts.issues.find(x=>x.id===r.id) as any)?.business_recovery?.state,'recovered');
+  await sql`UPDATE receipt_attempts SET attempt=2 WHERE receipt_id=${r.id}`;
+  await sql`UPDATE receipts SET attempts=2 WHERE id=${r.id}`;
+  // A different current attempt must not inherit the old business disposition.
+  await assert.rejects(paidRequest(r.req,async()=>{assert.fail('unknown must not dispatch');}),ReceiptUnknownError);
+});

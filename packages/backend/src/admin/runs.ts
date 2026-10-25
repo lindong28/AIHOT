@@ -69,7 +69,8 @@ export async function runsOverview(input: { page?: number; view?: string } = {})
         (SELECT a.error FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS attempt_error,
         (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id,
         (SELECT row_to_json(v) FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts) AS review,
-        (SELECT json_agg(v ORDER BY v.attempt DESC) FROM receipt_reviews v WHERE v.receipt_id=r.id) AS review_history
+        (SELECT json_agg(v ORDER BY v.attempt DESC) FROM receipt_reviews v WHERE v.receipt_id=r.id) AS review_history,
+        (SELECT row_to_json(x) FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered') AS business_recovery
       FROM receipts r
       WHERE ${condition}
       ORDER BY status = 'unknown' DESC, updated_at DESC, id DESC LIMIT 40 OFFSET ${(page-1)*40}`,
