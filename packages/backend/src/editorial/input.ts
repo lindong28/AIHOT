@@ -2,7 +2,8 @@
 import { beijingDate, beijingTime } from "@aihot/contracts/time";
 import { sql } from "../db.ts";
 import { collapseWhitespace, truncate } from "../lib/text.ts";
-import { produceImage } from "../media/images.ts";
+import { cachedImage, produceImage } from "../media/images.ts";
+import { modelImage } from "../media/model-image.ts";
 import type { ContentPart } from "../providers/llm.ts";
 
 export interface AnalyzeInputArticle {
@@ -101,16 +102,19 @@ export function buildMaterial(a: AnalyzeInputArticle): string {
 
 /**
  * The article's first image, inlined: models cannot reach most original hosts from China, so they get
- * the site's cached thumbnail (fetched through the egress route). None when it cannot be fetched.
+ * a static model-only rendition of the cached thumbnail. None when it cannot be fetched/decoded.
  * A post without its own image shows the quoted post's (a reaction to a chart or a launch card).
  */
-export async function firstImagePart(a: AnalyzeInputArticle): Promise<ContentPart | null> {
+export async function firstImagePart(a: AnalyzeInputArticle, options: { cacheOnly?: boolean } = {}): Promise<ContentPart | null> {
   const image = [...(a.xPost?.media ?? []), ...(a.xPost?.quoted?.media ?? []), ...(a.media ?? [])].find((m: any) => m.kind === "image" && m.url);
   if (!image) return null;
   try {
-    const { body, type } = await produceImage(String(image.url), "thumb");
-    return /^image\/(jpeg|png|webp)$/.test(type) ? { type: "image_url", image_url: { url: `data:${type};base64,${body.toString("base64")}` } } : null;
-  } catch {
+    const thumbnail = await (options.cacheOnly ? cachedImage : produceImage)(String(image.url), "thumb");
+    const { body, type } = await modelImage(thumbnail.body);
+    return { type: "image_url", image_url: { url: `data:${type};base64,${body.toString("base64")}` } };
+  } catch (error) {
+    // A dry-run must distinguish absent media from unavailable cached input, without fetching it.
+    if (options.cacheOnly) throw error;
     return null;
   }
 }

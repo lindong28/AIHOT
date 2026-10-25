@@ -28,10 +28,19 @@ export function deliveryIssueCondition() {
   return sql`status IN ('unknown', 'failed') OR (status = 'sending' AND updated_at < now() - interval '15 minutes')`;
 }
 
+// This cohort is the unresolved billing of reviewed/recovered attempts, not all provider charges.
+function billingUnknownAttempts() {
+  return sql`SELECT receipt_id, attempt FROM receipt_reviews WHERE billed IS NULL
+    UNION
+    SELECT x.receipt_id, x.original_attempt AS attempt FROM receipt_recoveries x
+    WHERE NOT EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=x.receipt_id
+      AND v.attempt=x.original_attempt AND v.billed IS NOT NULL)`;
+}
+
 export async function runsOverview(input: { page?: number; view?: string } = {}) {
   const page = Math.max(1, Math.min(100000, Math.floor(input.page || 1)));
-  const view = input.view === 'history' ? 'history' : 'open';
-  const condition = view === 'history' ? sql`EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id)
+  const view = input.view === 'billing' ? 'billing' : input.view === 'history' ? 'history' : 'open';
+  const condition = view === 'billing' ? sql`r.id IN (SELECT receipt_id FROM (${billingUnknownAttempts()}) b)` : view === 'history' ? sql`EXISTS (SELECT 1 FROM receipt_reviews v WHERE v.receipt_id=r.id)
     OR EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id)` : receiptIssueCondition();
   const [heartbeats, latest, timeline, queues, failedJobs, lagging, receipts, receiptIssues, deliveries, errors, ingest, leaderboard, totals] = await Promise.all([
     sql<{ key: string; value: Record<string, unknown>; updated_at: Date }[]>`SELECT key, value, updated_at FROM settings WHERE key LIKE 'heartbeat.%' ORDER BY key`,
@@ -65,12 +74,19 @@ export async function runsOverview(input: { page?: number; view?: string } = {})
       count(*)::int AS n FROM receipts r WHERE created_at > now() - interval '7 days' GROUP BY 1`,
     sql<Array<{ id: number; attempt_error: string | null; error_details: unknown } & Record<string, unknown>>>`
       SELECT id, service, model, purpose, subject, status, attempts, left(error, 240) AS error, created_at, updated_at,
+        r.request->'inputSummary' AS input_summary,
         (SELECT a.error_details FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS error_details,
         (SELECT a.error FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS attempt_error,
         (SELECT a.request_id FROM receipt_attempts a WHERE a.receipt_id=r.id AND a.attempt=r.attempts) AS request_id,
         (SELECT row_to_json(v) FROM receipt_reviews v WHERE v.receipt_id=r.id AND v.attempt=r.attempts) AS review,
         (SELECT json_agg(v ORDER BY v.attempt DESC) FROM receipt_reviews v WHERE v.receipt_id=r.id) AS review_history,
-        (SELECT row_to_json(x) FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered') AS business_recovery
+        (SELECT row_to_json(x) FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts AND x.state='recovered') AS business_recovery,
+        (SELECT json_agg(b ORDER BY b.attempt) FROM (
+          SELECT pending.attempt, a.request_id, a.status, a.started_at
+          FROM (${billingUnknownAttempts()}) pending
+          LEFT JOIN receipt_attempts a ON a.receipt_id=pending.receipt_id AND a.attempt=pending.attempt
+          WHERE pending.receipt_id=r.id
+        ) b) AS billing_pending
       FROM receipts r
       WHERE ${condition}
       ORDER BY status = 'unknown' DESC, updated_at DESC, id DESC LIMIT 40 OFFSET ${(page-1)*40}`,
@@ -85,14 +101,34 @@ export async function runsOverview(input: { page?: number; view?: string } = {})
     sql`SELECT client, kind, status, left(error, 200) AS error, summary, created_at FROM ingest_events ORDER BY created_at DESC LIMIT 20`,
     sql<{ value: { at: string; sources: Record<string, { ok: boolean; at: string; lastOkAt: string | null; changed?: boolean; rows?: number; error?: string }> } }[]>`
       SELECT value FROM settings WHERE key = 'leaderboard.fetch'`,
-    sql<{ total: number; unknown: number; open: number }[]>`SELECT
+    sql<{ total: number; unknown: number; open: number; billing_unknown: number }[]>`SELECT
       (SELECT count(*)::int FROM receipts r WHERE ${condition}) AS total,
       (SELECT count(*)::int FROM receipts r WHERE ${receiptUnknownCondition()}) AS unknown,
-      (SELECT count(*)::int FROM receipts r WHERE ${receiptIssueCondition()}) AS open`,
+      (SELECT count(*)::int FROM receipts r WHERE ${receiptIssueCondition()}) AS open,
+      (SELECT count(*)::int FROM (${billingUnknownAttempts()}) b) AS billing_unknown`,
   ]);
   // Articles waiting to retry after a passing provider problem (they are not failed).
   const [retrying] = await sql<{ n: number; next: Date | null }[]>`
     SELECT count(*)::int AS n, min(processing_retry_at) AS next FROM articles WHERE processing_state = 'new' AND processing_attempts > 0`;
+  // Only the selected page's article revisions; do not fetch response payloads.
+  const relatedSubjects = [...new Set(receiptIssues.map(r => r.subject).filter((s): s is string => typeof s === 'string' && /^article:[^@]+@\d+$/.test(s)))];
+  const relatedStages = relatedSubjects.length ? await sql`
+    SELECT r.subject, r.id AS receipt_id, r.purpose, r.model, r.status AS receipt_status,
+      substring(r.logical_key from 'score-([12])$') AS score_vote,
+      a.attempt, a.attempt=r.attempts AS is_current, a.status, a.output_validation_error IS NOT NULL AS validation_failed,
+      v.disposition, v.outcome,
+      EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=a.attempt AND x.state='recovered') AS recovered
+    FROM receipts r JOIN receipt_attempts a ON a.receipt_id=r.id
+    LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
+    WHERE r.subject IN ${sql(relatedSubjects)}
+      AND r.purpose IN ('prefilter_article','structure_article','score_article','understand_article','summarize_article','analyze_article')
+    ORDER BY r.id, a.attempt` : [];
+  const stagesBySubject = new Map<string, Array<(typeof relatedStages)[number]>>();
+  for (const stage of relatedStages) {
+    const list = stagesBySubject.get(stage.subject) ?? [];
+    list.push(stage);
+    stagesBySubject.set(stage.subject, list);
+  }
   const now = Date.now();
   return {
     checkedAt: new Date(now).toISOString(),
@@ -108,11 +144,11 @@ export async function runsOverview(input: { page?: number; view?: string } = {})
     failedJobs,
     lagging,
     receipts: { counts: Object.fromEntries(receipts.map((r) => [r.status, r.n])), issueTotal: totals[0]!.total,
-      unknownTotal: totals[0]!.unknown, openTotal: totals[0]!.open, page, pageSize: 40, view,
+      unknownTotal: totals[0]!.unknown, billingUnknownTotal: totals[0]!.billing_unknown, openTotal: totals[0]!.open, page, pageSize: 40, view,
       issues: receiptIssues.map(({ attempt_error, ...r }) => {
       const details = safeGatewayFailure(r.error_details);
       const review = r.review as { outcome?: string } | null;
-      return { ...r, error_details: details, recovery_status: review?.outcome && review.outcome !== 'unknown' ? review.outcome : contentPolicyRejected(details, attempt_error) ? "content_policy_rejected"
+      return { ...r, related_stages: stagesBySubject.get(String(r.subject)) ?? [], error_details: details, recovery_status: review?.outcome && review.outcome !== 'unknown' ? review.outcome : contentPolicyRejected(details, attempt_error) ? "content_policy_rejected"
         : details?.retryable === true ? "retryable" : "needs_review" };
     }) },
     deliveries,

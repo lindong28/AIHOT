@@ -194,3 +194,16 @@ test("legacy recovered attempts stay closed in history and all replay entry poin
   // A different current attempt must not inherit the old business disposition.
   await assert.rejects(paidRequest(r.req,async()=>{assert.fail('unknown must not dispatch');}),ReceiptUnknownError);
 });
+
+
+test("historical billing records do not mutate the current attempt or reopen stopped work", async () => {
+  const r = await uncertain();
+  await reviewReceipt(r.id, {attempt:1,action:'replay',billed:null,note:'bounded fixture',acceptDuplicateCharge:true}, 'test');
+  await paidRequest(r.req, async () => ({response:{ok:true}}));
+  const before = await sql`SELECT * FROM receipt_attempts WHERE receipt_id=${r.id} ORDER BY attempt`;
+  await reviewReceipt(r.id, {attempt:1,action:'record',billed:false,note:'provider evidence'}, 'test');
+  assert.equal((await sql`SELECT billed FROM receipt_reviews WHERE receipt_id=${r.id} AND attempt=1`)[0]!.billed,false);
+  assert.deepEqual(await sql`SELECT * FROM receipt_attempts WHERE receipt_id=${r.id} ORDER BY attempt`,before);
+  await assert.rejects(reviewReceipt(r.id, {attempt:1,action:'stop',billed:null,note:'stale action'},'test'),/回执已变化/);
+  await assert.rejects(reviewReceipt(r.id, {attempt:3,action:'record',billed:null,note:'nonexistent'},'test'),/缺少 attempt/);
+});

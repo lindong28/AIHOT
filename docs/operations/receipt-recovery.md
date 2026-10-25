@@ -2,6 +2,34 @@
 
 后台“需要核对的付费回执”包含结果未知、近期失败及长时间未返回的请求。业务恢复和供应商核账是两件事：新闻处理成功可以结案，但不能因此推断旧调用没有计费。历史异常的授权恢复入口为 `scripts/recover-receipts.ts`，恢复关联保存在 PostgreSQL `receipt_recoveries`；原 `receipt_attempts` 和费用字段保留。新请求的有界自动恢复见下一节。
 
+## 修正输入后续跑与历史核账
+
+运行页的“历史计费待核”按原 attempt 展示已经进入核对/恢复流程、但 billed 仍未知的记录；不是全部供应商费用统计。即使后来业务成功、停止或产生新 attempt，旧项仍保留。对某个原 attempt 点“记录核账”只更新处置记录和审计，不修改原 attempt，也不放行请求。阶段明细区分两次评分、收到但输出校验失败及审核阻断；收到不等于与当前模型、提示词和输入兼容。
+
+模型图片使用独立的静态首帧 JPEG，网页图片及动图缓存保持原样。新请求保存正文字符与图片格式、bytes、尺寸、帧数，正文字符不含base64且不是token数。Gateway仅传规范闭集错误码和结构化参数名，不能从泛化HTTP400猜测原因或推断免费；未保存的历史具体原因继续未知。已确证的图片格式/下载错误才允许一次纯文本分支，并与原图片请求共用生成额度；内容审核、通用参数拒绝和真正未知不降级。
+
+已修正输入的普通文章可以先预览；此步骤只读取数据库和已有图片缓存，不派发模型或抓取缺失图片：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/continue-receipt-article.ts --receipt <ID>
+```
+
+只有明确invalid_request、当前同revision文章failed、输入hash已改变且同篇没有内容审核拒绝，预览才eligible。检查具体修正依据、各阶段可复用回执及完整业务预算后，由已获授权的操作者使用预览的snapshotHash执行：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/continue-receipt-article.ts --receipt <ID> --apply --snapshot <snapshotHash> --note '<具体修正依据及授权范围>' --accept-duplicate-charge
+```
+
+入口保留原回执/attempt，记录新请求身份并用原分析tag入队；worker在派发前校验预览中已有阶段的请求身份，目标阶段的生成额度扣除原attempt。预览未包含的后续写作及归组仍沿原流水线预算，执行批准必须覆盖它们，不能把“缺一票”当成整篇只需一次调用。新请求失败不会获得无条件再次放行。无具体修正依据时先按Gateway UUID取得诊断，不为改变hash而任意改正文或模型。
+
+同篇文章已被必要阶段明确审核拒绝时，可按当前attempt停止其业务依赖；不请求模型，不删除已收到结果，不变更旧费用：
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/continue-receipt-article.ts --receipt <ID> --stop-policy-blocked --apply --attempt <当前attempt>
+```
+
+真正结果未知仍使用下文的显式接受重复计费入口，不能冒充输入修正。完整实现与本轮验收边界见[续跑记录](../references/20261025-receipt-continuation.md)。
+
 ## 运行页核对与历史结案
 
 运行页按完整结果统计，每页40条，可翻页并切换“处置历史”。旧批次已恢复记录也显示业务结案并禁止原样重放；严格账本核对的计费结论进入处置历史。“回执结果未知”只统计仍待处理且没有明确结果分类的请求；“请求被拒绝”和“计费未知”可以同时成立，不能据结果分类推断免费。核对窗口默认计费未知，提交时绑定当前 attempt；有新 attempt 或请求仍在调用则拒绝陈旧操作。

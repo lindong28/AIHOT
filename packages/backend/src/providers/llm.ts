@@ -5,10 +5,11 @@ import { z } from "zod";
 import { runJson, OutputValidationError, JSONRetryExhaustedError } from "@lindong/llm-gateway-client";
 import { config, credential } from "../config.ts";
 import { sha256 } from "../lib/ids.ts";
-import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptRecoveryStoppedError, ReceiptOutputExhaustedError, rejectReceivedContent, rejectReceivedOutput } from "./receipts.ts";
+import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptRecoveryStoppedError, ReceiptOutputExhaustedError, rejectReceivedContent, rejectReceivedOutput, type ReceiptRequest } from "./receipts.ts";
 import { prepareGatewayRequest, jsonMaxAttempts } from "./gateway.ts";
 import { sql } from "../db.ts";
 import { backfillBinding, backfillContext } from "../backfill/context.ts";
+import { summarizeLlmInput } from "./input-summary.ts";
 
 export interface ModelSpec {
   key: string;
@@ -110,6 +111,9 @@ export interface ChatJsonOptions<S extends z.ZodType> {
   maxTokens?: number;
   attemptTag?: string;
   timeoutMs?: number;
+  /** A changed-input continuation may only reduce the existing generation allowance. */
+  generationLimit?: number;
+  imageFallbackFrom?: { id: number; attempt: number };
   /** false: the model answers in its own text format (no JSON mode); `parse` turns it into the schema's input. */
   json?: boolean;
   parse?: (content: string) => unknown;
@@ -174,6 +178,23 @@ export function parseChatResponse<S extends z.ZodType>(opts: Pick<ChatJsonOption
   return opts.schema.parse(opts.parse ? opts.parse(content) : extractJson(content));
 }
 
+/** The exact semantic identity used by dispatch. Previewing it makes no HTTP or database writes. */
+export function describeChatRequest<S extends z.ZodType>(opts: ChatJsonOptions<S>): ReceiptRequest {
+  const preset = MODELS[opts.model];
+  if (!preset) throw new Error(`Unknown model ${opts.model}`);
+  const binding = backfillBinding(opts.model);
+  const spec = binding ? { ...preset, model: binding.model, service: "backfill" } : preset;
+  const gateway = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000, binding ?? undefined);
+  const userText = typeof opts.user === "string" ? opts.user : JSON.stringify(opts.user);
+  const temperature = opts.temperature ?? 0.2;
+  const maxTokens = Math.max(opts.maxTokens ?? 1500, 512) + (spec.key.endsWith("-think") ? 4000 : 0);
+  return {
+    service: spec.service, model: spec.model, purpose: opts.purpose, subject: opts.subject, attemptTag: opts.attemptTag,
+    identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null, ...(gateway ? { gateway: gateway.identity } : {}) },
+    requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens },
+  };
+}
+
 export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): Promise<ChatJsonResult<z.infer<S>>> {
   const preset = MODELS[opts.model];
   if (!preset) throw new Error(`Unknown model ${opts.model}`);
@@ -204,7 +225,10 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
     ...(spec.extra ?? {}),
   };
 
-  const maxAttempts = gateway?.client.jsonRetry.maxAttempts ?? jsonMaxAttempts();
+  const configuredMaxAttempts = gateway?.client.jsonRetry.maxAttempts ?? jsonMaxAttempts();
+  const inputSummary = await summarizeLlmInput(opts.user);
+  const maxAttempts = opts.generationLimit ?? configuredMaxAttempts;
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > configuredMaxAttempts) throw new Error("Invalid reduced generation allowance");
   const lifecycle = {
     execute: async (attempt: number) => {
       if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
@@ -213,13 +237,10 @@ export async function chatJson<S extends z.ZodType>(opts: ChatJsonOptions<S>): P
       const generation = prepareGatewayRequest(spec.model, opts.timeoutMs ?? 120_000, binding ?? undefined);
       const receipt = await paidRequest(
         {
-          service: spec.service,
-          model: spec.model,
-          purpose: opts.purpose,
-          subject: opts.subject,
-          identity: { model: spec.model, promptVersion: opts.promptVersion, system: sha256(opts.system), user: sha256(userText), temperature, maxTokens, extra: spec.extra ?? null, ...(gateway ? { gateway: gateway.identity } : {}) },
+          ...describeChatRequest(opts),
           outputMaxAttempts: maxAttempts,
-          requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, temperature, maxTokens, ...(generation ? { gateway: generation.summary } : {}) },
+          imageFallbackFrom: opts.imageFallbackFrom,
+          requestSummary: { promptVersion: opts.promptVersion, systemHash: sha256(opts.system), userHash: sha256(userText), userChars: userText.length, inputSummary, temperature, maxTokens, ...(generation ? { gateway: generation.summary } : {}) },
           attemptTag: opts.attemptTag,
           gatewayRequestId: generation?.requestId,
           gatewayRecovery: generation?.recoveryEnabled,

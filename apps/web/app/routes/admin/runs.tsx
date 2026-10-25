@@ -1,5 +1,5 @@
 import { SITE } from "@aihot/industry/site";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useFetcher, useLocation } from "react-router";
 import { useEffect } from "react";
 import type { Route } from "./+types/runs";
@@ -17,7 +17,7 @@ interface Runs {
   queues: Array<{ name: string; state: string; n: number; oldest: string }>;
   failedJobs: Row[];
   lagging: Row[];
-  receipts: { counts: Record<string, number>; issues: Row[]; issueTotal: number; unknownTotal: number; openTotal: number; page: number; pageSize: number; view: string };
+  receipts: { counts: Record<string, number>; issues: Row[]; issueTotal: number; unknownTotal: number; billingUnknownTotal: number; openTotal: number; page: number; pageSize: number; view: string };
   deliveries: Row[];
   errors: Row[];
   retrying: { count: number; next: string | null };
@@ -37,12 +37,34 @@ const STATE_LABEL: Record<string, string> = { created: "排队", retry: "等待�
 const RECEIPT_LABEL: Record<string, string> = { recovered: "业务已恢复", superseded: "后续业务已恢复", stopped: "已停止", unknown: "结果未知", failed: "失败", received: "已收到", completed: "已完成", pending: "处理中" };
 const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不重放", invalid_request: "请求被拒绝 · 需修正请求", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
 
+const STAGE_LABEL: Record<string, string> = { prefilter_article: '预筛', structure_article: '结构化', score_article: '评分', understand_article: '理解', summarize_article: '摘要', analyze_article: '旧版分析' };
+
+function ReceiptStages({ receipt }: { receipt: Row }) {
+  if (!/^article:[^@]+@\d+$/.test(receipt.subject ?? '')) return null;
+  const stages: Row[] = receipt.related_stages ?? [];
+  return <details className="mt-2"><summary>同版本文章的阶段回执</summary>
+    <p className="my-2">{receipt.subject}。已收到不保证通过校验或与当前模型、提示词及输入配置兼容；评分仍需两票。</p>
+    {['prefilter_article', 'structure_article', 'score_article:1', 'score_article:2', 'understand_article', 'summarize_article'].map(key => {
+      const [purpose, vote] = key.split(':');
+      const rows = stages.filter(s => s.purpose === purpose && (!vote || s.score_vote === vote));
+      return <div key={key} className="mb-1"><strong>{STAGE_LABEL[purpose!]}{vote ? `第${vote}票` : ''}：</strong>{rows.length ? rows.map(s => <div key={`${s.receipt_id}:${s.attempt}`}>
+        #{s.receipt_id} · 第{s.attempt}次 · {s.model ?? '模型未记录'} · {s.validation_failed ? '已收到，校验失败' : s.status === 'received' ? '已收到' : s.recovered ? '业务已恢复，原结果保留' : s.is_current && ['unknown', 'failed'].includes(s.status) && !['stopped','superseded'].includes(s.disposition) ? '阻断回执，需核对' : RECEIPT_LABEL[s.status] ?? s.status}
+        {s.disposition && s.disposition !== 'open' ? ` · ${RECEIPT_LABEL[s.disposition]}` : ''}
+      </div>) : '未见回执'}</div>;
+    })}
+    {stages.some(s => s.purpose === 'score_article' && !s.score_vote) && <p>另有无法识别票次的评分回执，不能据此认定两票齐全。</p>}
+  </details>;
+}
+
 export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
   const refresh = useFetcher<typeof loader>();
   const location = useLocation();
   const r = refresh.data?.receipts.page === loaderData.receipts.page && refresh.data?.receipts.view === loaderData.receipts.view ? refresh.data : loaderData;
   const { run, pending } = useAdminAction();
   const [receipt, setReceipt] = useState<Row | null>(null);
+  const closeReceipt = useCallback(() => setReceipt(null), []);
+  const [billingOnly, setBillingOnly] = useState(false);
+  const [receiptAttempt, setReceiptAttempt] = useState(1);
   const [billed, setBilled] = useState("unknown");
   const [receiptAction, setReceiptAction] = useState("record");
   const [acceptDuplicateCharge, setAcceptDuplicateCharge] = useState(false);
@@ -73,7 +95,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
         />
         <Stat label="队列积压" value={num(queued)} tone={queued > 500 ? "warn" : undefined} hint="排队与等待重试" />
         <Stat label="失败的定时任务" value={num(failing.length)} tone={failing.length ? "bad" : "ok"} hint="最近一次运行失败" />
-        <Stat label="回执结果未知" value={num(r.receipts.unknownTotal)} tone={r.receipts.unknownTotal ? "bad" : "ok"} hint={`全部未结案中待核对 ${num(r.receipts.openTotal)} 条；计费另行记录`} />
+        <Stat label="回执结果未知" value={num(r.receipts.unknownTotal)} tone={r.receipts.unknownTotal ? "bad" : "ok"} hint={`业务待处理 ${num(r.receipts.openTotal)} 条；历史计费待核 ${num(r.receipts.billingUnknownTotal)} 次（仅已处置或恢复记录）`} />
         <Stat label="投递待核实" value={num(r.deliveries.filter((d) => d.status === "unknown").length)} tone={r.deliveries.some((d) => d.status === "unknown") ? "bad" : "ok"} />
       </div>
 
@@ -129,29 +151,42 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
       )}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <Card className="xl:col-span-2" title={r.receipts.view === 'history' ? '回执处置历史' : '需要核对的付费回执'} right={<span className="flex gap-3"><Link to="/admin/runs">待处理</Link><Link to="/admin/runs?view=history">处置历史</Link><span>共 {num(r.receipts.issueTotal)} 条</span></span>} pad={false}>
+        <Card className="xl:col-span-2" title={r.receipts.view === 'billing' ? '历史计费待核' : r.receipts.view === 'history' ? '回执处置历史' : '业务待处理回执'} right={<span className="flex gap-3"><Link to="/admin/runs">业务待处理</Link><Link to="/admin/runs?view=history">处置历史</Link><Link to="/admin/runs?view=billing">历史计费待核</Link><span>共 {num(r.receipts.issueTotal)} 条</span></span>} pad={false}>
+          <p className="border-b border-line p-3 text-[13px]">历史计费待核 {num(r.receipts.billingUnknownTotal)} 次，仅含已有处置记录及业务恢复记录中尚未核账的原调用，不代表全部供应商费用。业务恢复或停止不会核销这些费用。</p>
           <DataTable
             dense
             rows={r.receipts.issues}
             rowKey={(x) => x.id}
-            empty="没有待处理的回执"
+            empty={r.receipts.view === "billing" ? "已有处置与恢复记录中，没有尚未核账的调用" : r.receipts.view === "history" ? "没有处置记录" : "没有业务待处理的回执"}
             columns={[
               { key: "id", label: "回执", render: (x) => <span className="num">#{x.id}</span> },
-              { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' || x.business_recovery ? 'muted' : 'warn'}>{x.business_recovery ? '业务已恢复' : ['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{x.business_recovery ? "历史业务恢复已结案" : RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
+              { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' || x.business_recovery ? 'muted' : 'warn'}>{x.business_recovery ? '业务已恢复' : ['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{x.business_recovery ? "历史业务恢复已结案" : RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">当前第{x.attempts}次计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
               { key: "w", label: "服务", render: (x) => <span className="whitespace-nowrap">{x.service}{x.model ? ` · ${x.model}` : ""}</span> },
               { key: "p", label: "用途", render: (x) => (x.subject && /^[\w-]{10,}$/.test(x.subject) && x.purpose.includes("analy") ? <Link className="text-accent" to={`/admin/content/${x.subject}`}>{x.purpose}</Link> : x.purpose) },
-              { key: "e", label: "错误", render: (x) => <div className="max-w-md break-all text-[12px] text-ink-3">
+              { key: "e", label: "阶段、诊断与历史核账", render: (x) => <div className="max-w-md break-all text-[12px] text-ink-3">
                 <span className="line-clamp-2" title={x.error ?? ""}>{x.error}</span>
                 {x.error_details && <div>HTTP {x.error_details.httpStatus ?? "未返回"} · 错误码 {x.error_details.providerCode ?? "未返回"}</div>}
+                {x.error_details?.parameter && <div>上游指向的参数：{x.error_details.parameter}</div>}
+                {x.input_summary && <details><summary>输入规格：正文 {x.input_summary.textChars} 字符，图片 {x.input_summary.imageCount} 张</summary>
+                  <div>正文字符数不含图片编码，不是 token 数。</div>
+                  {x.input_summary.images.map((image: any, index: number) => <div key={index}>图片 {index + 1}：{image.format ?? "格式未核实"} · {image.bytes ?? "大小未核实"} bytes · {image.width ?? "?"}×{image.height ?? "?"} · {image.frames ?? "?"} 帧</div>)}
+                  {x.input_summary.imagesTruncated && <div>仅保留前 16 张图片规格。</div>}
+                </details>}
                 {x.error_details?.gatewayCode === 'restart_required' && <div>Gateway 配置版本冲突；核对服务已加载版本和完整请求账本后再恢复。</div>}
-                {x.recovery_status === 'invalid_request' && <div>上游未提供可安全保存的具体参数原因。请按请求标识核查模型和参数；不要原样重复调用。</div>}
+                {x.recovery_status === 'invalid_request' && <div>{x.error_details?.providerCode ? "请按已记录错误码核查输入和参数。" : "本系统未保留具体原因。"}请按请求标识核查；不要原样重复调用。</div>}
                 {x.recovery_status === "content_policy_rejected" && <div>{x.error_details?.contentFilter
                   ? `审核对象：${x.error_details.contentFilter.role === "user" ? "输入" : "输出"} · 等级 ${x.error_details.contentFilter.level}`
-                  : "上游未返回具体审核原因"}</div>}
+                  : "本系统未保留具体审核原因"}</div>}
                 {x.request_id && <details><summary>请求标识</summary><span className="break-all">{x.request_id}</span></details>}
+                <ReceiptStages receipt={x} />
+                {(x.billing_pending ?? []).map((a: Row) => <div key={a.attempt} className="mt-2 border-t border-line pt-2">
+                  <div>第{a.attempt}次调用：计费尚未核实{a.attempt !== x.attempts ? '（历史调用）' : ''}</div>
+                  {a.request_id && <div className="break-all">请求标识：{a.request_id}</div>}
+                  <Button size="sm" onClick={() => { setReceipt(x); setReceiptAttempt(a.attempt); setBillingOnly(true); setBilled('unknown'); setReceiptAction('record'); setAcceptDuplicateCharge(false); }}>记录第{a.attempt}次核账</Button>
+                </div>)}
                 {x.review_history && <Json value={x.review_history} label="处置记录（原调用与费用保留）" />}
               </div> },
-              { key: "a", label: "", render: (x) => <Button size="sm" onClick={() => { setReceipt(x); setBilled(x.review?.billed === true ? 'true' : x.review?.billed === false ? 'false' : 'unknown'); setReceiptAction('record'); setAcceptDuplicateCharge(false); }}>核对</Button> },
+              { key: "a", label: "", render: (x) => <Button size="sm" onClick={() => { setReceipt(x); setReceiptAttempt(x.attempts); setBillingOnly(false); setBilled(x.review?.billed === true ? 'true' : x.review?.billed === false ? 'false' : 'unknown'); setReceiptAction('record'); setAcceptDuplicateCharge(false); }}>核对当前第{x.attempts}次</Button> },
             ]}
           />
           <div className="flex items-center justify-between border-t border-line p-3 text-[13px]">
@@ -297,12 +332,12 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
 
       <ReasonDialog
         open={!!receipt}
-        title={`核对回执 #${receipt?.id ?? ""}`}
-        description="核账不触发调用；停止保留原回执；重放会重新进入业务队列，可能再次计费。明确拒绝的请求须先修正输入，不能原样重放。"
+        title={`核对回执 #${receipt?.id ?? ""} · 第${receiptAttempt}次调用`}
+        description={billingOnly ? "只记录所选原调用的核账结果，不触发模型调用、停止或重放。业务恢复不表示原调用费用已核实。" : "核账不触发调用；停止保留原回执；重放会重新进入业务队列，可能再次计费。明确拒绝的请求须先修正输入，不能原样重放。"}
         confirmLabel={receiptAction === 'replay' ? '授权重放' : receiptAction === 'stop' ? '记录并停止' : '只记录核账'}
         busy={pending === "release"}
-        onClose={() => setReceipt(null)}
-        onSubmit={async (note) => (await run("POST", `/api/admin/receipts/${receipt!.id}/review`, { attempt: receipt!.attempts, action: receiptAction, billed: billed === 'unknown' ? null : billed === "true", note, acceptDuplicateCharge }, { label: "release", success: receiptAction === 'replay' ? '已记录重放授权' : '处置已记录' })) !== null}
+        onClose={closeReceipt}
+        onSubmit={async (note) => (await run("POST", `/api/admin/receipts/${receipt!.id}/review`, { attempt: receiptAttempt, action: billingOnly ? "record" : receiptAction, billed: billed === 'unknown' ? null : billed === "true", note, acceptDuplicateCharge }, { label: "release", success: receiptAction === 'replay' ? '已记录重放授权' : '处置已记录' })) !== null}
       >
         <Field label="供应商是否计费">
           <Select value={billed} onChange={(e) => setBilled(e.target.value)}>
@@ -311,11 +346,11 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
             <option value="true">已核实计费</option>
           </Select>
         </Field>
-        <Field label="本次操作"><Select value={receiptAction} onChange={e => setReceiptAction(e.target.value)}>
+        {!billingOnly && <Field label="本次操作"><Select value={receiptAction} onChange={e => setReceiptAction(e.target.value)}>
           <option value="record">只记录核账，不重放</option>
           {receipt?.status !== 'completed' && <option value="stop">停止同一请求，保留历史</option>}
           {receipt?.status === 'unknown' && !receipt?.business_recovery && !['content_policy_rejected','invalid_request'].includes(receipt?.recovery_status) && !['stopped','superseded'].includes(receipt?.review?.disposition) && <option value="replay">授权业务重放</option>}
-        </Select></Field>
+        </Select></Field>}
         {receiptAction === 'replay' && <label className="flex gap-2 text-[13px]"><input type="checkbox" checked={acceptDuplicateCharge} onChange={e => setAcceptDuplicateCharge(e.target.checked)} />我已核查，接受本次重放可能再次计费</label>}
       </ReasonDialog>
       <ReasonDialog

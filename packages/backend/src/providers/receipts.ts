@@ -9,7 +9,7 @@
 import { sql, type Db } from "../db.ts";
 import { config } from "../config.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
-import { GatewayResponseError, safeGatewayFailure } from "./gateway-error.ts";
+import { GatewayResponseError, imageRequestRejected, safeGatewayFailure } from "./gateway-error.ts";
 import { receiptOutcome, recordReceiptOutcome } from "./receipt-review.ts";
 
 export class BudgetExceededError extends Error {
@@ -109,6 +109,8 @@ export interface ReceiptRequest {
   gatewayRecovery?: boolean;
   /** Application generation budget; persisted invalid outputs count across worker restarts. */
   outputMaxAttempts?: number;
+  /** Text-only continuation of this exact image-rejected attempt. */
+  imageFallbackFrom?: { id: number; attempt: number };
 }
 
 export interface ReceiptResult {
@@ -168,6 +170,35 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
   const claimed = await sql.begin(async (tx) => {
     // Serialise budget checks per service so concurrent workers cannot overshoot.
     await tx`SELECT pg_advisory_xact_lock(hashtext(${"budget:" + req.service}))`;
+    let imageParentKey: string | undefined;
+    if (req.imageFallbackFrom) {
+      const from = req.imageFallbackFrom;
+      const [parent] = await tx`SELECT * FROM receipts WHERE id=${from.id} FOR UPDATE`;
+      const [attempt] = await tx`SELECT a.error_details,v.disposition,
+        EXISTS(SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=a.receipt_id AND x.original_attempt=a.attempt AND x.state='recovered') AS recovered
+        FROM receipt_attempts a LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
+        WHERE a.receipt_id=${from.id} AND a.attempt=${from.attempt}`;
+      if (!parent || parent.attempts !== from.attempt || parent.subject !== req.subject || parent.purpose !== 'understand_article'
+        || req.purpose !== parent.purpose || parent.logical_key === logicalKey || !['unknown','failed'].includes(parent.status)
+        || ['stopped','superseded'].includes(attempt?.disposition) || attempt?.recovered || !imageRequestRejected(attempt?.error_details)) {
+        throw new ReceiptRecoveryStoppedError(from.id, 'image continuation no longer permitted');
+      }
+      imageParentKey = parent.logical_key;
+    }
+    // A corrected article keeps compatible stage identities, even if settings change after preview.
+    const corrections = req.subject ? await tx`SELECT v.receipt_id,v.attempt,v.evidence,r.purpose
+      FROM receipt_reviews v JOIN receipts r ON r.id=v.receipt_id
+      WHERE r.subject=${req.subject} AND v.attempt=r.attempts AND v.disposition='open' AND v.evidence ? 'plannedRequests'` : [];
+    let continuationLimit = req.imageFallbackFrom ? req.outputMaxAttempts : undefined;
+    for (const correction of corrections) {
+      const rootTag = req.purpose === 'prefilter_article' ? req.attemptTag ?? null : req.attemptTag?.split(':').slice(0,-1).join(':') || null;
+      if (correction.evidence.rootAttemptTag !== rootTag) continue;
+      const stages = correction.evidence.plannedRequests as Array<{ stage:string; logicalKey:string }>;
+      const stage = req.imageFallbackFrom ? 'understand-text' : req.purpose === 'score_article' ? req.attemptTag?.split(':').at(-1) : req.purpose.replace('_article','');
+      const expected = stages.find(s=>s.stage===stage);
+      if (expected && expected.logicalKey!==logicalKey) throw new ReceiptRecoveryStoppedError(Number(correction.receipt_id), 'input changed after correction preview');
+      if (correction.evidence.targetLogicalKey===logicalKey || correction.evidence.targetLogicalKey===imageParentKey) continuationLimit=Math.min(continuationLimit ?? 3, (req.outputMaxAttempts ?? 3)-Number(correction.attempt));
+    }
     const [existing] = await tx<(ReceiptRow & { attempts: number; request_id: string | null; retry_after: Date | null; recovery_exhausted: boolean })[]>`
       SELECT id, status, response, created_at, updated_at, attempts, request_id, retry_after, recovery_exhausted
       FROM receipts WHERE logical_key = ${logicalKey} FOR UPDATE`;
@@ -214,6 +245,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
         // A fresh generation is allowed only by explicit Gateway evidence. The
         // earlier attempt remains unknown, including any unknown provider cost.
       }
+      if (continuationLimit !== undefined && existing.attempts >= continuationLimit) throw new ReceiptRecoveryExhaustedError(existing.id);
       if (req.gatewayRecovery && existing.attempts >= (req.outputMaxAttempts ?? 3)) throw new ReceiptRecoveryExhaustedError(existing.id);
       if (req.outputMaxAttempts !== undefined) {
         const [invalid] = await tx<{ count: number }[]>`SELECT count(*)::int AS count FROM receipt_attempts
@@ -229,6 +261,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
       const attemptId = await startAttempt(tx, existing.id, r!.attempts, req, !!current?.output_retry);
       return { kind: "call" as const, id: existing.id, attemptId, requestId: req.gatewayRequestId, outputRetry: !!current?.output_retry };
     }
+    if (continuationLimit !== undefined && continuationLimit < 1) throw new ReceiptRecoveryStoppedError(Number(corrections[0]?.receipt_id), 'correction generation allowance exhausted');
     await checkBudget(tx, req.service);
     const [row] = await tx<{ id: number }[]>`
       INSERT INTO receipts (logical_key, service, model, purpose, subject, status, request, request_id, attempts)

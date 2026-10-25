@@ -21,3 +21,19 @@ test("optional metadata validation keeps unknown fields out and never infers quo
   assert.equal(contentPolicyRejected(null,"some provider said 1301"),false);
   assert.equal(contentPolicyRejected(null,"Error: Gateway HTTP 400 (1301); reconcile request 00000000-0000-0000-0000-000000000000 before retrying"),true);
 });
+
+
+test("safe rejection details retain documented codes and structured parameters, never raw text", () => {
+  for (const code of ['1214', '1261', 'invalid_image', 'image_content_policy_violation']) {
+    const safe = safeGatewayFailure({version:1,category:'invalid_request',httpStatus:400,providerCode:code,parameter:'image_url',message:'secret',providerRequestId:'secret'});
+    assert.equal(safe?.providerCode, code);
+    assert.equal((safe as any)?.parameter, 'image_url');
+    assert.ok(!JSON.stringify(safe).includes('secret'));
+  }
+  assert.equal((safeGatewayFailure({version:1,category:'invalid_request',parameter:'messages[0].secret'}) as any).parameter, undefined);
+  const native = gatewayFailure({error:{code:'invalid_image',param:'image_url',message:'private'}},new Headers(),400);
+  assert.equal(native.providerCode,'invalid_image');
+  assert.equal(native.category,'invalid_request');
+  assert.equal((native as any).parameter,'image_url');
+  assert.equal(gatewayFailure({error:{code:'image_content_policy_violation'}},new Headers(),400).category,'content_policy_rejected');
+});

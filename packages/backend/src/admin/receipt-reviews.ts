@@ -15,7 +15,8 @@ export async function reviewReceipt(id: number, input: { attempt: number; action
   return sql.begin(async tx => {
     const [r] = await tx`SELECT attempts,status FROM receipts WHERE id=${id} FOR UPDATE`;
     if (!r) return null;
-    if (r.attempts !== input.attempt || r.status === "pending") throw new Conflict("回执已变化或仍在调用，请刷新后核对");
+    if (input.action !== "record" && (r.attempts !== input.attempt || r.status === "pending")) throw new Conflict("回执已变化或仍在调用，请刷新后核对");
+    if (input.action === "record" && r.attempts === input.attempt && r.status === "pending") throw new Conflict("请求仍在调用，请稍后核账");
     const [a] = await tx`SELECT error_details,error,response FROM receipt_attempts WHERE receipt_id=${id} AND attempt=${input.attempt}`;
     if (!a) throw new Conflict("缺少 attempt，不能核对");
     const [before] = await tx`SELECT * FROM receipt_reviews WHERE receipt_id=${id} AND attempt=${input.attempt}`;

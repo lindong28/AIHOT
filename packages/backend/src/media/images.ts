@@ -134,8 +134,7 @@ function cacheFile(url: string, mode: string): string {
 async function produce(url: string, mode: string): Promise<{ body: Buffer; type: string }> {
   const file = cacheFile(url, mode);
   try {
-    const [body, meta] = await Promise.all([readFile(file), readFile(`${file}.type`, "utf8")]);
-    return { body, type: meta };
+    return await cachedImage(url, mode);
   } catch {
     // not cached
   }
@@ -145,6 +144,13 @@ async function produce(url: string, mode: string): Promise<{ body: Buffer; type:
   await writeFile(file, image.body);
   await writeFile(`${file}.type`, image.type);
   return image;
+}
+
+/** Read only: never fetch or create a rendition; a missing cache remains an error. */
+export async function cachedImage(url: string, mode: string): Promise<{ body: Buffer; type: string }> {
+  const file = cacheFile(url, mode);
+  const [body, type] = await Promise.all([readFile(file), readFile(`${file}.type`, "utf8")]);
+  return { body, type };
 }
 
 /** Most frames × pixels an animation may have to be re-encoded (all frames are decoded at once). */

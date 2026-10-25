@@ -9,8 +9,18 @@ export interface GatewayFailure {
   retryable: boolean | null;
   contentFilter?: { role: "user" | "assistant"; level: number };
   gatewayCode?: "restart_required";
+  parameter?: string;
 }
-const CODES = new Set(["1301", "content_filtered", "insufficient_quota"]);
+const IMAGE_CODES = new Set(["invalid_image", "invalid_image_format", "invalid_base64_image", "invalid_image_url", "image_too_large", "image_too_small", "image_parse_error", "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type", "empty_image_file", "failed_to_download_image", "image_file_not_found"]);
+const POLICY_CODES = new Set(["1301", "content_filtered", "image_content_policy_violation"]);
+const CODES = new Set([...POLICY_CODES, "insufficient_quota", "1210", "1211", "1212", "1213", "1214", "1215", "1221", "1222", "1261", ...IMAGE_CODES]);
+const PARAMETERS = new Set(["model", "messages", "input", "image", "image_url", "max_tokens", "max_completion_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"]);
+
+/** A generic HTTP 400 or parameter name is insufficient authority to remove an image. */
+export function imageRequestRejected(value: unknown): boolean {
+  const d = safeGatewayFailure(value);
+  return !!d && d.category === "invalid_request" && d.httpStatus === 400 && !!d.providerCode && IMAGE_CODES.has(d.providerCode);
+}
 const GATEWAY_CODES = new Set(["ledger_unavailable", "ledger_busy", "route_cooldown", "no_route", "dispatch_constraint_rejected", "http_error", "timeout", "transport_error", "restart_required"]);
 
 export interface GatewayRecovery {
@@ -40,7 +50,8 @@ export function safeGatewayFailure(value: unknown): GatewayFailure | null {
     version: 1,
     httpStatus: Number.isInteger(v.httpStatus) && Number(v.httpStatus) >= 100 && Number(v.httpStatus) <= 599 ? Number(v.httpStatus) : null,
     providerCode: typeof v.providerCode === "string" && CODES.has(v.providerCode) ? v.providerCode : null,
-    category: v.category as Category,
+    category: typeof v.providerCode === "string" && POLICY_CODES.has(v.providerCode) ? "content_policy_rejected" : v.category as Category,
+    ...(typeof v.parameter === "string" && PARAMETERS.has(v.parameter) ? { parameter: v.parameter } : {}),
     retryable: typeof v.retryable === "boolean" ? v.retryable : null,
     ...(v.gatewayCode === 'restart_required' ? { gatewayCode: 'restart_required' as const } : {}),
     ...(filter && (filter.role === "user" || filter.role === "assistant") && Number.isInteger(filter.level) && Number(filter.level) >= 0 && Number(filter.level) <= 3
@@ -56,16 +67,18 @@ export function gatewayFailure(body: unknown, headers: Headers, status: number):
   const restart = error?.code === 'restart_required' ? { gatewayCode: 'restart_required' as const } : {};
   const safe = projected ? { ...projected, ...restart } : null;
   // Historical Gateway/provider responses have no projection. Only recognize known codes.
-  const code = error?.code === 1301 ? "1301" : typeof error?.code === "string" ? error.code : null;
-  const rejected = status === 400 && (code === "1301" || code === "content_filtered");
+  const code = typeof error?.code === "number" && Number.isInteger(error.code) ? String(error.code) : typeof error?.code === "string" ? error.code : null;
+  const rejected = status === 400 && !!code && POLICY_CODES.has(code);
+  const invalid = status === 400 && !!code && CODES.has(code) && !rejected && code !== "insufficient_quota";
+  const parameter = typeof error?.param === "string" && PARAMETERS.has(error.param) ? { parameter: error.param } : {};
   const quota = code === "insufficient_quota";
   // Fetch can decode a native body that Gateway deliberately left compressed.
   // Its exact known code adds evidence missing from the optional header projection.
-  if (safe) return !safe.providerCode && (rejected || quota)
-    ? { ...safe, providerCode: code, category: rejected ? "content_policy_rejected" : "quota_exhausted", retryable: false } : safe;
+  if (safe) return !safe.providerCode && (rejected || quota || invalid)
+    ? { ...safe, ...parameter, providerCode: code, category: rejected ? "content_policy_rejected" : quota ? "quota_exhausted" : "invalid_request", retryable: false } : safe;
   return { version: 1, httpStatus: status, providerCode: code && CODES.has(code) ? code : null,
-    category: rejected ? "content_policy_rejected" : quota ? "quota_exhausted" : status === 429 ? "rate_limited" : status >= 500 ? "upstream_unavailable" : "unknown",
-    retryable: rejected || quota ? false : status === 408 || status === 429 || status >= 500 ? true : null, ...restart };
+    category: rejected ? "content_policy_rejected" : quota ? "quota_exhausted" : invalid ? "invalid_request" : status === 429 ? "rate_limited" : status >= 500 ? "upstream_unavailable" : "unknown",
+    retryable: rejected || quota || invalid ? false : status === 408 || status === 429 || status >= 500 ? true : null, ...restart, ...parameter };
 }
 
 export class GatewayResponseError extends Error {

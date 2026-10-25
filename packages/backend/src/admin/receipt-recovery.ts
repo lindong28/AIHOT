@@ -26,7 +26,7 @@ export interface Receipt {
 const ANALYSIS = new Set(["analyze_article", "prefilter_article", "structure_article", "score_article", "understand_article", "summarize_article"]);
 
 /** Keep the same run tag, including score's two independent votes. */
-function analysisTag(r: Receipt): { attemptTag?: string } | null {
+export function analysisTag(r: Receipt): { attemptTag?: string } | null {
   const prefix = `${r.service}:${r.purpose}:${r.model ?? "-"}:`;
   if (!r.logical_key.startsWith(prefix)) return null;
   const [hash, ...parts] = r.logical_key.slice(prefix.length).split(":");

@@ -15,7 +15,9 @@ import { SELECTION } from "@aihot/industry/selection";
 import { sql } from "../db.ts";
 import { backfillContext } from "../backfill/context.ts";
 import { chatJson, MODELS, type ContentPart } from "../providers/llm.ts";
-import { completeReceipt, ProviderRejectedError } from "../providers/receipts.ts";
+import { completeReceipt, ProviderRejectedError, ReceiptUnknownError, ReceiptRecoveryStoppedError } from "../providers/receipts.ts";
+import { imageRequestRejected } from "../providers/gateway-error.ts";
+import { jsonMaxAttempts } from "../providers/gateway.ts";
 import { collapseWhitespace } from "../lib/text.ts";
 import { modelFor } from "./models.ts";
 import { buildMaterial, firstImagePart, loadAnalyzeInput, type AnalyzeInputArticle } from "./input.ts";
@@ -215,10 +217,25 @@ export async function runPrefilter(a: AnalyzeInputArticle, opts: StepOpts): Prom
   return { label, reason: res.data.reason, model: res.model, receiptId: res.receiptId, reused: res.reused };
 }
 
+export function scoreRequest(a: AnalyzeInputArticle, model: string, vote: 1 | 2, opts: StepOpts = {}) {
+  return { model, purpose: "score_article", subject: subjectOf(a), promptVersion: PROMPT_VERSIONS.score, system: SCORE_SYSTEM,
+    user: buildScoreInput(a), schema: ScoreSchema, ...scoreCall(model), attemptTag: tagged(opts.attemptTag, `score-${vote}`) };
+}
+
+export function structureRequest(a: AnalyzeInputArticle, model: string, opts: StepOpts = {}) {
+  return { model, purpose: "structure_article", subject: subjectOf(a), promptVersion: PROMPT_VERSIONS.structure, system: STRUCTURE_SYSTEM,
+    user: buildMaterial(a), schema: StructureSchema, temperature: 0.2, maxTokens: 800, attemptTag: tagged(opts.attemptTag, "structure") };
+}
+
+export function understandRequest(a: AnalyzeInputArticle, model: string, image: ContentPart | null, opts: StepOpts = {}) {
+  const text = understandUser(a);
+  return { model, purpose: "understand_article", subject: subjectOf(a), promptVersion: PROMPT_VERSIONS.understand, system: UNDERSTAND_SYSTEM,
+    user: image ? [{ type: "text" as const, text }, image] : text, schema: UnderstandSchema, temperature: 0.2, maxTokens: 16_384,
+    timeoutMs: 180_000, attemptTag: tagged(opts.attemptTag, "understand") };
+}
+
 async function runScores(a: AnalyzeInputArticle, threshold: number, opts: StepOpts): Promise<NonNullable<AnalysisRun["scores"]>> {
   const model = opts.scoreModel ?? (await modelFor("score"));
-  const call = scoreCall(model);
-  const input = buildScoreInput(a);
   const values: number[] = [];
   const receiptIds: number[] = [];
   let reused = true;
@@ -226,12 +243,7 @@ async function runScores(a: AnalyzeInputArticle, threshold: number, opts: StepOp
   for (let i = 0; i < SCORE_CALLS; i++) {
     checkAnalysisRunning();
     try {
-      const res = await chatJson({
-        model, purpose: "score_article", subject: subjectOf(a), promptVersion: PROMPT_VERSIONS.score, system: SCORE_SYSTEM, user: input,
-        schema: ScoreSchema, temperature: call.temperature, maxTokens: call.maxTokens, timeoutMs: call.timeoutMs,
-        // Each call is its own paid request; an explicit re-evaluation gets new ones.
-        attemptTag: tagged(opts.attemptTag, `score-${i + 1}`),
-      });
+      const res = await chatJson(scoreRequest(a, model, (i + 1) as 1 | 2, opts));
       values.push(res.data.attentionScore);
       receiptIds.push(res.receiptId);
       reused &&= res.reused;
@@ -247,18 +259,7 @@ async function runScores(a: AnalyzeInputArticle, threshold: number, opts: StepOp
 async function runStructure(a: AnalyzeInputArticle, opts: StepOpts): Promise<NonNullable<AnalysisRun["structure"]>> {
   const model = await modelFor("structure");
   checkAnalysisRunning();
-  const res = await chatJson({
-    model,
-    purpose: "structure_article",
-    subject: subjectOf(a),
-    promptVersion: PROMPT_VERSIONS.structure,
-    system: STRUCTURE_SYSTEM,
-    user: buildMaterial(a),
-    schema: StructureSchema,
-    temperature: 0.2,
-    maxTokens: 800,
-    attemptTag: tagged(opts.attemptTag, "structure"),
-  });
+  const res = await chatJson(structureRequest(a, model, opts));
   const subjects = [...new Set(res.data.subjects.map((s) => s.trim().toLowerCase()).filter((s) => s in ENTITIES))];
   return { model: res.model, category: res.data.category, tags: normalizeTags(res.data.tags), subjects, fact: res.data.fact, receiptId: res.receiptId, reused: res.reused };
 }
@@ -266,14 +267,9 @@ async function runStructure(a: AnalyzeInputArticle, opts: StepOpts): Promise<Non
 /** The content understanding; null when the model's content filter declines the material. */
 async function runUnderstand(a: AnalyzeInputArticle, opts: StepOpts): Promise<AnalysisRun["writing"]> {
   const model = await modelFor("understand");
-  const text = understandUser(a);
-  const call = (image: ContentPart | null) => {
+  const call = (image: ContentPart | null, generationLimit?: number, imageFallbackFrom?: {id:number;attempt:number}) => {
     checkAnalysisRunning();
-    return chatJson({
-      model, purpose: "understand_article", subject: subjectOf(a), promptVersion: PROMPT_VERSIONS.understand, system: UNDERSTAND_SYSTEM,
-      user: image ? [{ type: "text", text }, image] : text, schema: UnderstandSchema, temperature: 0.2, maxTokens: 16_384,
-      timeoutMs: 180_000, attemptTag: tagged(opts.attemptTag, "understand"),
-    });
+    return chatJson({ ...understandRequest(a, model, image, opts), generationLimit, imageFallbackFrom });
   };
   // A model that is known not to read images gets the text only.
   const image = MODELS[model]?.vision === false ? null : await firstImagePart(a);
@@ -282,10 +278,18 @@ async function runUnderstand(a: AnalyzeInputArticle, opts: StepOpts): Promise<An
     res = await call(image);
   } catch (error) {
     if (isContentFilter(error)) return null;
-    // The model refused the image (download, format): the text is written without it.
-    if (!image || !(error instanceof ProviderRejectedError) || error.retryable) throw error;
+    // Only a documented image rejection permits the changed, text-only request.
+    if (!image || !(error instanceof ReceiptUnknownError || error instanceof ReceiptRecoveryStoppedError)) throw error;
+    const [attempt] = await sql`SELECT a.error_details,r.attempts FROM receipt_attempts a JOIN receipts r ON r.id=a.receipt_id
+      WHERE r.id=${error.receiptId} AND a.attempt=r.attempts`;
+    if (!imageRequestRejected(attempt?.error_details)) throw error;
+    const remaining = jsonMaxAttempts() - Number(attempt!.attempts);
+    if (remaining < 1) throw error;
     try {
-      res = await call(null);
+      res = await call(null, remaining, {id:error.receiptId,attempt:Number(attempt!.attempts)});
+      await sql`UPDATE receipt_reviews SET evidence=coalesce(evidence,'{}'::jsonb) ||
+        ${sql.json({ replacementReceiptId: res.receiptId, correction: 'documented_image_rejection_text_only' })},updated_at=now()
+        WHERE receipt_id=${error.receiptId} AND attempt=${attempt!.attempts}`;
     } catch (retryError) {
       if (isContentFilter(retryError)) return null;
       throw retryError;
