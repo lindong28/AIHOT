@@ -236,7 +236,7 @@ export async function flushResetPushes(): Promise<number> {
 }
 
 /** One scheduled tick: scan when due, process what was stored, push what is owed, then move the verified watermark. */
-export async function monitorTick(opts: { force?: boolean; lookbackHours?: number } = {}) {
+export async function monitorTick(opts: { force?: boolean; lookbackHours?: number; reconsiderationPost?: string } = {}) {
   // A daily request must survive losing the shared lock to the ordinary tick.
   if (opts.lookbackHours) await setState("lookbackPending", {
     since: Math.floor((Date.now() - opts.lookbackHours * 3600_000) / 1000), window: new Date().toISOString(),
@@ -247,7 +247,17 @@ export async function monitorTick(opts: { force?: boolean; lookbackHours?: numbe
   try {
     const [row] = await lock`SELECT pg_try_advisory_lock(hashtext('monitor.collect-recognize')) AS locked`;
     acquired = !!row?.locked;
-    if (!acquired) return { skipped: true, reason: "monitor already running" };
+    if (!acquired) {
+      if (opts.reconsiderationPost) throw new Error('Recovery monitor is busy; retry the same queued job');
+      return { skipped: true, reason: "monitor already running" };
+    }
+    if (opts.reconsiderationPost) {
+      const [first] = await sql`SELECT id FROM monitor_posts WHERE processed_at IS NULL AND author=${AUTHOR} ORDER BY published_at,id LIMIT 1`;
+      if (first?.id !== opts.reconsiderationPost) throw new Error('Monitor recovery target is no longer first pending');
+      const result = await processPending(1);
+      if (result.failed || !result.processed) throw new Error('Monitor recovery did not finish');
+      return { ...result, skipped: false };
+    }
     return await runMonitorTick(opts);
   } finally {
     try { if (acquired) await lock`SELECT pg_advisory_unlock(hashtext('monitor.collect-recognize'))`; }

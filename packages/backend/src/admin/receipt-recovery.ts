@@ -5,6 +5,7 @@ import { queueProcessing } from "../jobs/content.ts";
 import { enqueue, QUEUES } from "../jobs/queue.ts";
 import { receiptOutcome } from "../providers/receipt-review.ts";
 import { Conflict } from "./sources.ts";
+import type { ReconsiderationRef } from "../providers/reconsideration.ts";
 
 export const GatewayEvidenceSchema = z.object({
   receiptId: z.number().int().positive(),
@@ -40,7 +41,13 @@ export function analysisTag(r: Receipt): { attemptTag?: string } | null {
   return root ? { attemptTag: root } : {};
 }
 
-export async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boolean; recovery: string; jobId?: string }> {
+export function reportReceiptTarget(r: Pick<Receipt, 'purpose' | 'subject'>): { kind: 'daily' | 'weekly' | 'monthly'; key: string } | null {
+  const m = /^report:(daily|weekly|monthly):([0-9W-]+)$/.exec(r.subject ?? '');
+  if (!m || !(r.purpose === 'report_lead' || r.purpose === `report_${m[1]}`)) return null;
+  return { kind: m[1] as 'daily' | 'weekly' | 'monthly', key: m[2]! };
+}
+
+export async function recoverTask(db: Db, r: Receipt, reconsideration?: ReconsiderationRef): Promise<{ requeued: boolean; recovery: string; jobId?: string }> {
   const skip = (recovery: string) => ({ requeued: false, recovery });
   if (r.service === "backfill") return skip("managed_backfill_runner");
   if (ANALYSIS.has(r.purpose)) {
@@ -51,7 +58,8 @@ export async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boole
       processing_retry_at = NULL, processing_error = NULL
       WHERE id = ${match[1]!} AND revision = ${Number(match[2])} AND processing_state = 'failed' AND managed_backfill_id IS NULL RETURNING id`;
     if (!a) return skip("article_not_failed_or_revision_changed_or_managed");
-    const job = await queueProcessing(match[1]!, { step: "analyze", ...tag, db });
+    const job = await queueProcessing(match[1]!, { step: "analyze", ...tag, db, reconsideration });
+    if (reconsideration && !job) throw new Error('Recovery analysis queue is busy; authorization was not admitted');
     return { requeued: !!job, recovery: job ? "analysis_queued" : "analysis_queue_already_present", ...(job ? { jobId: job } : {}) };
   }
   if (["group_article", "group_review", "group_signal"].includes(r.purpose)) {
@@ -61,7 +69,8 @@ export async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boole
     // standalone. Its own membership/manual guards make a normal retry safe.
     const [a] = await db`SELECT id FROM articles WHERE id = ${match[1]!} AND managed_backfill_id IS NULL FOR UPDATE`;
     if (!a) return skip("article_managed_or_missing");
-    const job = await enqueue(QUEUES.group, { articleId: match[1], ...(r.purpose === "group_signal" ? { signalOnly: true } : {}) }, { singletonKey: match[1] }, db);
+    const job = await enqueue(QUEUES.group, { articleId: match[1], ...(r.purpose === "group_signal" ? { signalOnly: true } : {}), ...(reconsideration ? { reconsideration } : {}) }, { singletonKey: match[1] }, db);
+    if (reconsideration && !job) throw new Error('Recovery group queue is busy; authorization was not admitted');
     const [existing] = job ? [] : await db`SELECT id FROM pgboss.job WHERE name=${QUEUES.group} AND singleton_key=${match[1]!}
       AND state IN ('created','retry','active') ORDER BY created_on DESC LIMIT 1`;
     return { requeued: !!job, recovery: job ? "group_queued" : "group_queue_already_present", jobId: job ?? existing?.id };
@@ -72,12 +81,20 @@ export async function recoverTask(db: Db, r: Receipt): Promise<{ requeued: boole
     const id = Number(match[1]);
     const [story] = await db`SELECT id FROM stories WHERE id = ${id} AND merged_into IS NULL FOR UPDATE`;
     if (!story) return skip("story_merged_or_missing");
-    const job = await enqueue(QUEUES.digest, { storyId: id }, { singletonKey: `story:${id}` }, db);
+    const job = await enqueue(QUEUES.digest, { storyId: id, ...(reconsideration ? { reconsideration } : {}) }, { singletonKey: `story:${id}` }, db);
+    if (reconsideration && !job) throw new Error('Recovery digest queue is busy; authorization was not admitted');
     const [existing] = job ? [] : await db`SELECT id FROM pgboss.job WHERE name=${QUEUES.digest} AND singleton_key=${`story:${id}`}
       AND state IN ('created','retry','active') ORDER BY created_on DESC LIMIT 1`;
     return { requeued: !!job, recovery: job ? "digest_queued" : "digest_queue_already_present", jobId: job ?? existing?.id };
   }
-  if (r.purpose === "monitor.recognize") return skip("monitor_next_tick");
+  if (r.purpose === "monitor.recognize" && !reconsideration) return skip("monitor_next_tick");
+  const report = reportReceiptTarget(r);
+  if (reconsideration && (report || r.purpose === 'monitor.recognize')) {
+    const queue = report ? `cron.reports.${report.kind}` : 'cron.monitor.tick';
+    const job = await enqueue(queue, { reconsideration, ...(report ? { report } : { monitorPost: r.subject?.slice(2) }) }, { singletonKey: `reconsider:${r.id}:${r.attempts}` }, db);
+    if (!job) return skip('reconsideration_queue_busy');
+    return { requeued: true, recovery: 'reconsideration_queued', jobId: job };
+  }
   return skip("unsupported_purpose");
 }
 

@@ -25,6 +25,7 @@ import { backupConfigured, runBackup } from "@aihot/backend/operations/backup";
 import { sourceHealthWeekly } from "@aihot/backend/operations/reports";
 import { markStalePendingReceipts } from "@aihot/backend/providers/receipts";
 import { markStaleDeliveries } from "@aihot/backend/notify/deliver";
+import { withReconsideration, type ReconsiderationRef } from "@aihot/backend/providers/reconsideration";
 
 interface Scheduled {
   name: string;
@@ -102,7 +103,19 @@ export async function registerSchedules(boss: PgBoss) {
     await ensureQueue(queue, { policy: "singleton", retryLimit: 1, expireInSeconds: 3600 });
     await boss.schedule(queue, s.cron, {}, { tz: "Asia/Shanghai", missed: s.missed ?? "skip" });
     // Schedules fire at minute boundaries; a 15 s pickup keeps them on time with a third of the polling.
-    await boss.work(queue, { pollingIntervalSeconds: 15 }, async () => recordRun(s.name, s.run));
+    await boss.work<{ reconsideration?: ReconsiderationRef; report?: { kind: string; key: string }; monitorPost?: string }>(queue, { pollingIntervalSeconds: 15 }, async ([job]) => recordRun(s.name, () => {
+      if (!job?.data.reconsideration) return s.run();
+      return withReconsideration(job.data.reconsideration, async () => {
+        const report = job.data.report;
+        if (report && s.name === `reports.${report.kind}`) {
+          if (report.kind === 'daily') return composeDaily(report.key);
+          if (report.kind === 'weekly') return composeWeekly(report.key);
+          if (report.kind === 'monthly') return composeMonthly(report.key);
+        }
+        if (s.name === 'monitor.tick' && job.data.monitorPost) return monitorTick({ reconsiderationPost: job.data.monitorPost });
+        throw new Error('Unsupported recovery schedule identity');
+      });
+    }));
   }
   // A schedule removed from the table (a module switched off) must not keep firing from an earlier run.
   const names = new Set(SCHEDULES.map((s) => `cron.${s.name}`));

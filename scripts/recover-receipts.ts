@@ -1,15 +1,18 @@
 import { parseArgs } from "node:util";
+import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 import { sql, closeDb } from "../packages/backend/src/db.ts";
 import { stopBoss } from "../packages/backend/src/jobs/queue.ts";
 import { previewReceiptRecovery, createReceiptRecoveryBatch, advanceReceiptRecoveryBatch, settleReceiptRecoveryBatch, receiptRecoveryStatus } from "../packages/backend/src/admin/receipt-batch-recovery.ts";
 import { legacyTransientReceiptIds } from "../packages/backend/src/admin/receipt-batch-recovery.ts";
 import { jsonMaxAttempts } from "../packages/backend/src/providers/gateway.ts";
+import type { ReconsiderationSnapshot } from "../packages/backend/src/admin/receipt-batch-recovery.ts";
 
 const { values } = parseArgs({ options: {
   batch: { type: "string" }, apply: { type: "boolean", default: false }, note: { type: "string" },
   status: { type: "boolean", default: false }, json: { type: "boolean", default: false },
   "transient-only": { type: "boolean", default: false },
+  "reconsideration-manifest": { type: "string" }, "accept-duplicate-charge": { type: "boolean", default: false },
   limit: { type: "string", default: "4" }, "backfill-limit": { type: "string" }, "wait-seconds": { type: "string", default: "0" },
 } });
 let lock: Awaited<ReturnType<typeof sql.reserve>> | undefined;
@@ -18,7 +21,10 @@ try {
   const backfillLimit = values["backfill-limit"] === undefined ? undefined : Number(values["backfill-limit"]);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isFinite(wait) || wait < 0 || wait > 86400) throw new Error("limit 须为 1..100，wait-seconds 须为 0..86400");
   if (backfillLimit !== undefined && (!Number.isInteger(backfillLimit) || backfillLimit < 1 || backfillLimit > 100)) throw new Error("backfill-limit 须为 1..100");
-  const receiptIds = values["transient-only"] && !values.status ? await legacyTransientReceiptIds(jsonMaxAttempts()) : undefined;
+  if (values['reconsideration-manifest'] && values['transient-only']) throw new Error('人工续跑快照不能与暂态筛选混用');
+  const manifest = values['reconsideration-manifest'] ? JSON.parse(await readFile(values['reconsideration-manifest'],'utf8')) as { version: number; receipts: ReconsiderationSnapshot[] } : undefined;
+  if (manifest && (manifest.version !== 1 || !Array.isArray(manifest.receipts))) throw new Error('人工续跑快照须为version=1及receipts数组');
+  const receiptIds = manifest?.receipts.map(r => r.id) ?? (values["transient-only"] && !values.status ? await legacyTransientReceiptIds(jsonMaxAttempts()) : undefined);
   if (!values.apply && !values.status) {
     const rows = await previewReceiptRecovery(receiptIds);
     if (values.json) console.log(JSON.stringify({ mode: "preview", receipts: rows }));
@@ -30,14 +36,15 @@ try {
     if (!held?.locked) throw new Error("已有恢复脚本运行，请等待该进程结束");
     if (values.apply) {
       if (!values.note) throw new Error("--apply 必须提供 --note，说明这批重放已获授权，可能再次计费");
-      await createReceiptRecoveryBatch(values.batch, values.note, receiptIds);
+      await createReceiptRecoveryBatch(values.batch, values.note, receiptIds, manifest ? { receipts: manifest.receipts, acceptDuplicateCharge: values['accept-duplicate-charge'] } : undefined);
     }
     const deadline = Date.now() + wait * 1000;
     let result;
     do {
-      if (values.apply) await advanceReceiptRecoveryBatch(values.batch, limit, backfillLimit);
-      else await settleReceiptRecoveryBatch(values.batch);
+      const admission = values.apply ? await advanceReceiptRecoveryBatch(values.batch, limit, backfillLimit) : undefined;
+      if (!values.apply) await settleReceiptRecoveryBatch(values.batch);
       result = await receiptRecoveryStatus(values.batch);
+      if (admission?.results.some(r => ['batch_stopped_after_rejection','report_pilot_failed'].includes(r.result))) break;
       if (!result.counts.planned && !result.counts.queued || Date.now() >= deadline) break;
       if (!values.json) console.log(`批次 ${values.batch}：已恢复 ${result.counts.recovered ?? 0}，待排队 ${result.counts.planned ?? 0}，处理中 ${result.counts.queued ?? 0}，未解决 ${result.counts.blocked ?? 0}。`);
       await setTimeout(Math.min(15_000, Math.max(0, deadline-Date.now())));

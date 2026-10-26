@@ -11,6 +11,7 @@ import { config } from "../config.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { GatewayResponseError, imageRequestRejected, safeGatewayFailure } from "./gateway-error.ts";
 import { receiptOutcome, recordReceiptOutcome } from "./receipt-review.ts";
+import { loadReconsideration, consumeReconsideration } from "./reconsideration.ts";
 
 export class BudgetExceededError extends Error {
   readonly service: string;
@@ -170,6 +171,9 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
   const claimed = await sql.begin(async (tx) => {
     // Serialise budget checks per service so concurrent workers cannot overshoot.
     await tx`SELECT pg_advisory_xact_lock(hashtext(${"budget:" + req.service}))`;
+    const reconsideration = await loadReconsideration(tx, req).catch(e => {
+      throw new ReceiptRecoveryStoppedError(0, String(e));
+    });
     let imageParentKey: string | undefined;
     if (req.imageFallbackFrom) {
       const from = req.imageFallbackFrom;
@@ -210,7 +214,10 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
         WHERE a.receipt_id=${existing.id} AND a.attempt=${existing.attempts}`;
       const [recovered] = await tx`SELECT 1 FROM receipt_recoveries WHERE receipt_id=${existing.id} AND original_attempt=${existing.attempts} AND state='recovered'`;
       const known = receiptOutcome(current?.error_details, current?.error ?? null, current?.response ?? existing.response);
-      if (recovered || ['stopped','superseded'].includes(current?.disposition) || known !== 'unknown') {
+      const reconsider = known === 'invalid_request' && reconsideration && !reconsideration.grant.consumed
+        && reconsideration.ref.receiptId === existing.id && reconsideration.ref.attempt === existing.attempts
+        && reconsideration.grant.logicalKey === logicalKey && reconsideration.grant.requestId === existing.request_id;
+      if (recovered || ['stopped','superseded'].includes(current?.disposition) || (known !== 'unknown' && !reconsider)) {
         await recordReceiptOutcome(tx, existing.id, existing.attempts, known);
         return { kind: "stopped" as const, row: existing };
       }
@@ -253,15 +260,20 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
         if (invalid!.count >= req.outputMaxAttempts) throw new ReceiptOutputExhaustedError(existing.id, req.outputMaxAttempts);
       }
       // failed: the provider did not take the request, or its answer was unusable; a new attempt is allowed.
+      const [consumedGrant] = await tx`SELECT 1 FROM receipt_reviews WHERE evidence->'reconsideration'->'consumed'->>'receiptId'=${String(existing.id)} LIMIT 1`;
+      if (consumedGrant) throw new ReceiptRecoveryStoppedError(existing.id, 'authorized generation consumed');
+      if (reconsideration?.grant.consumed) throw new ReceiptRecoveryStoppedError(reconsideration.ref.receiptId, 'authorized generation consumed');
       await checkBudget(tx, req.service);
       const [r] = await tx<{ attempts: number }[]>`
         UPDATE receipts SET status = 'pending', attempts = attempts + 1, error = NULL,
           request_id = ${req.gatewayRequestId ?? null}, request = ${tx.json((req.requestSummary ?? {}) as never)}, retry_after=NULL, updated_at = now()
         WHERE id = ${existing.id} RETURNING attempts`;
       const attemptId = await startAttempt(tx, existing.id, r!.attempts, req, !!current?.output_retry);
+      if (reconsideration) await consumeReconsideration(tx, reconsideration, { receiptId: existing.id, attempt: r!.attempts, requestId: req.gatewayRequestId ?? null, logicalKey });
       return { kind: "call" as const, id: existing.id, attemptId, requestId: req.gatewayRequestId, outputRetry: !!current?.output_retry };
     }
     if (continuationLimit !== undefined && continuationLimit < 1) throw new ReceiptRecoveryStoppedError(Number(corrections[0]?.receipt_id), 'correction generation allowance exhausted');
+    if (reconsideration?.grant.consumed) throw new ReceiptRecoveryStoppedError(reconsideration.ref.receiptId, 'authorized generation consumed');
     await checkBudget(tx, req.service);
     const [row] = await tx<{ id: number }[]>`
       INSERT INTO receipts (logical_key, service, model, purpose, subject, status, request, request_id, attempts)
@@ -269,6 +281,7 @@ export async function paidRequest(req: ReceiptRequest, call: (requestId?: string
               ${tx.json((req.requestSummary ?? {}) as never)}, ${req.gatewayRequestId ?? null}, 1)
       RETURNING id`;
     const attemptId = await startAttempt(tx, row!.id, 1, req);
+    if (reconsideration) await consumeReconsideration(tx, reconsideration, { receiptId: row!.id, attempt: 1, requestId: req.gatewayRequestId ?? null, logicalKey });
     return { kind: "call" as const, id: row!.id, attemptId, requestId: req.gatewayRequestId, outputRetry: false };
   });
 

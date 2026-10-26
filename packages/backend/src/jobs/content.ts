@@ -14,6 +14,7 @@ import { ModelOutputError } from "../providers/llm.ts";
 import { ensureQueue, enqueue, QUEUES, shutdownSignal } from "./queue.ts";
 import { backfillContext } from "../backfill/context.ts";
 import { discardFilteredContent } from "../content/retention.ts";
+import { withReconsideration, type ReconsiderationRef } from "../providers/reconsideration.ts";
 
 /** Minutes to wait after the n-th failed attempt; one more failure after the last ends in "failed". */
 const RETRY_MINUTES = [5, 10, 20, 40, 60, 120, 240, 360];
@@ -67,7 +68,7 @@ const PRIORITY = { live: 0, liveSignal: -1, history: -2 } as const;
  * (paid) request; the same tag reuses its receipt. With `db`, the job commits with the caller's write.
  * Posts of non-editorial sources skip the analysis queue: they only need recording and grouping.
  */
-export async function queueProcessing(articleId: string, opts: { step?: Step; attemptTag?: string; db?: Db } = {}): Promise<string | null> {
+export async function queueProcessing(articleId: string, opts: { step?: Step; attemptTag?: string; db?: Db; reconsideration?: ReconsiderationRef } = {}): Promise<string | null> {
   const db = opts.db ?? sql;
   const [managed] = await db`SELECT managed_backfill_id FROM articles WHERE id = ${articleId}`;
   if (managed?.managed_backfill_id) return null;
@@ -81,7 +82,7 @@ export async function queueProcessing(articleId: string, opts: { step?: Step; at
   }
   const tagged = !!opts.attemptTag;
   await db`UPDATE articles SET processing_attempt_tag = ${opts.attemptTag ?? null} WHERE id = ${articleId}`;
-  return enqueue(QUEUES.analyze, tagged ? { articleId, attemptTag: opts.attemptTag } : { articleId },
+  return enqueue(QUEUES.analyze, { articleId, ...(tagged ? { attemptTag: opts.attemptTag } : {}), ...(opts.reconsideration ? { reconsideration: opts.reconsideration } : {}) },
     { singletonKey: tagged ? `manual:analyze:${articleId}:${opts.attemptTag}` : articleId, priority: r.historical ? PRIORITY.history : PRIORITY.live }, opts.db);
 }
 
@@ -173,17 +174,22 @@ async function afterFailure(articleId: string, error: unknown): Promise<{ state:
 
 export async function registerContentJobs(boss: PgBoss, concurrency = Number(process.env.ANALYZE_CONCURRENCY || 6)) {
   await ensureQueue(QUEUES.analyze);
-  await boss.work<{ articleId: string; attemptTag?: string }>(QUEUES.analyze, { localConcurrency: concurrency, pollingIntervalSeconds: 2 }, async ([job]) => {
+  await boss.work<{ articleId: string; attemptTag?: string; reconsideration?: ReconsiderationRef }>(QUEUES.analyze, { localConcurrency: concurrency, pollingIntervalSeconds: 2 }, async ([job]) => {
     if (!job) return;
     const { articleId, attemptTag } = job.data;
     try {
-      const result = await processArticle(articleId, { attemptTag });
+      const result = await withReconsideration(job.data.reconsideration, () => processArticle(articleId, { attemptTag }));
       if (result.state !== "unknown-receipt") {
         await sql`UPDATE articles SET processing_attempts = 0, processing_retry_at = NULL, processing_queued_at = NULL,
                     processing_attempt_tag = NULL WHERE id = ${articleId} AND processing_attempt_tag IS NOT DISTINCT FROM ${attemptTag ?? null}`;
       }
       return result;
     } catch (error) {
+      if (job.data.reconsideration) {
+        await sql`UPDATE articles SET processing_state='failed',processing_retry_at=NULL,processing_queued_at=NULL,
+          processing_error=${String(error).slice(0,500)} WHERE id=${articleId}`;
+        throw error; // pg-boss retains the exact recovery context; the normal sweep must not replace it
+      }
       return afterFailure(articleId, error);
     }
   });

@@ -76,7 +76,7 @@ export async function settleReceiptReviews(input: { dryRun?: boolean } = {}) {
     if (input.dryRun) return;
     await tx`INSERT INTO receipt_reviews (receipt_id,attempt,outcome,disposition,note,actor,evidence)
       VALUES (${id},${r.attempts},${outcome},'superseded','后续业务结果已持久化；旧费用原样保留','ops.recover',${tx.json(evidence as never)})
-      ON CONFLICT (receipt_id,attempt) DO UPDATE SET disposition='superseded',evidence=excluded.evidence,updated_at=now()`;
+      ON CONFLICT (receipt_id,attempt) DO UPDATE SET disposition='superseded',evidence=receipt_reviews.evidence || excluded.evidence,updated_at=now()`;
     await tx`INSERT INTO audit_log (actor,action,subject,reason,before,after)
       VALUES ('ops.recover','receipt.supersede',${`receipt:${id}`},'后续业务结果已持久化；旧费用保留',
         ${tx.json((before ?? null) as never)},${tx.json({ attempt: r.attempts, evidence } as never)})`;

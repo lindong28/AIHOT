@@ -40,6 +40,22 @@ node --env-file=/home/ubuntu/aihot/shared/app.env scripts/continue-receipt-artic
 
 ## 运行页核对与历史结案
 
+### 人工有界复核 HTTP400
+
+默认仍不自动重试`invalid_request`。操作者取得针对具体请求、接受可能重复计费的授权后，可以为当前HTTP400/422创建一次生成额度。此入口不同于修正输入：不需要人为改变正文，旧错误和费用未知保持。先冻结清单`{"version":1,"receipts":[{"id":123,"attempt":1,"requestId":"原Gateway UUID","logicalKey":"原logical_key"}]}`，核对当前身份；清单不得包含已停止、已结案、审核拒绝、受管回填、双票评分`score_article`或不支持的业务目标。
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
+  --reconsideration-manifest /path/to/frozen-manifest.json --json
+node --env-file=/home/ubuntu/aihot/shared/app.env scripts/recover-receipts.ts \
+  --reconsideration-manifest /path/to/frozen-manifest.json --accept-duplicate-charge \
+  --apply --batch <唯一批次名> --note '<本批明确授权、额度及停止条件>' --limit 6 --wait-seconds 600
+```
+
+预览只读；执行时身份变化则拒绝，沿用同一批次及清单不会增加额度。原Gateway配置随授权冻结，除新请求UUID外的配置变化均拒绝。每条原请求在本次恢复任务内最多一次新生成，新旧输入产生的逻辑key共用额度，已收到结果优先复用。后续不同业务阶段仍按原模型、路由和预算执行，因此整篇恢复费用不等于这一次生成费用。含日报／周报的批次先恢复报告，必须实际调用成功且持久保存报告后才放行其他目标；空报告或未调用模型的任务不算试跑成功。新明确拒绝停止剩余派发，已在途请求仍保留结果与账本；后续业务结案不清除授权及停止依据。已有失败记录不删除，是否恢复以业务结果和消费者入口为准。
+
+仍待处理时用原批次查询`--status --batch <批次名> --json`。退出码2表示仍有未结案目标，1表示执行出错；不要通过换批次名或修改清单绕过已消耗的授权。按具体原因核查输入、业务版本或上游后再决定后续处置。本入口及2026-10-26的授权边界见[运行失败恢复记录](../references/20261026-runs-recovery.md)。
+
 运行页按完整结果统计，每页40条，可翻页并切换“处置历史”。旧批次已恢复记录也显示业务结案并禁止原样重放；严格账本核对的计费结论进入处置历史。“回执结果未知”只统计仍待处理且没有明确结果分类的请求；“请求被拒绝”和“计费未知”可以同时成立，不能据结果分类推断免费。核对窗口默认计费未知，提交时绑定当前 attempt；有新 attempt 或请求仍在调用则拒绝陈旧操作。
 
 - 仅记录核账：保存计费判断和说明，不排队、不放行。

@@ -3,8 +3,9 @@ import { sql, type Db } from "../db.ts";
 import { receiptOutcome } from "../providers/receipt-review.ts";
 import { sha256 } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "../backfill/history-input.ts";
-import { recoverTask, type Receipt } from "./receipt-recovery.ts";
+import { recoverTask, reportReceiptTarget, type Receipt } from "./receipt-recovery.ts";
 import { contentPolicyRejected, safeGatewayFailure } from "../providers/gateway-error.ts";
+import { reconsiderationBatchStopped, reconsiderationGateway } from "../providers/reconsideration.ts";
 
 /** One-time migration of legacy transient failures, within the shared generation budget.
  * This authorizes business replay, never a claim that the old attempt was free.
@@ -33,6 +34,7 @@ export type RecoveryTarget =
   | { kind: "group"; id: string }
   | { kind: "digest"; id: number }
   | { kind: "monitor"; id: string }
+  | { kind: "report"; reportKind: "daily" | "weekly" | "monthly"; key: string }
   | { kind: "backfill"; items: Item[] }
   | { kind: "unsupported"; reason: string };
 interface Recovery {
@@ -87,6 +89,8 @@ function backfillTargets(receipts: Receipt[], db: Db) {
 }
 
 async function targetFor(r: Receipt, backfill: ReturnType<typeof backfillTargets>): Promise<RecoveryTarget> {
+  const report = reportReceiptTarget(r);
+  if (report) return { kind: 'report', reportKind: report.kind, key: report.key };
   const article = /^article:([^@]+)@(\d+)$/.exec(r.subject ?? "");
   if (r.service === "backfill") {
     const items = (await backfill()).get(r.id) ?? [];
@@ -119,21 +123,51 @@ export async function previewReceiptRecovery(receiptIds?: number[]) {
 }
 
 /** A batch name freezes a cohort, once. Continuing it never discovers newly failed calls. */
-export async function createReceiptRecoveryBatch(batch: string, note: string, receiptIds?: number[]) {
+export interface ReconsiderationSnapshot { id: number; attempt: number; requestId: string; logicalKey: string }
+export async function createReceiptRecoveryBatch(batch: string, note: string, receiptIds?: number[], reconsider?: { receipts: ReconsiderationSnapshot[]; acceptDuplicateCharge: boolean }) {
   if (!batch.trim() || !note.trim()) throw new Error("batch and authorization note are required");
+  if (reconsider && (!reconsider.acceptDuplicateCharge || !reconsider.receipts.length || reconsider.receipts.length > 100
+    || new Set(reconsider.receipts.map(r => r.id)).size !== reconsider.receipts.length
+    || reconsider.receipts.some(r => !Number.isSafeInteger(r.id) || !Number.isSafeInteger(r.attempt) || r.id < 1 || r.attempt < 1 || !r.requestId || !r.logicalKey))) throw new Error('需要冻结的回执身份及接受重复计费授权');
+  if (reconsider) receiptIds = reconsider.receipts.map(r => r.id);
   return sql.begin(async tx => {
     await tx`SELECT pg_advisory_xact_lock(hashtext('receipt-recovery:create'))`;
     const [existing] = await tx`SELECT 1 FROM receipt_recoveries WHERE batch=${batch} LIMIT 1`;
-    if (existing) return { created: 0, reused: true };
+    if (existing) {
+      if (reconsider) {
+        const saved = await tx`SELECT x.receipt_id,x.original_attempt,v.evidence FROM receipt_recoveries x
+          JOIN receipt_reviews v ON v.receipt_id=x.receipt_id AND v.attempt=x.original_attempt WHERE x.batch=${batch}`;
+        if (saved.length !== reconsider.receipts.length || saved.some(r => !reconsider.receipts.some(s => s.id === r.receipt_id && s.attempt === r.original_attempt
+          && s.requestId === r.evidence?.reconsideration?.requestId && s.logicalKey === r.evidence?.reconsideration?.logicalKey))) throw new Error('批次名称已绑定另一份快照');
+      }
+      return { created: 0, reused: true };
+    }
     const rows = await tx<Receipt[]>`SELECT r.* FROM receipts r
       WHERE (r.status='unknown' OR (r.status='failed' AND r.updated_at > now()-interval '3 days'))
         ${receiptIds ? tx`AND r.id = ANY(${receiptIds}::bigint[])` : tx``}
         AND NOT EXISTS (SELECT 1 FROM receipt_recoveries x WHERE x.receipt_id=r.id AND x.original_attempt=r.attempts)
       ORDER BY r.id FOR UPDATE`;
     if (!rows.length) throw new Error("No eligible receipts: no batch was created");
+    if (reconsider && rows.length !== reconsider.receipts.length) throw new Error('快照已变化或部分目标已处置，请重新核对');
     const backfill = backfillTargets(rows, tx);
+    const seenTargets = new Set<string>();
     for (const r of rows) {
       const target = await targetFor(r, backfill);
+      if (reconsider) {
+        const expected = reconsider.receipts.find(s => s.id === r.id)!;
+        const [a] = await tx`SELECT a.*,v.disposition FROM receipt_attempts a LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
+          WHERE a.receipt_id=${r.id} AND a.attempt=${r.attempts}`;
+        if (expected.attempt !== r.attempts || expected.requestId !== r.request_id || expected.logicalKey !== r.logical_key
+          || a?.request_id !== expected.requestId || receiptOutcome(a?.error_details,a?.error,a?.response) !== 'invalid_request'
+          || ['stopped','superseded'].includes(a?.disposition) || target.kind === 'unsupported' || target.kind === 'backfill' || r.purpose === 'score_article'
+          || seenTargets.has(JSON.stringify(target))) throw new Error(`回执 ${r.id} 身份、处置或恢复目标不符合授权`);
+        seenTargets.add(JSON.stringify(target));
+        await tx`INSERT INTO receipt_reviews(receipt_id,attempt,outcome,disposition,note,actor,evidence)
+          VALUES (${r.id},${r.attempts},'invalid_request','open',${note},'receipt-reconsideration-script',
+            ${tx.json({ reconsideration: { batch, requestId: r.request_id, logicalKey: r.logical_key, gateway: reconsiderationGateway(r.request.gateway) } } as never)})
+          ON CONFLICT(receipt_id,attempt) DO UPDATE SET note=excluded.note,actor=excluded.actor,
+            evidence=receipt_reviews.evidence || excluded.evidence,updated_at=now()`;
+      }
       await tx`INSERT INTO receipt_recoveries(receipt_id,original_attempt,batch,target_key,target,note,original_status,state)
         VALUES (${r.id},${r.attempts},${batch},${JSON.stringify(target)},${tx.json(target as never)},${note},${r.status},
           ${target.kind === 'unsupported' ? 'blocked' : 'planned'})`;
@@ -143,6 +177,11 @@ export async function createReceiptRecoveryBatch(batch: string, note: string, re
 }
 
 export async function businessEvidence(db: Db, t: RecoveryTarget, since: Date, jobId?: string): Promise<object | null> {
+  if (t.kind === 'report') {
+    const [row] = await db`SELECT id,kind,key,revision,generated_at FROM reports
+      WHERE kind=${t.reportKind} AND key=${t.key} AND generated_at>=${since} AND content IS NOT NULL`;
+    return row ? { kind: 'report', ...row } : null;
+  }
   if (t.kind === "article") {
     const [row] = await db`SELECT a.id,a.revision,a.processing_state,p.analysis_id FROM articles a
       JOIN publications p ON p.article_id=a.id JOIN analyses n ON n.id=p.analysis_id
@@ -194,6 +233,23 @@ export async function settleReceiptRecoveryBatch(batch: string) {
     await sql.begin(async tx => {
       const [r] = await tx`SELECT * FROM receipts WHERE id=${x.receipt_id} FOR UPDATE`;
       if (!r) return;
+      const [review] = await tx`SELECT evidence FROM receipt_reviews WHERE receipt_id=${x.receipt_id} AND attempt=${x.original_attempt}`;
+      const consumed = review?.evidence?.reconsideration?.consumed;
+      if (review?.evidence?.reconsideration && x.target.kind === 'report' && !consumed) {
+        if (x.state === 'queued' && x.started_at && await targetFailed(tx, x.target, x.started_at, x.evidence?.jobId)) {
+          await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason: 'report_pilot_no_successful_call', jobId: x.evidence?.jobId })}
+            WHERE receipt_id=${x.receipt_id} AND original_attempt=${x.original_attempt} AND state='queued'`;
+        }
+        return;
+      }
+      if (consumed) {
+        const [actual] = await tx`SELECT status FROM receipt_attempts WHERE receipt_id=${consumed.receiptId} AND attempt=${consumed.attempt}`;
+        if (!actual || !['received','completed'].includes(actual.status)) {
+          if (actual && ['failed','unknown'].includes(actual.status)) await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason: 'new_attempt_failed', consumed })}
+            WHERE receipt_id=${x.receipt_id} AND original_attempt=${x.original_attempt} AND state='queued'`;
+          return;
+        }
+      }
       // A new unknown/failed attempt must stay visible even if an older business result exists.
       if (r.attempts > x.original_attempt && !['received','completed'].includes(r.status)) {
         if (['unknown','failed'].includes(r.status)) await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason: 'new_attempt_failed' })}
@@ -228,6 +284,11 @@ export async function settleReceiptRecoveries() {
 }
 
 async function targetFailed(db: Db, t: RecoveryTarget, started: Date, jobId?: string) {
+  if (t.kind === 'report' || t.kind === 'monitor') {
+    const name = t.kind === 'report' ? `cron.reports.${t.reportKind}` : 'cron.monitor.tick';
+    const [row] = jobId ? await db`SELECT 1 FROM pgboss.job WHERE id=${jobId} AND name=${name} AND state IN ('failed','cancelled','completed')` : [];
+    return !!row;
+  }
   if (t.kind === 'article') {
     const [row] = await db`SELECT 1 FROM articles a WHERE a.id=${t.id} AND a.processing_state='failed'
       AND NOT EXISTS (SELECT 1 FROM pgboss.job j WHERE j.data->>'articleId'=a.id AND j.name IN ('content.analyze','content.extract-body')
@@ -279,6 +340,11 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("limit must be 1..100");
   if (backfillLimit !== undefined && (!Number.isInteger(backfillLimit) || backfillLimit < 1 || backfillLimit > 100)) throw new Error("backfill limit must be 1..100");
   await settleReceiptRecoveryBatch(batch);
+  const [manual] = await sql`SELECT 1 FROM receipt_reviews WHERE evidence->'reconsideration'->>'batch'=${batch} LIMIT 1`;
+  if (manual && await reconsiderationBatchStopped(sql, batch)) return { results: [{ result: 'batch_stopped_after_rejection' }], ...(await receiptRecoveryStatus(batch)) };
+  const pilots = manual ? await sql`SELECT state FROM receipt_recoveries WHERE batch=${batch} AND target->>'kind'='report'` : [];
+  if (pilots.some(r => r.state === 'blocked')) return { results: [{ result: 'report_pilot_failed' }], ...(await receiptRecoveryStatus(batch)) };
+  const pilotPending = pilots.some(r => r.state !== 'recovered');
   // Existing queued work consumes the allowance: repeated invocations cannot flood the live worker.
   const active = await sql<{ pool: string; n: number }[]>`SELECT
     CASE WHEN ${backfillLimit !== undefined} AND target->>'kind'='backfill' THEN 'backfill' ELSE 'ordinary' END AS pool,
@@ -289,6 +355,7 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
     WHERE batch=${batch} AND state='planned' ORDER BY target_key`;
   const results = [];
   for (const { target_key: key, kind } of targets) {
+    if (pilotPending && kind !== 'report') continue;
     if (!remaining.ordinary && !remaining.backfill) break;
     const pool = backfillLimit !== undefined && kind === 'backfill' ? 'backfill' : 'ordinary';
     if (!remaining[pool]) continue;
@@ -296,6 +363,7 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
       await tx`SELECT pg_advisory_xact_lock(hashtext('receipt-recovery:' || ${key}))`;
       const rows = await tx<Recovery[]>`SELECT * FROM receipt_recoveries WHERE batch=${batch} AND target_key=${key} AND state='planned' ORDER BY receipt_id FOR UPDATE`;
       if (!rows.length) return { target: key, result: "already_started" };
+      if (manual && await reconsiderationBatchStopped(tx,batch)) return { target: key, result: 'batch_stopped_after_rejection' };
       const t = rows[0]!.target;
       const receipts: Receipt[] = [];
       for (const x of rows) {
@@ -308,20 +376,33 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
       }
       // One refused stage blocks replay of the entire frozen business target: another
       // receipt from that target must not indirectly dispatch the same rejected input.
-      const attempts = await tx`SELECT a.error_details,a.error,a.response,v.disposition FROM receipt_attempts a
+      const attempts = await tx`SELECT a.error_details,a.error,a.response,v.disposition,v.evidence FROM receipt_attempts a
         LEFT JOIN receipt_reviews v ON v.receipt_id=a.receipt_id AND v.attempt=a.attempt
         JOIN receipt_recoveries x ON x.receipt_id=a.receipt_id AND x.original_attempt=a.attempt
         WHERE x.batch=${batch} AND (x.target_key=${key}
           ${t.kind === 'backfill' ? tx`OR (x.target->>'kind'='backfill' AND EXISTS (
             SELECT 1 FROM jsonb_array_elements(x.target->'items') i WHERE ${tx.json(t.items as never)} @> jsonb_build_array(i)
           ))` : tx``})`;
-      const refused = attempts.map(a => receiptOutcome(a.error_details, a.error, a.response)).find(x => x !== 'unknown');
+      const refused = attempts.map(a => {
+        const outcome = receiptOutcome(a.error_details,a.error,a.response);
+        return outcome === 'invalid_request' && a.evidence?.reconsideration?.batch === batch && !a.evidence.reconsideration.consumed ? 'unknown' : outcome;
+      }).find(x => x !== 'unknown');
       const stopped = attempts.some(a => ['stopped','superseded'].includes(a.disposition));
       if (refused || stopped) {
         const reason = refused ?? 'receipt_stopped';
         await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason })}
           WHERE batch=${batch} AND target_key=${key} AND state='planned'`;
         return { target: key, result: reason };
+      }
+      if (manual && (t.kind === 'article' || t.kind === 'group')) {
+        const related = await tx`SELECT a.error_details,a.error,a.response,v.disposition FROM receipts r
+          JOIN receipt_attempts a ON a.receipt_id=r.id AND a.attempt=r.attempts
+          LEFT JOIN receipt_reviews v ON v.receipt_id=r.id AND v.attempt=r.attempts
+          WHERE r.subject=${`article:${t.id}`} OR r.subject LIKE ${`article:${t.id}@%`} OR r.subject LIKE ${`article:${t.id}:fact:%`}`;
+        if (related.some(a => receiptOutcome(a.error_details,a.error,a.response)==='content_policy_rejected' || a.disposition==='stopped')) {
+          await tx`UPDATE receipt_recoveries SET state='blocked',evidence=${tx.json({ reason: 'content_policy_rejected' })} WHERE batch=${batch} AND target_key=${key}`;
+          return { target: key, result: 'content_policy_rejected' };
+        }
       }
       if (t.kind === 'backfill') {
         const problem = await queueBackfill(tx, t.items);
@@ -345,7 +426,8 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
           VALUES ('receipt-recovery-script','receipt.authorize_replay',${`receipt:${r.id}`},${rows[0]!.note},
             ${tx.json({ status: r.status, attempt: r.attempts })},${tx.json({ batch, billed: null, target: t } as never)})`;
       }
-      const routed = t.kind === 'backfill' ? { recovery: 'managed_backfill_runner', jobId: undefined } : await recoverTask(tx, receipts[0]!);
+      const ref = manual ? { receiptId: receipts[0]!.id, attempt: receipts[0]!.attempts } : undefined;
+      const routed = t.kind === 'backfill' ? { recovery: 'managed_backfill_runner', jobId: undefined } : await recoverTask(tx, receipts[0]!, ref);
       const queued = t.kind === 'backfill' || t.kind === 'monitor' || routed.recovery.endsWith('_queued') || routed.recovery.endsWith('_queue_already_present');
       if ((t.kind === 'group' || t.kind === 'digest') && queued && !routed.jobId) {
         // A reused job can finish between send's conflict and our lookup. Roll back
@@ -361,6 +443,7 @@ export async function advanceReceiptRecoveryBatch(batch: string, limit = 4, back
   }
   return { results, ...(await receiptRecoveryStatus(batch)) };
 }
+
 
 export async function receiptRecoveryStatus(batch: string) {
   const counts = await sql<{ state: string; n: number }[]>`SELECT state,count(*)::int AS n FROM receipt_recoveries WHERE batch=${batch} GROUP BY state`;
