@@ -69,6 +69,32 @@ async function get(url: string, headers: Record<string, string> = {}) {
   return { status: res.statusCode, body: res.body, etag: res.headers.etag as string | undefined };
 }
 
+test("legacy Wechat2RSS body links reach the original across public outputs", async () => {
+  const id = await article();
+  const original = `https://mp.weixin.qq.com/s?__biz=MzA4NzgzMjA4MQ==&mid=${T}&idx=1`;
+  const proxy = `http://127.0.0.1:8080/link-proxy/?k=93422fb0&r=1&u=${encodeURIComponent(original)}`;
+  const html = `<p><a href="${proxy.replace(/&/g, '&amp;')}">跳转微信打开</a></p>`;
+  // Insert the historical representation directly: ingestion must not hide a read-path defect.
+  await sql`UPDATE articles SET language='zh',body_html=${html} WHERE id=${id}`;
+  await publishArticle(id, released());
+  for (const path of [`/api/site/items/${id}`, `/items/${id}/markdown`, '/feed/full.xml']) {
+    const res = await get(path);
+    assert.equal(res.status, 200);
+    assert.ok(res.body.includes('跳转微信打开'), path);
+    assert.ok(!res.body.includes('/link-proxy/'), path);
+    assert.ok(res.body.includes(original.replace(/&/g, '&amp;')) || res.body.includes(original), path);
+  }
+  await sql`UPDATE articles SET language='en' WHERE id=${id}`;
+  await sql`INSERT INTO translations (article_id,revision,body_html,body_text,origin,complete)
+    VALUES (${id},1,${html},'中文正文','source',true)`;
+  for (const path of [`/api/site/items/${id}`, `/api/site/items/${id}/original`, `/items/${id}/markdown`, '/feed/full.xml']) {
+    const res = await get(path);
+    assert.equal(res.status, 200);
+    assert.ok(res.body.includes('跳转微信打开'), path);
+    assert.ok(!res.body.includes('/link-proxy/'), path);
+  }
+});
+
 test("site reading sends one language while exports retain both, including after withdrawal", async () => {
   const id = await article();
   await sql`UPDATE articles SET language = 'en', body_html = '<h2>Original heading</h2><p>Original full body</p>' WHERE id = ${id}`;

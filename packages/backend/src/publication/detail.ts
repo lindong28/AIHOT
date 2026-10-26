@@ -92,7 +92,7 @@ export async function loadItemDetail(id: string, now = new Date()): Promise<Deta
   } else if (row.body_mode === "full" && (row.body_html || row.body_text)) {
     const isZh = row.language === "zh" || (/[一-鿿]/.test(row.body_text?.slice(0, 400) ?? "") && row.language !== "en");
     const original = proxyBodyImages(row.body_html ? sanitizeBody(row.body_html, row.url) : textToHtml(row.body_text!));
-    const zh = isZh ? original : row.tr_html ? proxyBodyImages(row.tr_html) : null;
+    const zh = isZh ? original : row.tr_html ? proxyBodyImages(sanitizeBody(row.tr_html, row.url)) : null;
     const primary = withOutline(zh ?? original);
     outline = primary.outline;
     body = {
@@ -174,8 +174,8 @@ export async function exportMarkdown(id: string): Promise<{ filename: string; bo
     if (q?.text && row.quoted_zh) lines.push("### 引用中文译文", "", ...row.quoted_zh.split("\n").map((l) => `> ${l}`), "");
   } else if (row.body_mode === "full" && (row.body_html || row.body_text)) {
     const isZh = row.language === "zh";
-    if (!isZh && row.tr_html && row.tr_complete) lines.push("## 正文 · 中文译文", "", turndown.turndown(row.tr_html), "");
-    lines.push(isZh ? "## 正文" : "## 正文 · 原文", "", turndown.turndown(row.body_html || textToHtml(row.body_text!)), "");
+    if (!isZh && row.tr_html && row.tr_complete) lines.push("## 正文 · 中文译文", "", turndown.turndown(sanitizeBody(row.tr_html, row.url)), "");
+    lines.push(isZh ? "## 正文" : "## 正文 · 原文", "", turndown.turndown(row.body_html ? sanitizeBody(row.body_html, row.url) : textToHtml(row.body_text!)), "");
   }
   return { filename: `aihot-${row.id}.md`, body: lines.join("\n").replace(/\n{3,}/g, "\n\n") };
 }

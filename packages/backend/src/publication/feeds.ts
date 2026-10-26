@@ -8,7 +8,7 @@ import { sql } from "../db.ts";
 import { escapeXml } from "../lib/text.ts";
 import { proxyBodyImages } from "../media/imgproxy.ts";
 import { reportHeadline, reportIndex } from "./reports.ts";
-import { textToHtml } from "../content/sanitize.ts";
+import { sanitizeBody, textToHtml } from "../content/sanitize.ts";
 import { categoryCondition, listedCondition, selectedCondition, xView, type ItemRow } from "./items.ts";
 import { dailyUrl, itemUrl, siteUrl } from "./links.ts";
 
@@ -78,7 +78,7 @@ function fullContent(r: FeedRow, aihot: string): string | null {
       html += `<blockquote><p>引用 @${escapeXml(x.quoted.handle)}：</p>${textToHtml(x.quoted.translation ?? x.quoted.text)}${x.quoted.url ? `<p><a href="${escapeXml(x.quoted.url)}">${escapeXml(x.quoted.url)}</a></p>` : ""}</blockquote>`;
     }
   } else if (r.body_html) {
-    html = r.language !== "zh" && r.tr_html && r.tr_complete ? r.tr_html : r.body_html;
+    html = sanitizeBody(r.language !== "zh" && r.tr_html && r.tr_complete ? r.tr_html : r.body_html, r.url);
   }
   if (!html) return null;
   return `${proxyBodyImages(html, true, FEED_IMAGE_SECONDS)}<p>—— 本文由 ${escapeXml(SITE.name)} 聚合整理，完整版与更多动态见 <a href="${aihot}">${aihot}</a></p>`;

@@ -65,7 +65,7 @@ export function sanitizeBody(html: string, baseUrl?: string): string {
       article: "p",
       a: (tagName, attribs) => ({
         tagName,
-        attribs: { ...attribs, ...(attribs.href ? { href: resolveUrl(attribs.href, baseUrl) } : {}) },
+        attribs: { ...attribs, ...(attribs.href ? { href: unwrapWechatLink(resolveUrl(attribs.href, baseUrl)) } : {}) },
       }),
       img: (tagName, attribs) => {
         const src = unwrapProxyUrl(attribs["data-src"] || attribs["data-original"] || attribs.src || "");
@@ -149,6 +149,19 @@ export function trimTrailingChrome(html: string): string {
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
 const OWN_PROXY = /^(?:https?:\/\/[^/?#]+)?\/api\/img-proxy\?/i;
+
+/** Wechat2RSS wraps article links in its own service URL, which readers cannot access. */
+function unwrapWechatLink(href: string): string {
+  try {
+    const proxy = new URL(href);
+    if (!["http:", "https:"].includes(proxy.protocol) || proxy.pathname !== "/link-proxy/" ||
+        !proxy.searchParams.has("k") || proxy.searchParams.get("r") !== "1") return href;
+    const target = new URL(proxy.searchParams.get("u") ?? "");
+    return ["http:", "https:"].includes(target.protocol) ? target.href : href;
+  } catch {
+    return href;
+  }
+}
 
 /**
  * The image an address of our own image proxy stands for. Legacy bodies were saved with the proxy's
