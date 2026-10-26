@@ -39,7 +39,9 @@ node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-sou
 
 首次接入沿用现有最近 7 天、最多 8 篇的初始采集范围。账号已订阅不等于全部历史文章已导入；RSS 为空或文章早于窗口时可能暂时没有文章入库。需要旧文章时另走历史回填，不通过更改采集游标扩大范围。
 
-2026-10-26 从用户给出的[第一篇文章](https://mp.weixin.qq.com/s/I_hNNAf7LFBf5nJ0rEJHig)核对「潜云思绪」（`bizId=3014313426`），从[第二篇文章](https://mp.weixin.qq.com/s/At57tiCeqOtOZED6e1Su1A)核对「西风的指南」（`bizId=3690410656`）。两者已创建真实上游订阅并加入清单，公众号清单由 44 个增至 46 个；沿用现有首次最近 7 天、最多 8 篇的范围，本站全文开启、RSS 全文关闭。生产登记和首次采集尚待核验。
+2026-10-26 从用户给出的[第一篇文章](https://mp.weixin.qq.com/s/I_hNNAf7LFBf5nJ0rEJHig)核对「潜云思绪」（`bizId=3014313426`），从[第二篇文章](https://mp.weixin.qq.com/s/At57tiCeqOtOZED6e1Su1A)核对「西风的指南」（`bizId=3690410656`）。两者已创建真实上游订阅并加入清单，公众号清单由 44 个增至 46 个；沿用现有首次最近 7 天、最多 8 篇的范围，本站全文开启、RSS 全文关闭。生产已按已发布配置 `d807c69` 完成订阅核对与数据库登记，无需重启 worker。首次采集 `fetch_runs` 为 `240935` / `240936`，RSS 分别返回 20 / 11 条、各新增 1 篇，两账号均为 `enabled=true`、`health=ok`；这不是历史全文回填。公开来源目录已展示两个账号。
+
+本次本机验证：类型检查、Web 构建、19 项 Web 测试与 14 项微信定向测试通过；隔离站点 smoke 31 项通过、3 项因无已发布榜单跳过。全套后端 439 项中 411 通过、27 失败、1 跳过：26 项与关闭模型安全阀的既有测试问题有关，另 1 项 Python 3.9 的 SQLite 快照失败已用 Python 3.14 定向复验通过，见 `docs/issues/general.md` 的 `ISSUE-TEST-20261013-valves`。配置提交在 GitHub Actions 未产生运行，不能将其记为 CI 通过。
 
 ## 两个仓库与新机器恢复
 
