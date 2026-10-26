@@ -11,3 +11,17 @@
 独立实现审查发现路由冻结、无调用报告误放行、业务结案覆盖授权证据、报告／监控终态识别和双票评分范围五项缺口。修复保留原Gateway配置（仅允许UUID变化）、要求试跑调用成功、合并保留授权证据，并将无业务结果的终态任务标为blocked；本批没有评分，入口明确排除双票评分。定向恢复测试51项通过，覆盖原key／新key、并发同key／异key、Gateway六类变化、报告有／无真实调用及三种队列终态。真实恢复结果尚待生产验收，原400具体原因与原费用仍未知。
 
 数据源只读核查：此前21个近期失败源中20个已由原调度恢复；Claude YouTube在13:15（UTC+8）解析15条。AI News官方WordPress接口、首页和RSS返回HTTP202验证页，保留失败与退避，未绕过验证。原始证据在维护主机`/Users/lindong/task-artifacts/aihot-runs-20261026/`。
+
+## 生产恢复与验收
+
+2026-10-26 13:49（UTC+8）部署已发布提交`a79c5d1f0633e5fb912f5e17e23dee6a0a88a93a`，release为`runs-recovery-20261026-a79c5d1`。部署持`shared/deploy.lock`，先等回填退出并让worker收到SIGTERM自然结束，再走项目安装入口；API、Web、worker的实际cwd均指向新release，backfill timer恢复active，保留上一release供回切。主树已有其他会话提交和未跟踪文件保持原样。
+
+批次`runs-20261026-60`的60条全部恢复：摘要38、归组18、综述1、监控1、日报和周报各1。每条恰好消费一次新generation；逐UUID核对Gateway，60条对应60次成功attempt，实际路由均为`personal_ark/deepseek-v4.1-flash/stream`、实际模型`openai/deepseek-v4.1-flash`。新调用cost_state仍为unknown；原60条attempt全行摘要与执行前一致，没有改写旧错误、响应、usage或费用。后续业务阶段的正常调用不包含在这60次计数中。
+
+监控607636第一次恢复job两次在模型请求前退出，原attempt未增加、grant未消费；保留失败job。核对采集backlog为空、目标仍为首条待处理、无恢复任务在途后，在audit_log记录`receipt.resume_unconsumed_replay`并重入同批次，新增额度为0。随后新attempt2成功、帖子processed_at与recognition持久化。首次退出读数只证明没有完成处理，不能单凭后来成功断言其唯一原因。
+
+日报`2026-10-26`保存13条、周报`2026-W43`保存40条，浏览器实际读取两份公开报告的标题、导语及章节；补报任务真实执行成功且`generated=[]`。13:57浏览器刷新管理运行页，业务待处理0、回执结果未知0、失败的定时任务0、队列积压0；历史计费待核2574次仍保留。公开文章API抽查摘要恢复及归组恢复各1篇，均返回原ID及业务内容；这些样本不外推为所有文章内容质量审核。公网34项smoke通过。
+
+本地验证：完整后端测试在本地stub模式下450通过、1跳过；Web构建和19项Web测试通过；修后及rebase后的51项恢复相关测试通过，类型检查通过，独立实现复核V2放行。测试覆盖key不变／变化、同key／异key并发、六类Gateway配置变化、报告有／无成功调用、报告／监控两类各三种队列终态。GitHub Check工作流可见且active，但发布后该SHA没有Actions run，不能称远端CI已通过。
+
+数据源最终仍为本次21个中的20个health=ok，1个未恢复：`radar-artificial-intelligence-news`最近返回HTTP202验证页、fail_count=6，既有退避下次为2026-10-26 18:44（UTC+8）。该项依赖上游恢复正常响应，保留原错误与调度，不通过关闭来源、改成功状态或绕验证消除提示。原400具体原因和费用尚未查明；历史三条不在本次恢复范围。未处置代码审查finding：无。
