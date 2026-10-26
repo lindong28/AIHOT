@@ -27,6 +27,8 @@ import { markStalePendingReceipts } from "@aihot/backend/providers/receipts";
 import { markStaleDeliveries } from "@aihot/backend/notify/deliver";
 import { withReconsideration, type ReconsiderationRef } from "@aihot/backend/providers/reconsideration";
 
+import { advanceWebReceiptRecoveries } from '@aihot/backend/admin/receipt-recovery-web';
+
 interface Scheduled {
   name: string;
   cron: string;
@@ -37,6 +39,7 @@ interface Scheduled {
 const collecting = process.env.COLLECT_ENABLED !== "false";
 
 export const SCHEDULES: Scheduled[] = [
+  { name: 'receipts.recover', cron: '* * * * *', run: advanceWebReceiptRecoveries },
   { name: "content.sweep", cron: "*/5 * * * *", run: sweepUnprocessed },
   // Full-text translations of newly selected items (model calls; off with MODEL_CALLS_ENABLED=false).
   { name: "content.translate", cron: "*/5 * * * *", run: () => translatePending() },

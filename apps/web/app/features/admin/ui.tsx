@@ -270,6 +270,7 @@ export function ReasonDialog({
   title,
   description,
   confirmLabel = "确认",
+  confirmDisabled = false,
   danger,
   requireReason = true,
   children,
@@ -281,6 +282,7 @@ export function ReasonDialog({
   title: ReactNode;
   description?: ReactNode;
   confirmLabel?: string;
+  confirmDisabled?: boolean;
   danger?: boolean;
   requireReason?: boolean;
   children?: ReactNode;
@@ -316,7 +318,7 @@ export function ReasonDialog({
             className="admin-dialog relative w-full max-w-lg rounded-sheet bg-raised p-5 text-left shadow-2xl ring-1 ring-line-strong"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (requireReason && !reason.trim()) return;
+              if (busy || confirmDisabled || (requireReason && !reason.trim())) return;
               const closed = await onSubmit(reason.trim());
               if (closed !== false) onClose();
             }}
@@ -331,7 +333,7 @@ export function ReasonDialog({
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Button tone="ghost" onClick={onClose}>取消</Button>
-              <Button type="submit" tone={danger ? "danger" : "primary"} busy={busy} disabled={requireReason && !reason.trim()}>
+              <Button type="submit" tone={danger ? "danger" : "primary"} busy={busy} disabled={confirmDisabled || (requireReason && !reason.trim())}>
                 {confirmLabel}
               </Button>
             </div>

@@ -36,6 +36,7 @@
 | [operations/content-retention.md](operations/content-retention.md) | 维护者：微信保留、其它过滤内容清除与历史候选识别 |
 | [references/20261004-content-retention.md](references/20261004-content-retention.md) | 开发者：终态清除、去重占位、热度等待与回执边界决定 |
 | [operations/receipt-recovery.md](operations/receipt-recovery.md) | 维护者与 Agent：新请求暂态自动恢复、旧异常授权重放、固定批次续跑与核账边界 |
+| [references/20261026-receipt-recovery-web.md](references/20261026-receipt-recovery-web.md) | 开发者：网页旧回执授权、后台批次推进、未消费续跑与验证边界 |
 | [references/20261025-receipt-resolution.md](references/20261025-receipt-resolution.md) | 开发者：回执分类、核账与重放分离、原账保留、全量分页与综述输出恢复 |
 | [references/20261007-transient-recovery.md](references/20261007-transient-recovery.md) | 开发者：Gateway recovery v1、同 UUID 发送与共享生成上限、旧回执保护和验证边界 |
 | [references/20261004-receipt-resolution.md](references/20261004-receipt-resolution.md) | 开发者：新版结案证据、安全错误详情与审核拒绝不重放 |

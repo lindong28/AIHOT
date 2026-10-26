@@ -8,6 +8,8 @@ import { useAdminAction } from "../../features/admin/action";
 import { ago, bj, duration, num } from "../../features/admin/format";
 import { AdminPage, Badge, Button, Card, DataTable, Dot, Empty, Field, Json, ReasonDialog, Select, Stat, Time } from "../../features/admin/ui";
 
+import { ReceiptRecovery, type RecoveryBatches, type RecoveryDetail } from '../../features/admin/receipt-recovery';
+
 type Row = Record<string, any>;
 interface Runs {
   checkedAt: string;
@@ -28,14 +30,19 @@ interface Runs {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const query = new URL(request.url).searchParams;
-  return adminGet<Runs>(request, `/api/admin/runs?page=${encodeURIComponent(query.get('page') ?? '1')}&view=${encodeURIComponent(query.get('view') ?? 'open')}`);
+  const [runs, recoveryBatches, recoveryDetail] = await Promise.all([
+    adminGet<Runs>(request, `/api/admin/runs?page=${encodeURIComponent(query.get('page') ?? '1')}&view=${encodeURIComponent(query.get('view') ?? 'open')}`),
+    adminGet<RecoveryBatches>(request, `/api/admin/receipt-recovery?page=${encodeURIComponent(query.get('recoveryPage') ?? '1')}`),
+    query.get('batch') ? adminGet<RecoveryDetail>(request, `/api/admin/receipt-recovery/${encodeURIComponent(query.get('batch')!)}`) : null,
+  ]);
+  return { ...runs, recoveryBatches, recoveryDetail };
 }
 
 export const meta: Route.MetaFunction = () => [{ title: `运行 · ${SITE.name} 后台` }];
 
 const STATE_LABEL: Record<string, string> = { created: "排队", retry: "等待重试", active: "执行中" };
 const RECEIPT_LABEL: Record<string, string> = { recovered: "业务已恢复", superseded: "后续业务已恢复", stopped: "已停止", unknown: "结果未知", failed: "失败", received: "已收到", completed: "已完成", pending: "处理中" };
-const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不重放", invalid_request: "请求被拒绝 · 需修正请求", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
+const RECOVERY_LABEL: Record<string, string> = { content_policy_rejected: "内容审核拒绝 · 不重放", invalid_request: "请求被拒绝 · 可预检旧回执续跑", retryable: "暂时失败 · 核对后可重放", needs_review: "需要核对" };
 
 const STAGE_LABEL: Record<string, string> = { prefilter_article: '预筛', structure_article: '结构化', score_article: '评分', understand_article: '理解', summarize_article: '摘要', analyze_article: '旧版分析' };
 
@@ -59,8 +66,10 @@ function ReceiptStages({ receipt }: { receipt: Row }) {
 export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
   const refresh = useFetcher<typeof loader>();
   const location = useLocation();
-  const r = refresh.data?.receipts.page === loaderData.receipts.page && refresh.data?.receipts.view === loaderData.receipts.view ? refresh.data : loaderData;
+  const r = refresh.data?.receipts.page === loaderData.receipts.page && refresh.data?.receipts.view === loaderData.receipts.view && refresh.data?.recoveryDetail?.batch === loaderData.recoveryDetail?.batch && refresh.data?.recoveryBatches.page === loaderData.recoveryBatches.page ? refresh.data : loaderData;
   const { run, pending } = useAdminAction();
+  const [selected, setSelected] = useState<number[]>([]);
+  const clearSelection = useCallback(() => setSelected([]), []);
   const [receipt, setReceipt] = useState<Row | null>(null);
   const closeReceipt = useCallback(() => setReceipt(null), []);
   const [billingOnly, setBillingOnly] = useState(false);
@@ -150,6 +159,8 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
         </Card>
       )}
 
+      <ReceiptRecovery selected={selected} clearSelection={clearSelection} batches={r.recoveryBatches} detail={r.recoveryDetail} />
+
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <Card className="xl:col-span-2" title={r.receipts.view === 'billing' ? '历史计费待核' : r.receipts.view === 'history' ? '回执处置历史' : '业务待处理回执'} right={<span className="flex gap-3"><Link to="/admin/runs">业务待处理</Link><Link to="/admin/runs?view=history">处置历史</Link><Link to="/admin/runs?view=billing">历史计费待核</Link><span>共 {num(r.receipts.issueTotal)} 条</span></span>} pad={false}>
           <p className="border-b border-line p-3 text-[13px]">历史计费待核 {num(r.receipts.billingUnknownTotal)} 次，仅含已有处置记录及业务恢复记录中尚未核账的原调用，不代表全部供应商费用。业务恢复或停止不会核销这些费用。</p>
@@ -159,6 +170,7 @@ export default function RunsAdmin({ loaderData }: Route.ComponentProps) {
             rowKey={(x) => x.id}
             empty={r.receipts.view === "billing" ? "已有处置与恢复记录中，没有尚未核账的调用" : r.receipts.view === "history" ? "没有处置记录" : "没有业务待处理的回执"}
             columns={[
+              { key: "select", label: <input type="checkbox" aria-label="选择本页回执" checked={!!r.receipts.issues.length && r.receipts.issues.every(x => selected.includes(x.id))} onChange={e => setSelected(e.target.checked ? r.receipts.issues.map(x => x.id) : [])} />, render: x => <input type="checkbox" aria-label={`选择回执 ${x.id}`} checked={selected.includes(x.id)} onChange={e => setSelected(ids => e.target.checked ? [...ids,x.id].slice(0,100) : ids.filter(id => id !== x.id))} /> },
               { key: "id", label: "回执", render: (x) => <span className="num">#{x.id}</span> },
               { key: "s", label: "结果与处置", render: (x) => <><Badge tone={x.review?.disposition === 'stopped' || x.review?.disposition === 'superseded' || x.business_recovery ? 'muted' : 'warn'}>{x.business_recovery ? '业务已恢复' : ['stopped','superseded'].includes(x.review?.disposition) ? RECEIPT_LABEL[x.review.disposition] : ['content_policy_rejected','invalid_request'].includes(x.recovery_status) ? '明确拒绝' : RECEIPT_LABEL[x.status] ?? x.status}</Badge><div className="mt-1 text-[12px]">{x.business_recovery ? "历史业务恢复已结案" : RECOVERY_LABEL[x.recovery_status] ?? "需要核对"}</div><div className="text-[12px]">当前第{x.attempts}次计费：{x.review?.billed === true ? '已计费' : x.review?.billed === false ? '已确认未计费' : '尚未核实'}</div></> },
               { key: "w", label: "服务", render: (x) => <span className="whitespace-nowrap">{x.service}{x.model ? ` · ${x.model}` : ""}</span> },

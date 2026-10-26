@@ -20,6 +20,8 @@ import { loadContact } from "@aihot/backend/site/contact";
 import { sendProblem } from "../http/respond.ts";
 import { adminHandler } from "./admin-auth.ts";
 
+import { previewWebReceiptRecovery, createWebReceiptRecovery, listWebReceiptRecoveries, webReceiptRecovery, resumeWebReceiptRecovery } from '@aihot/backend/admin/receipt-recovery-web';
+
 type Q = Record<string, string | undefined>;
 const q = (req: FastifyRequest) => req.query as Q;
 const body = <T = Record<string, unknown>>(req: FastifyRequest) => (req.body ?? {}) as T;
@@ -92,6 +94,11 @@ export function registerAdmin(app: FastifyInstance) {
   }));
 
   // Runs (F20)
+  app.post('/api/admin/receipt-recovery/preview', adminHandler(async req => previewWebReceiptRecovery(body(req).receiptIds)));
+  app.post('/api/admin/receipt-recovery', adminHandler(async (req, _reply, admin) => createWebReceiptRecovery(body(req), actorOf(admin))));
+  app.get('/api/admin/receipt-recovery', adminHandler(async req => listWebReceiptRecoveries(page(req))));
+  app.get('/api/admin/receipt-recovery/:batch', adminHandler(async (req, reply) => orNotFound(req, reply, await webReceiptRecovery(param(req,'batch')))));
+  app.post('/api/admin/receipt-recovery/:batch/resume', adminHandler(async (req, _reply, admin) => resumeWebReceiptRecovery(param(req,'batch'),body(req),actorOf(admin))));
   app.get("/api/admin/runs", adminHandler(async req => runsOverview({ page: page(req), view: q(req).view })));
   app.get("/api/admin/backfill", adminHandler(async () => backfillOverview()));
   app.post("/api/admin/backfill/:id/:action", adminHandler(async (req, _reply, admin) =>
