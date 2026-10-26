@@ -39,6 +39,8 @@ node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-sou
 
 首次接入沿用现有最近 7 天、最多 8 篇的初始采集范围。账号已订阅不等于全部历史文章已导入；RSS 为空或文章早于窗口时可能暂时没有文章入库。需要旧文章时另走历史回填，不通过更改采集游标扩大范围。
 
+2026-10-26 从用户给出的[第一篇文章](https://mp.weixin.qq.com/s/I_hNNAf7LFBf5nJ0rEJHig)核对「潜云思绪」（`bizId=3014313426`），从[第二篇文章](https://mp.weixin.qq.com/s/At57tiCeqOtOZED6e1Su1A)核对「西风的指南」（`bizId=3690410656`）。两者已创建真实上游订阅并加入清单，公众号清单由 44 个增至 46 个；沿用现有首次最近 7 天、最多 8 篇的范围，本站全文开启、RSS 全文关闭。生产登记和首次采集尚待核验。
+
 ## 两个仓库与新机器恢复
 
 这里的“自包含”指 AIHOT 和 ai-agent-config 两仓提供部署所需代码、固定输入及操作说明，不要求把上游镜像源码放进本仓。私有仓访问与 ai-agent-config 的 git-crypt 解锁需已有授权；解锁材料沿用该仓已有分发方式，不能放入它自己加密的 `env`。新机器先按两仓 README 安装 Node.js 24、Python 3、Git/OpenSSH 和 AIHOT 的 PostgreSQL 等前置依赖，按 ai-agent-config 安装说明建立 `~/.claude/.env → <ai-agent-config>/env`。不要 `source ~/.claude/.env`。
