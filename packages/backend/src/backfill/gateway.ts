@@ -26,9 +26,13 @@ export const bindingsSchema = z.object({ prefilter: binding, structure: binding,
       }
       if (b.model.startsWith("deepseek")) ctx.addIssue({ code: "custom", message: "DeepSeek is not authorized for backfill prefilter or structure" });
       if (new Set(candidates.map((r) => r.route)).size !== candidates.length) ctx.addIssue({ code: "custom", message: `Duplicate backfill route in ${role}` });
-      for (const r of bindingIdentityRoutes(b)) {
+      const primary = bindingIdentityRoutes(b);
+      const subscriptionOnly = b.model === "qwen3.8-flash" && primary.length === 1 &&
+        !("fallbackRoutes" in b && b.fallbackRoutes) &&
+        Object.entries(BAILIAN_QWEN_FALLBACK).every(([k, v]) => primary[0]![k as keyof typeof BAILIAN_QWEN_FALLBACK] === v);
+      for (const r of primary) {
         const self = r.provider === BACKFILL_PROVIDER && r.actualModel.startsWith("self_hosted/");
-        if (!self) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
+        if (!self && !subscriptionOnly) ctx.addIssue({ code: "custom", message: `Unauthorized backfill provider for ${role}` });
       }
       if ("fallbackRoutes" in b && b.fallbackRoutes) {
         const r = b.fallbackRoutes[0]!;

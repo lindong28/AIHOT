@@ -47,6 +47,32 @@ test("only the approved Qwen subscription fallback passes schema and funding che
   assert.throws(() => verifyDiscovery(view, "qwen3.8-flash", models, "fixture", "http://127.0.0.1:1"), /funding/);
 });
 
+test("an explicitly bound subscription-only Qwen rejects other primary routes and funding", () => {
+  const primary = { model: "qwen3.8-flash", routes: [{ ...BAILIAN_QWEN_FALLBACK }] };
+  const bound = { ...models, prefilter: primary, structure: primary };
+  assert.ok(bindingsSchema.safeParse(bound).success);
+  for (const change of [{ route: "personal_dashscope/qwen3.8-flash/stream" }, { provider: "dashscope" },
+    { actualModel: "openai/other" }, { credentialProfile: "other" }]) {
+    const b = { ...primary, routes: [{ ...BAILIAN_QWEN_FALLBACK, ...change }] };
+    assert.equal(bindingsSchema.safeParse({ ...models, prefilter: b, structure: b }).success, false);
+  }
+  for (const b of [
+    { ...primary, model: "qwen3.7-flash" },
+    { ...primary, routes: [...primary.routes, ...models.prefilter.routes!] },
+    { ...primary, fallbackRoutes: models.prefilter.routes },
+  ]) assert.equal(bindingsSchema.safeParse({ ...models, prefilter: b, structure: b }).success, false);
+  const view = { projection_version: 2, view_scope: "logical_model", requested_logical_model: primary.model, status: "ready",
+    project: { id: "fixture", billing_scope: "personal" }, project_allowed_logical_model_ids: [primary.model],
+    loaded_registry_revision: revision, file_registry_revision: revision,
+    routes: [{ id: BAILIAN_QWEN_FALLBACK.route, actual_model: BAILIAN_QWEN_FALLBACK.actualModel,
+      provider_id: BAILIAN_QWEN_FALLBACK.provider, credential_profile_id: BAILIAN_QWEN_FALLBACK.credentialProfile,
+      funding_source: "personal_subscription", effectively_eligible: true }] };
+  assert.equal(verifyDiscovery(view, primary.model, bound, "fixture", "http://127.0.0.1:1"), revision);
+  view.routes[0]!.funding_source = "personal_paid";
+  assert.throws(() => verifyDiscovery(view, primary.model, bound, "fixture", "http://127.0.0.1:1"), /funding/);
+  assert.notDeepEqual(bindingsIdentity(bound), bindingsIdentity(models));
+});
+
 test("fallback sends both allowed routes and accepts only their exact response identities", async () => {
   const saved = globalThis.fetch;
   let selected = BAILIAN_QWEN_FALLBACK;
@@ -67,6 +93,30 @@ test("fallback sends both allowed routes and accepts only their exact response i
     selected = { ...models.prefilter.routes![0]!, credentialProfile: "personal_self_hosted" };
     await request().send("chat/completions", {});
   } finally { globalThis.fetch = saved; }
+});
+
+test("subscription-only sends its sole allowed route and rejects other response identities", async () => {
+  const binding = { model: "qwen3.8-flash", routes: [{ ...BAILIAN_QWEN_FALLBACK }] };
+  const saved = globalThis.fetch, project = process.env.LLM_GATEWAY_PROJECT;
+  process.env.LLM_GATEWAY_PROJECT = "subscription-only-fixture";
+  let selected = BAILIAN_QWEN_FALLBACK;
+  globalThis.fetch = async (_url, init) => {
+    if (String(_url).endsWith("/api/capabilities")) return Response.json({ retry_policy_versions: [1] });
+    const h = new Headers(init!.headers);
+    assert.equal(h.get("X-LLM-Allowed-Routes"), JSON.stringify([BAILIAN_QWEN_FALLBACK.route]));
+    assert.equal(h.get("X-LLM-Route"), null);
+    assert.equal(h.get("X-LLM-Registry-Revision"), revision);
+    return Response.json({ llm_gateway: { projection_version: 1, retry_policy: JSON.parse(h.get("X-LLM-Retry-Policy")!), logical_request_id: h.get("X-LLM-Request-ID"),
+      provider_id: selected.provider, selected_route_id: selected.route, actual_model: selected.actualModel, credential_profile_id: selected.credentialProfile } }, { headers: { "X-LLM-Retry-Policy": h.get("X-LLM-Retry-Policy")! } });
+  };
+  try {
+    const request = () => prepareGatewayRequest("qwen3.8-flash", 1000, { ...binding, registryRevision: revision })!;
+    await request().send("chat/completions", {});
+    selected = { ...selected, credentialProfile: "other" };
+    await assert.rejects(() => request().send("chat/completions", {}), /route mismatch/);
+    selected = { ...models.prefilter.routes![0]!, credentialProfile: "personal_self_hosted" };
+    await assert.rejects(() => request().send("chat/completions", {}), /route mismatch/);
+  } finally { globalThis.fetch = saved; process.env.LLM_GATEWAY_PROJECT = project; }
 });
 
 test("adding fallback preserves pending/unknown protection and received/completed reuse", async () => {

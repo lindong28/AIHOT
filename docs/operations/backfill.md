@@ -153,7 +153,7 @@ node scripts/backfill-fetch-originals.ts PREPARATION_DIR INVENTORY.jsonl FETCH_Q
 
 执行环境设置 `LLM_GATEWAY_URL`、`LLM_GATEWAY_PROJECT=aihot` 和 `LLM_GATEWAY_MODE`（沿用个人 Gateway 接入配置）。默认不设置 `LLM_GATEWAY_CLI`，通过 `GET /v1/discovery?model=逻辑ID` 与 `X-LLM-Project` 读取逐模型安全投影；该预检不调用模型。若显式设置 `LLM_GATEWAY_CLI`，则使用同一 Gateway 的 CLI discovery。密钥继续由 Gateway 管理。
 
-预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯角色另外要求包含 company。主 Gateway 的 `aihot` 登记 `billing_scope=["personal","company"]`，各账户保留实际资金归属。每个角色至少有一个候选可用；Qwen 主路线为自托管，备用仅允许 `personal_bailian_token_plan/qwen3.8-flash/stream`、provider `bailian-token-plan`、actual model `openai/qwen3.8-flash`、profile `personal_bailian_token_plan`，资金归属必须是 `personal_subscription`。DashScope 按量账户不在回填授权内。评分、理解和摘要必须使用 V4.1 Flash 的唯一腾讯候选，资金归属为 `company_paid`；不接受 Gateway 报告项目不允许、政策不允许或全部候选不可用。
+预检核对 projection version 2、project 的归属声明包含 personal、请求模型、文件与已加载 registry revision，以及每个候选的身份和授权。归属兼容旧字符串或非空无重复数组；腾讯角色另外要求包含 company。主 Gateway 的 `aihot` 登记 `billing_scope=["personal","company"]`，各账户保留实际资金归属。每个角色至少有一个候选可用；Qwen 默认主路线为自托管，备用仅允许 `personal_bailian_token_plan/qwen3.8-flash/stream`、provider `bailian-token-plan`、actual model `openai/qwen3.8-flash`、profile `personal_bailian_token_plan`，资金归属必须是 `personal_subscription`。DashScope 按量账户不在回填授权内。评分、理解和摘要必须使用 V4.1 Flash 的唯一腾讯候选，资金归属为 `company_paid`；不接受 Gateway 报告项目不允许、政策不允许或全部候选不可用。
 
 为已经执行的 Qwen 批次启用订阅备用：先 `node scripts/backfill.ts pause BATCH_ID`，等执行器结算并退出，再运行 `node scripts/backfill-bailian-fallback.ts BATCH_ID`，最后 `node scripts/backfill.ts resume BATCH_ID`。启用操作须取得批次 advisory lock 并确认 paused，只修改两个 Qwen 角色的 `fallbackRoutes`，不修改条目、回执、主绑定或准备身份；不自动重试失败条目，也不调用模型。运行时仍做 discovery 和 funding 核验，并把完整候选集合发送给 Gateway；实际优先级与冷却由 Gateway 管理。模板已包含该备用路线。旧准备缓存忽略新增备用策略进行模型身份比较，仍检查原 manifest hash 和原回执 key。
 
@@ -232,3 +232,5 @@ python3 deploy/production/backfill-monitor.py uninstall
 暂停按钮或 `node scripts/backfill.ts pause BATCH_ID` 阻止后续模型调用；在途请求仍会结算，已发布内容不撤回。恢复沿用已结算回执。`waiting_models` 表示没有通过就绪检查，修复部署或绑定后恢复；`needs_attention` 查看条目错误，修复后使用“重试失败项”或 `retry BATCH_ID`。未知回执先在现有运维入口核对 Gateway 账本，再允许恢复；单纯点击重试不会重新发送未知请求。
 
 范围与验收记录见[迁移清单](../migration.md)和[启动决定](../references/20261002-backfill-launch.md)。全历史余量的完整性审核及后续批次归 AIHOT 迁移维护者；上游内容过滤不再要求主体确认或重新写作。Ark HTTP 429 的限速/额度归因及成功后备能力尚未核实，归 Gateway 维护者。全历史余量不计入本启动批完成量。
+
+经逐批明确授权的新批也可使用上述精确百炼身份作为唯一 Qwen 主路线（qwen3.8-flash，且无 fallbackRoutes）；资金核验和旧批主绑定不可变规则仍适用。此能力不改变默认模板或自动授权未来批次。首个有限例外见[两公众号近一年回填](../references/20261026-wechat-year-backfill.md)。
