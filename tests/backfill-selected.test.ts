@@ -7,6 +7,9 @@ import { materialHash } from "@aihot/backend/backfill/manifest";
 import { importSelected, selectedStatus, validateSelected } from "@aihot/backend/backfill/selected";
 import { upsertMaterial } from "@aihot/backend/content/materials";
 import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
 
 const source = `selected-${tag()}`;
 before(async () => { await sql`INSERT INTO sources(id,name,kind) VALUES(${source},'Selected test','rss')`; });
@@ -74,9 +77,15 @@ test("status distinguishes pending, old revision and topic matching from public 
 
 test("real CLI status exits 2 for pending and 0 for native blocked terminal state", async () => {
   const e = entry(); const [{ articleId: id }] = await importSelected([e], true);
-  const run = () => spawnSync(process.execPath, ["scripts/backfill-selected.ts", "status", "/dev/stdin", "--json"],
-    { input: JSON.stringify(e) + "\n", encoding: "utf8", timeout: 20_000 });
-  assert.equal(run().status, 2);
+  const root = process.env.AIHOT_DATA_DIR ?? path.join(homedir(), "task-artifacts", "aihot-tests");
+  await mkdir(root, { recursive: true });
+  const dir = await mkdtemp(path.join(root, "selected-cli-"));
+  const manifest = path.join(dir, "manifest.jsonl");
+  await writeFile(manifest, JSON.stringify(e) + "\n");
+  // The CLI accepts a file; reopening a spawnSync stdin socket by pathname fails on Linux.
+  const run = () => spawnSync(process.execPath, ["scripts/backfill-selected.ts", "status", manifest, "--json"],
+    { encoding: "utf8", timeout: 20_000 });
+  const pending = run(); assert.equal(pending.status, 2, pending.stderr);
   await sql`UPDATE articles SET processing_state='blocked' WHERE id=${id}`;
   await sql`INSERT INTO analyses(article_id,input_revision,origin,relevance,selected) VALUES(${id},1,'rule','block',false)`;
   const blocked = run(); assert.equal(blocked.status, 0, blocked.stderr);
