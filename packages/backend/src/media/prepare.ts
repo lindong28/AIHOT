@@ -2,6 +2,7 @@
 // page ask the image proxy for is fetched and resized once (a first reader otherwise waits seconds
 // for the source site), animations are re-encoded, and after the release gate the share image is
 // rendered before the content push makes chat apps fetch it.
+import { imageFailure } from "./failure.ts";
 import { convertAnimated, produceImage } from "./images.ts";
 import { loadItemDetail, siteItemDetail } from "../publication/detail.ts";
 import { toFeedItemSummary } from "../publication/items.ts";
@@ -20,19 +21,30 @@ export function proxiedRenditions(answers: unknown[]): Array<{ url: string; mode
 export async function prepareArticleMedia(articleId: string): Promise<{ renditions: number; failed: number; animatedSaved: number }> {
   const found = await loadItemDetail(articleId);
   if (found.kind !== "found") return { renditions: 0, failed: 0, animatedSaved: 0 };
-  let failed = 0;
-  let animatedSaved = 0;
   const renditions = proxiedRenditions([toFeedItemSummary(found.row), siteItemDetail(found.detail), siteItemDetail(found.detail, true)]);
+  return prepareRenditions(articleId, renditions);
+}
+
+/** Finish independent images before rejecting; pg-boss applies its existing bounded retry policy. */
+export async function prepareRenditions(articleId: string, renditions: Array<{ url: string; mode: string }>) {
+  const failures: ReturnType<typeof imageFailure>[] = [];
+  let animatedSaved = 0;
   for (const { url, mode } of renditions) {
     try {
       const image = await produceImage(url, mode);
       if (image.type === "image/gif") animatedSaved += await convertAnimated(url, mode);
-    } catch {
-      // The request path tries again (and answers 502) if the source is still unavailable.
-      failed += 1;
+    } catch (error) {
+      failures.push(imageFailure(url, mode, error));
     }
   }
-  return { renditions: renditions.length, failed, animatedSaved };
+  if (failures.length) {
+    // pg-boss retains the current failure; worker logs retain prior attempts under normal log retention.
+    // Correlate both by article and resource hash. Successful renditions remain on disk.
+    const detail = { articleId, renditions: renditions.length, failed: failures.length, animatedSaved, failures };
+    console.warn("[media.prepare]", JSON.stringify(detail));
+    throw new Error(`media.prepare failed: ${JSON.stringify(detail)}`);
+  }
+  return { renditions: renditions.length, failed: 0, animatedSaved };
 }
 
 /**

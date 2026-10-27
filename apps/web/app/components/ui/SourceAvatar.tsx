@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useImageFailure } from "../../lib/use-image-failure";
 import { sourceInitial } from "../../lib/format";
 
 /** Round avatar for X accounts (or a source icon); a tinted initial when there is no image. */
 export function SourceAvatar({ name, iconUrl, avatarUrl, iconSrcSet, avatarSrcSet, size = 18 }: { name: string; iconUrl?: string | null; avatarUrl?: string | null; iconSrcSet?: string; avatarSrcSet?: string; size?: number }) {
-  const [failed, setFailed] = useState(false);
   const src = avatarUrl ?? iconUrl;
+  const { failed, ...imageState } = useImageFailure(src, avatarUrl ? avatarSrcSet : iconSrcSet);
   if (src && !failed) {
     return (
       <img
@@ -16,7 +16,7 @@ export function SourceAvatar({ name, iconUrl, avatarUrl, iconSrcSet, avatarSrcSe
         width={size}
         height={size}
         loading="lazy"
-        onError={() => setFailed(true)}
+        {...imageState}
         className="source-avatar shrink-0 rounded-full bg-bg-sunk object-cover"
         style={{ width: size, height: size }}
       />
@@ -26,6 +26,7 @@ export function SourceAvatar({ name, iconUrl, avatarUrl, iconSrcSet, avatarSrcSe
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return (
     <span
+      data-image-fallback={failed ? "avatar" : undefined}
       aria-hidden="true"
       className="source-avatar inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
       style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.5)), background: `oklch(0.6 0.07 ${h})` }}

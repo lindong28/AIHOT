@@ -141,6 +141,23 @@ python3 deploy/production/gateway-tunnel.py uninstall
 
 启动经 `/bin/zsh` 读取该机 `.zshenv` 配置的原生 SSH agent socket，不把某次登录的 socket 路径写死。此路径依赖 Mac Studio 的登录环境、本地 Gateway、代理和 SSH 认证。`status` 只证实 launchd 注册；还须从腾讯云实际请求 Gateway health，并通过 `http://127.0.0.1:39032` 请求所需上游以核对代理出口。已有一次成功响应，尚未做重启/重新登录恢复验证。日志位于 Mac Studio `~/Library/Logs/aihot/gateway-tunnel.log` 和 `gateway-tunnel.err.log`。隧道脚本不管理本地 Gateway 服务本身。
 
+### X 图片出口与加载失败
+
+2026-10-27 排查发现：图片冷缓存请求经过腾讯云 `39032`、Mac Studio `59527` 后，落到 `us-agent-group` 的住宅节点；该节点连接超时，导致图片代理返回 502，已有磁盘缓存仍可显示。用户已批准仅将 Mac Studio 的 `pbs.twimg.com` 请求改走现有 `Tencent-SG`，其他域名与全局节点选择保持不变。
+
+在 Mac Studio 的本仓 checkout 执行以下入口；需要系统 Ruby/YAML、curl、正在运行的 Clash Verge，以及 `~/research/system-config` 的现有管理标记：
+
+```bash
+ruby deploy/production/image-egress.rb check
+ruby deploy/production/image-egress.rb apply
+```
+
+入口只在 `LocalHostName=macstudio` 执行，在当前本地 profile 和当前 runtime 的规则前加入 `pbs.twimg.com` 的精确 TCP 规则；原文件除这一行外保持不变。它原子替换文件、重载 Mihomo，并核对规则及 `us-agent-group` 选择未变；失败会尝试恢复本次写入前的配置。原始配置与回执位于本机权限受限的 `~/.local/state/aihot-image-egress/`，含敏感配置，不复制到公开日志或任务附件。重复应用不新增规则；发现配置漂移时停止，不覆盖。需要撤销时运行同入口的 `rollback`。Clash 重启后从本地 profile 生成配置；重新安装或更换 profile 后须重新核对并按实际新配置处理，不能盲目复用旧回执。本入口不改变 system-config 的跨机器默认配置，不新增后台服务或自动切换出口。
+
+安装成功只证明规则生效。随后从腾讯云经正式 `39032` 入口检查原失败图片，并在公网首页、详情页滚动到图片、打开大图，核对实际加载与解码；不能只看 `/api/health` 或静态 Logo。开发中的可见图片检查入口见[开发检查](../development.md)。
+
+应用层的临时图片失败响应使用 `no-store`；日志按资源哈希和域名保留阶段、异常原因链，不记录完整带签名 URL。预生成先完成同篇其他图片，再以失败状态交给现有队列重试（一次，延迟 120 秒）；成功缓存保留。失败卡片提供替代内容，详情可打开原文；刷新页面或切换到新资源后可以重新加载，不承诺同一已挂载图片自动无限重试。
+
 ## 旧部署与历史版本清理
 
 复用 `service-workflows cleanup-services`，明确目标为腾讯云 AIHOT、版本回收或整套退役，再按现场的 current、进程实际 cwd/打开文件、挂载和消费者引用裁定。迁移后切换 current 不代表旧任务已经退出；保留目录内指向旧版本的符号链接也属于消费者。

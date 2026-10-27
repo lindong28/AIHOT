@@ -7,6 +7,7 @@ import sharp from "sharp";
 import { config } from "../config.ts";
 import { guardedFetch, type GuardedResponse } from "../lib/http-fetch.ts";
 
+import { ImageStageError } from "./failure.ts";
 import { IMAGE_WIDTHS } from "./renditions.ts";
 
 const CACHE_DIR = path.join(config.dataDir, "imgcache");
@@ -138,11 +139,14 @@ async function produce(url: string, mode: string): Promise<{ body: Buffer; type:
   } catch {
     // not cached
   }
-  const res = await original(url);
-  const image = await resizeImage(res.body, res.headers.get("content-type") ?? "", mode);
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, image.body);
-  await writeFile(`${file}.type`, image.type);
+  const res = await original(url).catch((error: unknown) => { throw new ImageStageError("fetch", error); });
+  const image = await resizeImage(res.body, res.headers.get("content-type") ?? "", mode)
+    .catch((error: unknown) => { throw new ImageStageError("decode/resize", error); });
+  try {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, image.body);
+    await writeFile(`${file}.type`, image.type);
+  } catch (error) { throw new ImageStageError("cache-write", error); }
   return image;
 }
 

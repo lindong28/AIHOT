@@ -95,3 +95,11 @@ AIHOT 开源包给的是示范清单，不是 AIHOT 线上全量信源。旧 Rad
 | 模型、提示词、分类与材料策略 | 旧研究是候选证据；尚未形成新的生产默认 |
 | 历史库、人工标注和实验资产迁移 | 原始材料已有回填启动批；余量见迁移清单，标注与实验资产仍由 MIG-EVAL-001 待定 |
 | 旧站切换与退役 | 公网已于 2026-10-02 切至本仓；旧服务保留与回滚边界见[生产运维](operations/production.md) |
+
+### 新闻图片失败与恢复验收
+
+`tests/media-recovery.test.ts` 使用本机图片服务验证 502 禁止浏览器／共享缓存、服务端 60 秒失败抑制、混合成功与失败的缓存复用及错误脱敏。`media.prepare` 完成独立图片后才抛出失败，沿既有队列最多重试一次、延迟 120 秒；不会自动回填全部历史。当前失败可查 pg-boss 的 job output，历史尝试按 worker 日志的既有保留期查询 `[media.prepare]`，用 `articleId`、`resourceId`（源 URL 的 SHA-256）和 `mode` 关联；API 日志同样包含资源标识、阶段和原因链，避免输出源 URL 的认证参数。
+
+真实页面验收与常规 `scripts/smoke.ts` 分开：在浏览器打开新闻列表和详情，首屏及滚动后执行 `agent-browser eval --stdin < scripts/check-page-images.js`。它对当前视口已请求的实际 `currentSrc` 调用 `decode()`，返回解码尺寸、失败及回退状态，不输出签名 URL。正常图应有非零尺寸；失败的列表缩成文字、详情及大图提供原文链接、头像回退为首字。返回空图片集不能当通过，应选择确有新闻配图的条目。
+
+对照至少包含正常图片和故意失败的图片；`tests/browser/media-recovery.html` 是无外部服务的组件 fixture，使用 `node --input-type=module -e 'import {createServer} from "vite"; const s=await createServer({configFile:false,server:{host:"127.0.0.1",port:55440},oxc:{jsx:{runtime:"automatic"}}}); await s.listen(); setTimeout(()=>s.close(),180000);'` 启动三分钟隔离服务，在 `/tests/browser/media-recovery.html` 可检查响应式候选失败、hydration 前已失败、按钮换资源恢复，以及正常视频缩略图。真实页面首次访问与同浏览器再次访问分别记录；浏览器首次不等于服务端冷缓存，冷缓存只在独占测试数据目录验证，不删除生产缓存。此检查证明图片传输与解码，不判新闻画面内容。部署后仍须从用户入口检查，不能以本地 fixture 代替真实出口。

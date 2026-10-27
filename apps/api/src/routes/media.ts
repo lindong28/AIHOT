@@ -1,5 +1,6 @@
 // Signed image proxy. Unsigned, badly signed or expired requests are 403 without any upstream fetch.
 import type { FastifyInstance } from "fastify";
+import { imageFailure } from "@aihot/backend/media/failure";
 import { produceImage } from "@aihot/backend/media/images";
 import { verifyProxyRequest } from "@aihot/backend/media/imgproxy";
 import { looseQuery } from "../http/respond.ts";
@@ -33,8 +34,8 @@ export function registerMedia(app: FastifyInstance) {
         .send(body);
     } catch (error) {
 
-      req.log.warn({ err: String(error), host: new URL(verdict.url).hostname }, "img-proxy upstream failed");
-      return reply.code(502).header("Cache-Control", "public, max-age=300").type("text/plain; charset=utf-8").send("Upstream image unavailable");
+      req.log.warn(imageFailure(verdict.url, verdict.mode, error), "img-proxy failed");
+      return reply.code(502).header("Cache-Control", "no-store").header("X-Accel-Expires", "0").type("text/plain; charset=utf-8").send("Upstream image unavailable");
     }
   });
 }

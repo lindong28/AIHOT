@@ -1,4 +1,5 @@
 // Small building blocks shared by feed items, detail pages and lists.
+import { useImageFailure } from "../../lib/use-image-failure";
 import { useState } from "react";
 import type { FeedItemSummary, MediaView } from "@aihot/contracts/site";
 import { IconBookmark } from "../../components/icons";
@@ -26,21 +27,27 @@ export function MediaThumbs({ media, className = "" }: { media: MediaView[]; cla
   if (shown.length === 0) return null;
   return (
     <div className={`flex gap-1.5 overflow-hidden ${className}`}>
-      {shown.map((m) => (
-        <span key={m.url} className={`relative shrink-0 overflow-hidden rounded-control border border-line-soft bg-bg-sunk ${shown.length === 1 ? "max-w-[240px]" : "w-[112px]"}`}>
-          <img src={m.poster ?? m.url} srcSet={m.srcSet} sizes={shown.length === 1 ? `${m.width && m.height ? Math.min(240, Math.ceil(112 * m.width / m.height)) : 240}px` : "112px"} width={m.width ?? undefined} height={m.height ?? undefined} alt={m.alt ?? ""} loading="lazy" decoding="async" className={`h-[112px] object-cover ${shown.length === 1 ? "w-auto max-w-[240px]" : "w-[112px]"}`} />
-          {m.kind === "video" && (
-            <span className="absolute inset-0 grid place-items-center" aria-hidden="true">
-              <span className="grid size-8 place-items-center rounded-full bg-black/55 text-white">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="ml-px">
-                  <path d="M7 4.5v15a1 1 0 001.5.87l13-7.5a1 1 0 000-1.74l-13-7.5A1 1 0 007 4.5z" />
-                </svg>
-              </span>
-            </span>
-          )}
-        </span>
-      ))}
+      {shown.map((m) => <MediaThumb key={`${m.url}|${m.poster}|${m.srcSet}`} media={m} single={shown.length === 1} />)}
     </div>
+  );
+}
+
+function MediaThumb({ media: m, single }: { media: MediaView; single: boolean }) {
+  const { failed, ...imageState } = useImageFailure(m.poster ?? m.url, m.srcSet);
+  if (failed) return <span data-image-fallback="thumbnail" className="self-center text-xs text-ink-4">配图暂时无法加载</span>;
+  return (
+    <span className={`relative shrink-0 overflow-hidden rounded-control border border-line-soft bg-bg-sunk ${single ? "max-w-[240px]" : "w-[112px]"}`}>
+      <img {...imageState} src={m.poster ?? m.url} srcSet={m.srcSet} sizes={single ? `${m.width && m.height ? Math.min(240, Math.ceil(112 * m.width / m.height)) : 240}px` : "112px"} width={m.width ?? undefined} height={m.height ?? undefined} alt={m.alt ?? ""} loading="lazy" decoding="async" className={`h-[112px] object-cover ${single ? "w-auto max-w-[240px]" : "w-[112px]"}`} />
+      {m.kind === "video" && (
+        <span className="absolute inset-0 grid place-items-center" aria-hidden="true">
+          <span className="grid size-8 place-items-center rounded-full bg-black/55 text-white">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="ml-px">
+              <path d="M7 4.5v15a1 1 0 001.5.87l13-7.5a1 1 0 000-1.74l-13-7.5A1 1 0 007 4.5z" />
+            </svg>
+          </span>
+        </span>
+      )}
+    </span>
   );
 }
 

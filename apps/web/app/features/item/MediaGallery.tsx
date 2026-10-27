@@ -1,3 +1,4 @@
+import { useImageFailure } from "../../lib/use-image-failure";
 import { useEffect, useState } from "react";
 import { Presence } from "../../components/ui/Presence";
 import type { MediaView } from "@aihot/contracts/site";
@@ -34,32 +35,7 @@ export function MediaGallery({ media, postUrl }: { media: MediaView[]; postUrl: 
   return (
     <>
       <div className={`mt-5 grid gap-2 ${single ? "grid-cols-1" : "grid-cols-2 sm:grid-cols-3"}`}>
-        {shown.map((m) => {
-          const img = (
-            <img
-              src={m.poster ?? m.url}
-              srcSet={m.srcSet}
-              sizes={single ? "auto, (min-width: 460px) 420px, calc(100vw - 32px)" : "auto, (min-width: 800px) 248px, (min-width: 640px) calc(33.333vw - 19px), calc(50vw - 24px)"}
-              width={m.width ?? undefined}
-              height={m.height ?? undefined}
-              decoding="async"
-              alt={m.alt ?? ""}
-              loading="lazy"
-              className={`block w-full object-cover transition-transform duration-300 group-hover:scale-[1.015] ${single ? "max-h-[360px]" : "h-full"}`}
-              style={single && m.width && m.height ? { aspectRatio: `${m.width} / ${m.height}` } : undefined}
-            />
-          );
-          return m.kind === "video" ? (
-            <a key={m.url} href={postUrl} target="_blank" rel="noopener noreferrer" aria-label="打开原推播放视频" className={tile}>
-              {img}
-              <PlayMark />
-            </a>
-          ) : (
-            <button key={m.url} type="button" onClick={() => setOpen(m)} aria-label={m.alt ? `查看大图：${m.alt}` : "查看大图"} className={`${tile} cursor-zoom-in`}>
-              {img}
-            </button>
-          );
-        })}
+        {shown.map((m) => <GalleryTile key={`${m.url}|${m.poster}|${m.srcSet}`} m={m} single={single} tile={tile} postUrl={postUrl} setOpen={setOpen} />)}
       </div>
       <Presence show={!!open} enter="anim-fade-in" exit="anim-fade-out" duration={160}>
           <div
@@ -69,7 +45,7 @@ export function MediaGallery({ media, postUrl }: { media: MediaView[]; postUrl: 
             onClick={() => setOpen(null)}
             className="fixed inset-0 z-[80] grid cursor-zoom-out place-items-center bg-black/85 p-4 sm:p-10"
           >
-            <img
+            <LightboxImage key={open?.url} postUrl={postUrl}
               src={open?.url}
               decoding="async"
               alt={open?.alt ?? ""}
@@ -82,4 +58,40 @@ export function MediaGallery({ media, postUrl }: { media: MediaView[]; postUrl: 
       </Presence>
     </>
   );
+}
+
+function GalleryTile({ m, single, tile, postUrl, setOpen }: { m: MediaView; single: boolean; tile: string; postUrl: string; setOpen: (m: MediaView) => void }) {
+
+  const { failed, ...imageState } = useImageFailure(m.poster ?? m.url, m.srcSet);
+  if (failed) return <a data-image-fallback="gallery" href={postUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-accent">配图暂时无法加载，前往原文查看</a>;
+  const img = (
+    <img {...imageState}
+      src={m.poster ?? m.url}
+      srcSet={m.srcSet}
+      sizes={single ? "auto, (min-width: 460px) 420px, calc(100vw - 32px)" : "auto, (min-width: 800px) 248px, (min-width: 640px) calc(33.333vw - 19px), calc(50vw - 24px)"}
+      width={m.width ?? undefined}
+      height={m.height ?? undefined}
+      decoding="async"
+      alt={m.alt ?? ""}
+      loading="lazy"
+      className={`block w-full object-cover transition-transform duration-300 group-hover:scale-[1.015] ${single ? "max-h-[360px]" : "h-full"}`}
+      style={single && m.width && m.height ? { aspectRatio: `${m.width} / ${m.height}` } : undefined}
+    />
+  );
+  return m.kind === "video" ? (
+    <a key={m.url} href={postUrl} target="_blank" rel="noopener noreferrer" aria-label="打开原推播放视频" className={tile}>
+      {img}
+      <PlayMark />
+    </a>
+  ) : (
+    <button key={m.url} type="button" onClick={() => setOpen(m)} aria-label={m.alt ? `查看大图：${m.alt}` : "查看大图"} className={`${tile} cursor-zoom-in`}>
+      {img}
+    </button>
+  );
+
+}
+
+function LightboxImage({ postUrl, src, ...props }: { postUrl: string } & React.ImgHTMLAttributes<HTMLImageElement>) {
+  const { failed, ...imageState } = useImageFailure(src);
+  return failed ? <a data-image-fallback="lightbox" href={postUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-white underline">大图暂时无法加载，前往原文查看</a> : <img {...props} {...imageState} src={src} />;
 }

@@ -208,7 +208,8 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
   const daily = report.kind === "daily";
   // A picture that fails to load is dropped, and the lead is set as if it had none.
   const [broken, setBroken] = useState<string | null>(null);
-  const cover = report.cover && report.cover.url !== broken ? report.cover : null;
+  const coverIdentity = report.cover ? JSON.stringify([report.cover.url, report.cover.srcSet]) : null;
+  const cover = report.cover && coverIdentity !== broken ? report.cover : null;
   // A landscape picture opens the lead above its headline; a squarer one sits beside the paragraph.
   const wide = !cover?.width || !cover.height || cover.width / cover.height >= 1.25;
   const title = report.lead?.title ?? leadStory?.title ?? headline(report.kind, report.key, count);
@@ -222,7 +223,7 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
     <section aria-label="头版" className={cover ? "grid @[880px]:grid-cols-[minmax(0,1fr)_300px] @[1040px]:grid-cols-[minmax(0,1fr)_340px]" : ""}>
       <div id={leadStory ? (anchorOf(leadStory) ?? undefined) : undefined} className={`reader-report-lead min-w-0 scroll-mt-6 py-7 @[880px]:py-10 ${cover ? "@[880px]:border-r @[880px]:border-line @[880px]:pr-10" : ""}`}>
         <Kicker>{daily ? "头条" : "本期导读"}</Kicker>
-        {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} priority className="mt-5" />}
+        {cover && wide && <LeadPicture cover={cover} onError={() => setBroken(coverIdentity)} priority className="mt-5" />}
         <h2 className="reader-report-headline mt-4 text-[32px] font-black leading-[1.28] tracking-[-0.03em] text-ink [text-wrap:balance] @[520px]:text-[40px] @[1040px]:text-[48px] @[1040px]:leading-[1.22]">
           {leadStory?.itemId ? (
             <Link to={`/items/${leadStory.itemId}`} prefetch="intent" className="transition-colors hover:text-accent">
@@ -235,7 +236,7 @@ function FrontPage({ report, pages, leadStory, count }: { report: ReportDetail; 
         {(dek || (cover && !wide)) && (
           <div className={cover && !wide ? "mt-6 grid gap-6 @[640px]:grid-cols-[minmax(0,1fr)_minmax(0,38%)] @[880px]:mt-7" : ""}>
             {dek && <p className={`reader-report-dek text-[16.5px] leading-[1.9] text-ink-2 @[880px]:text-[17.5px] ${cover && !wide ? "" : "mt-6 @[560px]:text-justify @[880px]:mt-7"}`}>{dek}</p>}
-            {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(cover.url)} />}
+            {cover && !wide && <LeadPicture cover={cover} onError={() => setBroken(coverIdentity)} />}
           </div>
         )}
         {leadStory && (
