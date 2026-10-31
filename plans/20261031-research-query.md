@@ -1,6 +1,6 @@
 # 按公众号与分组查询资料
 
-状态：实现与本地验收完成，准备发布部署；2026-10-31 独立决策审查已放行。任务入口为本文。运行证据存于 `/Users/lindong/task-artifacts/AIHOT/20261031-research-01a18c55/`，正文和凭据不入 Git。
+状态：实现、审查、发布、部署与生产验收完成。任务入口为本文。运行证据存于 `/Users/lindong/task-artifacts/AIHOT/20261031-research-01a18c55/`，正文和凭据不入 Git。
 
 ## 用户目标与范围
 
@@ -22,7 +22,7 @@ AIHOT 基线 origin/main ad9bea8；现有 `research/read.ts`、`routes/research.
 
 CLI 沿现有入口增加重复 --source/--group，--since/--until 与 --timezone，绝对日期及 last-N-days 明确归一化为有时区边界，返回实际 query。bulk export 使用最多4个读取并发（与现有共享查询容量4相符），落盘逐篇JSON/Markdown及 manifest，保留 URL/ID/revision/hash/正文完整性。单篇失败不丢其他成功结果；显式 retry-failed 有限重试，未经当前读取不把缓存当现有权限。compare 比较两份完整查询清单的新增/修订/不再出现，不把不再出现称为删除。失败、分页变化和部分正文分别体现退出状态。
 
-未验证：生产数据库迁移及生产 CLI 路径尚待发布后验收。不新增调度服务、自动采集或 LLM 调用。普通实现 A1/V1，既有权限边界保持其验收 floor；部署增量迁移依既有授权与生产规范。独立一轮 decision/change review，不扩为多轮评估。
+生产迁移与 CLI 路径已验收，读数见下。不新增调度服务、自动采集或 LLM 调用。普通实现 A1/V1，既有权限边界保持其验收 floor；部署增量迁移依既有授权与生产规范。独立一轮 decision/change review，不扩为多轮评估。
 
 ## 顺序与验收
 
@@ -36,7 +36,7 @@ CLI 沿现有入口增加重复 --source/--group，--since/--until 与 --timezon
 
 自有工作树：`/Users/lindong/task-artifacts/AIHOT/20261031-research-01a18c55/aihot` 与同级 `config`；均在 codex/research-query-20261031 分支，root 已持持续占用。主树已有 WIP 保留。测试使用独立 `_test` 数据库、端口和数据目录，所有采集/模型/外发开关关闭。生产查询使用原有专用令牌及出口，不打印凭据。
 
-当前下一步：完成修复定向复核、提交整合发布、固定版本部署及生产 CLI 验收。分组内容无待决项：用户已要求不预置。
+功能待办及未处置 finding：无。分组内容按用户要求不预置，后续收到成员名单再配置。私树与隔离运行时由本 session 收尾回收，提交与树外证据为恢复锚；最终清理回执在任务目录 closure.json。
 
 审查中澄清：effective 保留旧过滤 coalesce(published_at,discovered_at) 与固定 sort_at 排序；仅显式新时间轴按对应字段排序。增加 GET /groups 与 CLI groups 发现 id/name/sourceIds。compare 保存并核对 resolvedSourceIds、timeField、关键词/精选过滤、时间范围及分页完整/变化标志，拒绝不完整或不相容范围；允许不同时间窗口作比较，但不把窗口外或不再出现的资料判作删除，变化标志保留非快照提示及退出码3。
 
@@ -49,3 +49,15 @@ CLI 沿现有入口增加重复 --source/--group，--since/--until 与 --timezon
 本机真实 API/Web 的 smoke 31个入口通过、3个空库排行榜检查按既有脚本跳过。全量测试首轮误把模型总阀关闭用于需要本地mock的用例，并使用非交互系统Python3.9，造成28项失败；在不含真实凭据的隔离环境使用仓库CI相同本地stub设置及Python3.14后空库全量通过。曾重复使用累积数据的测试库导致旧builder测试1000轮上限，换新空库后17项全部通过，未修改产品或提高测试上限。微秒fixture改为text转timestamp，避免驱动Date序列化丢精度。
 
 独立变更审查发现两项MEDIUM：中途游标结果被误标完整；100来源签名游标超过2048长度。两项均新增失败回归后修复：仅从第一页到尾页标完整，比较拒绝中途结果；游标用查询SHA256摘要保持来源及参数绑定。修后相同用例通过。原报告 decision-review.md、change-review.md 及全量日志保留在任务目录。无新采集器、自动重试或生产分组写入。
+
+## 2026-10-31 发布与生产验收
+
+AIHOT 功能提交 `056b551c757efb2cd15685d1f5cc3dadb950b7e4` 与共享客户端提交 `8aabc815e72bd2d1ecca61669e883e6d6b26c9d5` 均已快进整合并普通推送各自 origin/main，远端 SHA 回读一致，主树既有 WIP 内容保持。客户端通过现有 `~/.claude`／`~/.agents/skills` 共享入口生效。GitHub [41171941352](https://github.com/lindong28/AIHOT/actions/runs/41171941352) 的 check、docker 两项均 success；push 后没有对应运行时显式触发 workflow_dispatch，未将空运行列表当作成功。
+
+生产固定上述 AIHOT 功能 SHA，发布包 SHA256 `654d91a751a1851695d9a439f4ef5dabb121e8606cc9dcf8b2e6469c12fa32e8`。在 shared/deploy.lock 下核旧 current 后构建，复用迁移器以单连接、5秒锁等待、60秒语句时限执行0054；迁移成功，三个索引均 valid，分组/别名各0。current 指向 `/home/ubuntu/aihot/releases/research-query-20261031-056b551`，API PID2042324、Web PID2042325 的 cwd 均指向新release。worker PID4020930 仍在旧 image-recovery-20261027-ad9bea8，未重启，旧release因仍在使用而保留；backfill timer active。没有 seed、模型配置、凭据或采集设置变更，迁移前磁盘可用16GB。
+
+实际消费者为已整合的共享 CLI，通过 `https://news.aiplanet.live` 与既有专用令牌取数，未使用浏览器。来源目录46个 mp_account；groups为空。对“数字生命卡兹克”和“量子位”两账号、published时间轴、Asia/Shanghai `[2026-10-29,2026-11-01)`窗口，limit2跨页查询11篇；批量导出11/11正文为available，逐文件SHA256及0700目录/0600文件权限核对通过。两次列表的added/changed/notPresentInSecond均0；分页列表changedSinceStart=true，比较保留该标志并退出3，单页导出为false并退出0。来源目录也观察到跨页变化，均未当作事务快照。
+
+URL解析对其中1篇返回与导出相同ID和正文；updated时间轴查询返回2条且响应声明匹配；错误令牌返回401、未知组返回400，OpenAPI为1.1.0。公网34项smoke通过。上述实测覆盖2个账号、1个发表日期窗口、published/updated两轴、分页/单页两种读取、有效/无效令牌两种；其他边界依本地合成测试，不外推全网历史、任意账号或时序。11篇正文完整性均unverified，表示取得当前留存正文，不表示已证明原文完整。分组增改删、空组和别名冲突在隔离数据库验收，生产没有为测试写入分组。
+
+用户目标逐项状态：来源发现、按名称/别名/分组/时间查询、多来源去重分页、正文批量导出和失败续取、采集观测、更新轴与清单比较、文档接入与生产发布均完成；生产分组成员明确按用户决定留空。未处置 findings、未达成实现项均无。结果只覆盖已保留且当前允许读取的数据，updated不是删除/权限变更的完整事件流。查询/管理/导出失败即时反馈调用者并保留已有成功项，未增加无人值守任务，告警沿既有API失败面处理，不另建监控服务。

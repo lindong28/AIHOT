@@ -12,6 +12,8 @@
 
 ## 环境与持久数据
 
+2026-10-31 研究查询扩展已部署 `056b551c757efb2cd15685d1f5cc3dadb950b7e4`，current 为 `research-query-20261031-056b551`；API/Web 加载新release，0054迁移与三个时间索引有效。worker PID4020930 仍运行 `image-recovery-20261027-ad9bea8`，该旧目录仍有运行消费者，不能作为空闲release删除。未改采集/模型配置，分组与别名按用户要求保持空。共享CLI已完成两公众号11篇正文导出验收，34项公网smoke与GitHub check/docker通过；正文完整性仍为unverified。分组管理、时间轴与导出用法见[私有资料API](../private-research-api.md)，版本及证据边界见[实施记录](../../plans/20261031-research-query.md#2026-10-31-发布与生产验收)。
+
 私有文章资料 API 于2026-10-13部署功能提交 `982479af7a8931e7d37c233462f9bd106eddd6fb`，current 指向 `private-research-20261013-982479a`；API/Web/worker 加载同一 release，0048迁移与存量构建完成。令牌摘要沿0600 `shared/app.env` 配置，用户已授权客户端原始令牌存于本机 `~/.config/aihot/research.env`（0600、不入Git）。`RESEARCH_TOKEN_SHA256` 为空时关闭。配置、轮换及回滚后的重建要求见[私有资料API](../private-research-api.md)，实测见[计划U5](../../plans/20261013-private-article-research-api.md#u5-发布执行记录)。
 
 本次真实CLI已核对目标公众号108篇列表及正文；公网34项smoke全部成功，正常／错误／匿名／已撤销令牌和CDN no-store行为均已检查。backfill timer恢复active。构建结束时根分区剩余约1.32–1.34GB（df约99%），历史releases约15GB；容量仍需维护者关注，清理或扩容另行确定范围，本次没有删除旧release。一次三页列表读取16.051秒，仅为现场读数，不是延迟SLA。
