@@ -6,8 +6,9 @@ import { identityKeyForUrl } from "../lib/url.ts";
 import { LEGACY_WECHAT_SOURCES } from "../publication/source-label.ts";
 import { materialHash } from "../backfill/manifest.ts";
 import { loadPreparation } from "../backfill/history-input.ts";
+import { resolveSources, ResearchInputError } from "./catalog.ts";
 
-export class ResearchInputError extends Error {}
+export { ResearchInputError } from "./catalog.ts";
 export const documentId = (identity: string) => `doc_${createHash("sha256").update(identity).digest("hex")}`;
 const like = (s: string) => `%${s.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
 type Cursor = { query: string; until: string; stamp: string; after: string; id: string };
@@ -44,7 +45,7 @@ const FROM = sql`FROM research_documents d
 const VISIBLE = sql`NOT coalesce(policy.denied,false)`;
 const READABLE = sql`NOT coalesce(policy.restricted,false) AND NOT d.discarded`;
 const COLUMNS = sql`d.id,d.identity_key,d.article_id,d.run_id,d.material_version,d.source_id,d.url,d.title,d.author,d.language,d.title_json,d.author_json,
-  d.published_at,d.discovered_at,d.sort_at,d.sort_at::text AS sort_cursor,d.revision,d.content_hash,d.discarded,
+  d.published_at,d.discovered_at,d.sort_at,d.first_indexed_at,d.updated_at,d.revision,d.content_hash,d.discarded,
   coalesce(account.id,d.source_id) AS account_id,coalesce(policy.restricted,false) AS restricted,
   p.title AS generated_title,p.summary,coalesce(p.selected,false) AS selected,
   CASE WHEN ${READABLE} THEN d.body_text END AS body_text,
@@ -74,15 +75,22 @@ function summary(r: Row, terms: string[] = []) {
     title, generatedTitle: r.generated_title ?? null, summary: r.summary ?? null,
     url: r.url, author: r.author_json ? JSON.parse(r.author_json) : r.author, language: r.language, sourceId: r.account_id, collectionSourceId: r.source_id,
     publishedAt: iso(r.published_at), discoveredAt: iso(r.discovered_at), sortAt: iso(r.sort_at),
+    indexedAt: iso(r.first_indexed_at), updatedAt: iso(r.updated_at),
     timeBasis: r.published_at ? "published" : "discovered", revision: r.revision,
     contentHash: r.restricted ? null : r.content_hash, selected: r.selected,
     bodyStatus: r.restricted ? "restricted" : r.discarded ? "discarded" : r.has_body ? "available" : "missing", matches };
 }
-export type ResearchQuery = { source?: string; q?: string; from?: string; to?: string; selected?: boolean; limit: number; cursor?: string };
+export type ResearchQuery = { source?: string[]; group?: string[]; timeField?: "effective"|"published"|"discovered"|"updated"; q?: string; from?: string; to?: string; selected?: boolean; limit: number; cursor?: string };
 export async function listArticles(db: Db, input: ResearchQuery, key: string) {
   const terms = (input.q ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length > 6) throw new ResearchInputError("too_many_terms");
-  const query = JSON.stringify([input.source ?? null,terms,input.from ?? null,input.to ?? null,input.selected ?? null]);
+  const sourceIds = await resolveSources(db,input.source,input.group);
+  const timeField = input.timeField ?? "effective";
+  const queryInfo = {sourceIds,timeField,from:input.from??null,to:input.to??null,q:input.q??null,selected:input.selected??null};
+  const query = createHash("sha256").update(JSON.stringify([sourceIds,terms,queryInfo.from,queryInfo.to,queryInfo.selected,timeField])).digest("hex");
+  const time = timeField==="published" ? sql`d.published_at` : timeField==="discovered" ? sql`d.discovered_at` : timeField==="updated" ? sql`d.updated_at` : sql`coalesce(d.published_at,d.discovered_at)`;
+  // Keep the historical effective ordering fixed across material promotion and revisions.
+  const order = timeField==="effective" ? sql`d.sort_at` : time;
   const cursor = decode(input.cursor, query, key);
   const currentStamp = await stamp(db);
   const until = cursor?.until ?? await cutoff(db);
@@ -92,19 +100,20 @@ export async function listArticles(db: Db, input: ResearchQuery, key: string) {
       OR lower(coalesce(d.body_json_text,'')) LIKE ${like(JSON.stringify(term).slice(1,-1))})))`, sql``);
   // Explicit text casts preserve PostgreSQL microseconds: the driver's timestamp serializer uses
   // JS Date (milliseconds), which can omit an identity created just before the first page.
-  const rows = await db`SELECT ${COLUMNS} ${FROM} WHERE ${VISIBLE} AND d.first_indexed_at<=${until}::text::timestamptz
-    ${input.source ? sql`AND coalesce(account.id,d.source_id)=${input.source}` : sql``}
-    ${input.from ? sql`AND coalesce(d.published_at,d.discovered_at)>=${input.from}::text::timestamptz` : sql``}
-    ${input.to ? sql`AND coalesce(d.published_at,d.discovered_at)<${input.to}::text::timestamptz` : sql``}
+  const rows = await db`SELECT ${COLUMNS},${order}::text AS sort_cursor ${FROM} WHERE ${VISIBLE} AND d.first_indexed_at<=${until}::text::timestamptz
+    AND ${order} IS NOT NULL
+    ${sourceIds !== null ? sql`AND coalesce(account.id,d.source_id)=ANY(${sql.array(sourceIds)}::text[])` : sql``}
+    ${input.from ? sql`AND ${time}>=${input.from}::text::timestamptz` : sql``}
+    ${input.to ? sql`AND ${time}<${input.to}::text::timestamptz` : sql``}
     ${input.selected !== undefined ? sql`AND coalesce(p.selected,false)=${input.selected}` : sql``}
-    ${condition} ${cursor ? sql`AND (d.sort_at,d.id)<(${cursor.after}::text::timestamptz,${cursor.id})` : sql``}
-    ORDER BY d.sort_at DESC,d.id DESC LIMIT ${input.limit + 1}`;
+    ${condition} ${cursor ? sql`AND (${order},d.id)<(${cursor.after}::text::timestamptz,${cursor.id})` : sql``}
+    ORDER BY ${order} DESC,d.id DESC LIMIT ${input.limit + 1}`;
   const page = rows.slice(0,input.limit), last = page.at(-1);
   // JSON scalar indexes are only candidates: escape sequences (e.g. \\n) are not original text.
   // Advance by consumed candidates even for an empty result page, so callers can finish traversal.
   const items = page.map(r => summary(r,terms)).filter(item => terms.every(term =>
     item.matches.some(match => match.text.toLowerCase().includes(term))));
-  return { items, consistency: "live", asOf: until,
+  return { items, query:queryInfo, consistency: "live", asOf: until,
     changedSinceStart: !!cursor && cursor.stamp !== currentStamp,
     nextCursor: rows.length > input.limit && last ? encode({ query, until, stamp: cursor?.stamp ?? currentStamp, after: last.sort_cursor, id: last.id },key) : null };
 }
@@ -112,10 +121,17 @@ export async function listSources(db: Db, input: { q?: string; kind?: string; li
   const query = JSON.stringify(["sources",input.q ?? null,input.kind ?? null]);
   const cursor = decode(input.cursor,query,key), currentStamp = await stamp(db);
   const until = cursor?.until ?? await cutoff(db);
-  const rows = await db`SELECT id,name,kind FROM sources WHERE created_at<=${until}::text::timestamptz
-    ${input.q ? sql`AND lower(name) LIKE ${like(input.q)}` : sql``}
-    ${input.kind ? sql`AND kind=${input.kind}` : sql``} ${cursor ? sql`AND id>${cursor.id}` : sql``}
-    ORDER BY id LIMIT ${input.limit+1}`;
+  const rows = await db`SELECT s.id,s.name,s.kind,
+    ARRAY(SELECT alias FROM research_source_aliases a WHERE a.source_id=s.id ORDER BY alias) AS aliases,
+    jsonb_build_object('enabled',s.enabled,'health',s.health,'lastSuccessAt',s.last_ok_at,'lastFetchAt',s.last_fetch_at,'nextFetchAt',s.next_fetch_at,
+      'latestRun',(SELECT jsonb_build_object('startedAt',f.started_at,'finishedAt',f.finished_at,'status',f.status,
+        'foundCount',CASE WHEN f.finished_at IS NOT NULL AND f.status='ok' THEN f.found_count END,
+        'newCount',CASE WHEN f.finished_at IS NOT NULL AND f.status='ok' THEN f.new_count END)
+        FROM fetch_runs f WHERE f.source_id=s.id ORDER BY f.started_at DESC,f.id DESC LIMIT 1)) AS collection
+    FROM sources s WHERE s.created_at<=${until}::text::timestamptz
+    ${input.q ? sql`AND (lower(s.name) LIKE ${like(input.q)} OR lower(s.id) LIKE ${like(input.q)} OR EXISTS(SELECT 1 FROM research_source_aliases a WHERE a.source_id=s.id AND lower(a.alias) LIKE ${like(input.q)}))` : sql``}
+    ${input.kind ? sql`AND s.kind=${input.kind}` : sql``} ${cursor ? sql`AND s.id>${cursor.id}` : sql``}
+    ORDER BY s.id LIMIT ${input.limit+1}`;
   const items = rows.slice(0,input.limit);
   return {items,consistency:"live",asOf:until,changedSinceStart:!!cursor && cursor.stamp!==currentStamp,
     nextCursor:rows.length>input.limit ? encode({query,until,stamp:cursor?.stamp??currentStamp,after:"",id:items.at(-1)!.id},key):null};

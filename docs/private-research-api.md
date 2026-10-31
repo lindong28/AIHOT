@@ -8,8 +8,9 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 
 | 路径（前缀 /api/private/v1） | 参数 | 用途 |
 | --- | --- | --- |
-| GET /sources | q、kind、limit、cursor | 找来源／账号 ID |
-| GET /articles | source、q、from、to、selected、limit、cursor | 来源、全文和时间过滤；元数据及匹配片段 |
+| GET /sources | q、kind、limit、cursor | 找来源／账号 ID、显式别名与已有采集观测 |
+| GET /groups | 无 | 发现研究分组及 sourceIds；初始为空 |
+| GET /articles | source、group、timeField、q、from、to、selected、limit、cursor | 多来源并集、全文和时间过滤；元数据及匹配片段 |
 | GET /articles/{id} | format=json 或 markdown | 读取稳定资料 ID 或 native article ID |
 | GET /articles/resolve | url、format | 本地规范化 URL 后定位，不对输入 URL 发请求 |
 
@@ -23,9 +24,33 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 
 `title` 为保存的原标题；`generatedTitle`、`summary` 为当前修订的生成结果；`body` 为已存原文，译文在 `translations` 单列。`bodyStatus` 是 available/missing/discarded/restricted，分别表示可返回、缺失、清除、正文受限。`completeness.state` 是 complete/incomplete/unverified，依据匹配版本的审核证据，而不是字数、非空或旧准备流程的 selected 标记；没有证据仍可读取，但报告 unverified。
 
-分页按初次索引的发表时间（缺失时发现时间）及稳定 ID 排序，`sortAt` 保持不变，当前 `publishedAt`、`discoveredAt`、`timeBasis` 独立返回。游标签名绑定过滤条件、初次查询截止时间和原令牌；更换过滤条件／令牌须重开查询。开始后的新 identity 留到下一轮；旧资料的权限、清除、修订使用当前读取事务。每页是只读 repeatable-read，跨页不是事务快照，也没有固定总数。`changedSinceStart` 使用数据库快照身份保守判变，无关数据库写入也可能使它为 true；客户端应标记并重新核对，不把结果宣称为固定快照取全。
+`source` 可重复，每个值为精确账号 ID、名称或显式别名；ID 优先，名称/别名忽略大小写，不模糊猜测。`group` 可重复，接受精确组 ID 或名称。来源和分组取并集，同一资料只返回一次；显式空组返回空结果。零匹配和歧义返回 400 与安全候选 ID/名称，不能静默退回全库。`query.sourceIds` 返回解析后的范围，null 表示全库、[] 表示空范围；其他 query 字段记录实际过滤，便于保存和比较。
 
-400 表示参数／游标错误；401 表示无效或已撤销令牌；404 不区分未配置、受限与不存在；503 表示索引未就绪、容量忙或服务不可用。搜索共用既有容量保护（默认同时 4、排队 8），不会额外无限占用数据库连接。
+默认 `timeField=effective` 保留旧行为：按当前发表时间（缺失时发现时间）过滤，按初次索引时固定的 `sortAt` 及稳定 ID 排序。显式 `published`、`discovered`、`updated` 分别按发表、发现、投影更新时间过滤及倒序排序，ID 用于同时间排序；published 不将缺失日期回退为发现时间。`indexedAt` 是首次进入研究投影的时刻，`updatedAt` 是当前投影最近更新时刻，均独立返回；updated 查询便于取得旧文章的后续修订，但不是完整的权限/删除事件流，不能把查询无结果解释为无变化。跨期比较仍应保留查询范围与内容版本。
+
+游标签名绑定解析后的来源、时间字段、过滤条件、初次查询截止时间和原令牌；分组成员变化、过滤条件／令牌变化须重开查询。开始后的新 identity 留到下一轮；旧资料的权限、清除、修订使用当前读取事务。每页是只读 repeatable-read，跨页不是事务快照，也没有固定总数。显式可变时间轴可能因修订移动条目；`changedSinceStart` 使用数据库快照身份保守判变，无关数据库写入也可能使它为 true。客户端应标记并重新核对，不把结果宣称为固定快照取全。
+
+来源的 `collection` 复用已有 enabled、health、lastSuccessAt、lastFetchAt、nextFetchAt 和最近一次 fetch_run 的状态/起止时间。成功且结束的采集才返回 foundCount/newCount，失败或在途为 null；无采集记录则 latestRun=null。成功零条、失败、未观测由不同读数表达；这些是数据库中的采集观测，不是上游文章齐全或定时器当前活跃的保证。原始错误、detail、来源配置及凭据不由研究接口返回，需要深入诊断时沿既有管理员入口检查。
+
+400 表示参数／游标错误或 unknown_source/ambiguous_source/unknown_group/ambiguous_group；后四类返回 selector 与 candidates。401 表示无效或已撤销令牌；404 不区分未配置、受限与不存在；503 表示索引未就绪、容量忙或服务不可用，busy 携带 Retry-After。搜索共用既有容量保护（默认同时 4、排队 8），不会额外无限占用数据库连接。
+
+## 分组与别名管理
+
+分组和成员由用户指定，安装及迁移 0054 不预置分类。权威配置位于现有 PostgreSQL 的 research_groups、research_group_sources、research_source_aliases；不复用编辑 tags，不更改来源采集或文章身份。配置随数据库备份保留，删除组只删除该组和成员关系；来源删除时其成员关系/别名随外键删除。别名按来源逐条设置/删除；允许显式同名记录，查询时报告歧义。
+
+在已配置 DATABASE_URL 的受信后端工作目录执行以下管理命令（需要数据库管理权限，研究 bearer 不可写）：
+
+```bash
+node --env-file-if-exists=.env scripts/research-catalog.ts list
+node --env-file-if-exists=.env scripts/research-catalog.ts set-group --id my-group --name '我的分组' --source radar-mp-3223096120
+node --env-file-if-exists=.env scripts/research-catalog.ts set-alias --source radar-mp-3223096120 --alias '卡兹克'
+node --env-file-if-exists=.env scripts/research-catalog.ts delete-alias --source radar-mp-3223096120 --alias '卡兹克'
+node --env-file-if-exists=.env scripts/research-catalog.ts delete-group --id my-group
+```
+
+set-group 原子替换该组名称和完整成员集合；重复 --source 添加多个成员，不传 --source 表示空组。成员必须可唯一解析，非法成员使整次事务回滚，保留旧配置。stdout 是变更后的目录 JSON，stderr 是结果，失败退出非零。个人生产部署在 `/home/ubuntu/aihot/current` 使用 `--env-file=/home/ubuntu/aihot/shared/app.env` 代替本地 .env；沿[生产运维](operations/production.md)进入执行主机，不将数据库连接或凭据复制到 agent 的查询参数中。
+
+既有部署升级仅需增量迁移 0054 和新 API，无需重建文章投影或重启采集器。迁移新增关系表及时间排序索引；先按生产流程检查锁窗口和磁盘余量。应用回滚可保留新增表/索引，不删除已配置分组；旧客户端的单 source ID、from/to、effective 行为继续有效。
 
 ## 初次构建、启用与撤销
 
@@ -41,4 +66,4 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 
 ## 共享 CLI
 
-两种 harness 共用 ai-agent-config 的 `connector-workflows query-aihot`。Python 标准库 CLI 提供 sources/search/read、--all、--cursor 与 --output；保存成功才原子替换 0600 文件，失败和中断不把部分输出当成完成。当前个人部署已启用；本机已授权配置位于 `~/.config/aihot/research.env`（0600、不入 Git），在同一 shell 中加载后调用 CLI，不打印令牌。隔离 HTTP 可通过显式 `--allow-localhost` 验证。
+两种 harness 共用 ai-agent-config 的 `connector-workflows query-aihot`，参数与批量导出/续取的权威用法见该 skill 的 `references/query-aihot.md`。Python 标准库 CLI 提供来源/分组发现、按名称/组/日期查询、单篇读取、批量导出与比较。当前个人部署的客户端配置位于 `~/.config/aihot/research.env`（0600、不入 Git），在同一 shell 中加载后调用 CLI，不打印令牌。隔离 HTTP 可通过显式 `--allow-localhost` 验证。私有导出包含正文，由操作者选择保存目录和保留期限，不自动上传、同步或清理旧导出。

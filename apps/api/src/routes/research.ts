@@ -5,9 +5,12 @@ import { credential } from "@aihot/backend/config";
 import { withSearchCapacity, SearchBusyError } from "@aihot/backend/publication/pool";
 import { listArticles, listSources, readArticle, resolveArticle, articleMarkdown, ResearchInputError } from "@aihot/backend/research/read";
 import { researchOpenApi } from "@aihot/contracts/research";
+import { listGroups } from "@aihot/backend/research/catalog";
 
 const paging = {limit:z.coerce.number().int().min(1).max(100).default(40),cursor:z.string().max(2048).optional()};
-const articleQuery = z.object({...paging,source:z.string().min(1).max(200).optional(),q:z.string().max(256).optional(),
+const selector = z.string().trim().min(1).max(200);
+const selectors = z.union([selector,z.array(selector).min(1).max(100)]).transform(v=>typeof v==="string"?[v]:v).optional();
+const articleQuery = z.object({...paging,source:selectors,group:selectors,timeField:z.enum(["effective","published","discovered","updated"]).optional(),q:z.string().max(256).optional(),
   from:z.iso.datetime({offset:true}).optional(),to:z.iso.datetime({offset:true}).optional(),
   selected:z.enum(["true","false"]).transform(v=>v==="true").optional()}).strict().refine(q=>!q.from||!q.to||Date.parse(q.from)<Date.parse(q.to));
 const sourceQuery = z.object({...paging,q:z.string().max(256).optional(),kind:z.string().max(80).optional()}).strict();
@@ -31,6 +34,7 @@ export function registerResearch(app: FastifyInstance) {
       keys.set(req,digest.toString("hex"));
     });
     privateApi.setErrorHandler((error,req,reply)=>{
+      if (error instanceof ResearchInputError && error.selector !== undefined) return reply.code(400).send({error:error.message,selector:error.selector,candidates:error.candidates});
       if (error instanceof z.ZodError || error instanceof ResearchInputError) return reply.code(400).send({error:"invalid_request"});
       if (error instanceof SearchBusyError) return reply.header("Retry-After",String(error.retryAfter)).code(503).send({error:"busy"});
       // Database errors may contain stored text or parameters. Log no error object or request URL.
@@ -46,6 +50,11 @@ export function registerResearch(app: FastifyInstance) {
       });
     }
     const unavailable = (v: unknown): v is {error:string} => typeof v==="object" && v!==null && "error" in v;
+    privateApi.get("/groups",async(req,reply)=>{
+      z.object({}).strict().parse(req.query);
+      const out = await read(db=>listGroups(db));
+      return reply.code(unavailable(out)?503:200).send(out);
+    });
     privateApi.get("/sources",async(req,reply)=>{
       const q = sourceQuery.parse(req.query);
       const out = await read(db=>listSources(db,q,keys.get(req)!));
