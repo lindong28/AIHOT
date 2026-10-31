@@ -4,6 +4,7 @@
 
 | 文件 | 读者与用途 |
 |---|---|
+| [references/20261031-wechat-reading-links.md](references/20261031-wechat-reading-links.md) | 维护者：微信采集身份、验证阅读链接、私有 v2 兼容与证据导入 |
 | [references/20261012-wechat-fulltext.md](references/20261012-wechat-fulltext.md) | 维护者：公众号本站全文、历史正文修复与未恢复条目 |
 | [references/feedly-reader.md](references/feedly-reader.md) | 开发者：公开站点 Feedly 浅色有效设计、例外与核验入口 |
 | [references/github-primer.md](references/github-primer.md) | 开发者：GitHub 风格（第四个可选外观）的有效设计、页面与组件盘点、例外与核验入口 |

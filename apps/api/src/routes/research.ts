@@ -4,8 +4,8 @@ import { z } from "zod";
 import { credential } from "@aihot/backend/config";
 import { withSearchCapacity, SearchBusyError } from "@aihot/backend/publication/pool";
 import { listArticles, listSources, readArticle, resolveArticle, articleMarkdown, ResearchInputError } from "@aihot/backend/research/read";
-import { researchOpenApi } from "@aihot/contracts/research";
 import { listGroups } from "@aihot/backend/research/catalog";
+import { researchOpenApi, researchOpenApiV2 } from "@aihot/contracts/research";
 
 const paging = {limit:z.coerce.number().int().min(1).max(100).default(40),cursor:z.string().max(2048).optional()};
 const selector = z.string().trim().min(1).max(200);
@@ -17,7 +17,12 @@ const sourceQuery = z.object({...paging,q:z.string().max(256).optional(),kind:z.
 const format = z.enum(["json","markdown"]).default("json");
 
 export function registerResearch(app: FastifyInstance) {
-  app.register(async privateApi => {
+  for (const version of [1,2] as const) app.register(async privateApi => {
+    function project<T extends {readingUrl: string | null}>(item: T) {
+      if (version === 2) return item;
+      const {readingUrl: _readingUrl,...v1} = item;
+      return v1;
+    }
     const keys = new WeakMap<object,string>();
     privateApi.addHook("onRequest",async(req,reply)=>{
       reply.header("Cache-Control","no-store").header("Vary","Authorization").header("X-Content-Type-Options","nosniff");
@@ -63,14 +68,14 @@ export function registerResearch(app: FastifyInstance) {
     privateApi.get("/articles",async(req,reply)=>{
       const q = articleQuery.parse(req.query);
       const out = await read(db=>listArticles(db,q,keys.get(req)!));
-      return reply.code(unavailable(out)?503:200).send(out);
+      return reply.code(unavailable(out)?503:200).send(unavailable(out) ? out : {...out,items:out.items.map(project)});
     });
     privateApi.get("/articles/resolve",async(req,reply)=>{
       const q = z.object({url:z.url().max(4096),format}).strict().parse(req.query);
       const out = await read(db=>resolveArticle(db,q.url));
       if (unavailable(out)) return reply.code(503).send(out);
       if (!out) return reply.code(404).send({error:"not_found"});
-      return q.format==="markdown" ? reply.type("text/markdown; charset=utf-8").send(articleMarkdown(out)) : out;
+      return q.format==="markdown" ? reply.type("text/markdown; charset=utf-8").send(articleMarkdown(out,version===2)) : project(out);
     });
     privateApi.get("/articles/:id",async(req,reply)=>{
       const {id} = z.object({id:z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/)}).parse(req.params);
@@ -78,9 +83,9 @@ export function registerResearch(app: FastifyInstance) {
       const out = await read(db=>readArticle(db,id));
       if (unavailable(out)) return reply.code(503).send(out);
       if (!out) return reply.code(404).send({error:"not_found"});
-      return q.format==="markdown" ? reply.type("text/markdown; charset=utf-8").send(articleMarkdown(out)) : out;
+      return q.format==="markdown" ? reply.type("text/markdown; charset=utf-8").send(articleMarkdown(out,version===2)) : project(out);
     });
-    privateApi.get("/openapi.json",async()=>researchOpenApi);
+    privateApi.get("/openapi.json",async()=>version===2 ? researchOpenApiV2 : researchOpenApi);
     privateApi.all("/*",async(_req,reply)=>reply.code(404).send({error:"not_found"}));
-  },{prefix:"/api/private/v1"});
+  },{prefix:`/api/private/v${version}`});
 }

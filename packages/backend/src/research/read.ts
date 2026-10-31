@@ -7,6 +7,7 @@ import { LEGACY_WECHAT_SOURCES } from "../publication/source-label.ts";
 import { materialHash } from "../backfill/manifest.ts";
 import { loadPreparation } from "../backfill/history-input.ts";
 import { resolveSources, ResearchInputError } from "./catalog.ts";
+import { readingLinkOwner } from "../content/wechat-link-registry.ts";
 
 export { ResearchInputError } from "./catalog.ts";
 export const documentId = (identity: string) => `doc_${createHash("sha256").update(identity).digest("hex")}`;
@@ -32,6 +33,7 @@ const iso = (value: Date | string | null): string | null => value == null ? null
 
 // A restriction on any current article linked to this identity wins over older material copies.
 const FROM = sql`FROM research_documents d
+  LEFT JOIN wechat_reading_links reading ON reading.identity_key=d.identity_key
   LEFT JOIN publications p ON p.article_id=d.article_id AND p.revision=d.revision
   LEFT JOIN LATERAL (
     SELECT bool_or(o.visibility='withdrawn') AS denied, bool_or(o.visibility='summary-only') AS restricted
@@ -45,6 +47,7 @@ const FROM = sql`FROM research_documents d
 const VISIBLE = sql`NOT coalesce(policy.denied,false)`;
 const READABLE = sql`NOT coalesce(policy.restricted,false) AND NOT d.discarded`;
 const COLUMNS = sql`d.id,d.identity_key,d.article_id,d.run_id,d.material_version,d.source_id,d.url,d.title,d.author,d.language,d.title_json,d.author_json,
+  reading.reading_url,
   d.published_at,d.discovered_at,d.sort_at,d.first_indexed_at,d.updated_at,d.revision,d.content_hash,d.discarded,
   coalesce(account.id,d.source_id) AS account_id,coalesce(policy.restricted,false) AS restricted,
   p.title AS generated_title,p.summary,coalesce(p.selected,false) AS selected,
@@ -73,7 +76,7 @@ function summary(r: Row, terms: string[] = []) {
   }));
   return { id: r.id, articleId: r.article_id, origin: r.article_id ? "article" : "material",
     title, generatedTitle: r.generated_title ?? null, summary: r.summary ?? null,
-    url: r.url, author: r.author_json ? JSON.parse(r.author_json) : r.author, language: r.language, sourceId: r.account_id, collectionSourceId: r.source_id,
+    url: r.url, readingUrl: r.reading_url ?? null, author: r.author_json ? JSON.parse(r.author_json) : r.author, language: r.language, sourceId: r.account_id, collectionSourceId: r.source_id,
     publishedAt: iso(r.published_at), discoveredAt: iso(r.discovered_at), sortAt: iso(r.sort_at),
     indexedAt: iso(r.first_indexed_at), updatedAt: iso(r.updated_at),
     timeBasis: r.published_at ? "published" : "discovered", revision: r.revision,
@@ -178,9 +181,12 @@ export async function resolveArticle(db: Db, url: string) {
     const [exists] = await db`SELECT 1 FROM research_documents WHERE identity_key=${candidate}`;
     if (exists) return readArticle(db,documentId(candidate));
   }
-  return readArticle(db,documentId(canonical));
+  const owner = await readingLinkOwner(url,db);
+  return readArticle(db,documentId(owner ?? canonical));
 }
-export function articleMarkdown(item: NonNullable<Awaited<ReturnType<typeof readArticle>>>) {
+export function articleMarkdown(item: NonNullable<Awaited<ReturnType<typeof readArticle>>>, preferReading = false) {
   const original = item.body?.text || (item.body?.html ? new TurndownService().turndown(item.body.html) : "");
-  return `# ${item.title}\n\nID: ${item.id}\n\n原文: ${item.url}\n\n来源: ${item.sourceId}\n\n正文状态: ${item.bodyStatus}；完整性: ${item.completeness.state}\n\n## 已存原文\n\n${original || "无可返回正文"}\n\n## 生成摘要\n\n${item.summary ?? "无"}\n`;
+  const url = preferReading ? item.readingUrl ?? item.url : item.url;
+  const source = url !== item.url ? `\n\n采集地址: ${item.url}` : "";
+  return `# ${item.title}\n\nID: ${item.id}\n\n原文: ${url}${source}\n\n来源: ${item.sourceId}\n\n正文状态: ${item.bodyStatus}；完整性: ${item.completeness.state}\n\n## 已存原文\n\n${original || "无可返回正文"}\n\n## 生成摘要\n\n${item.summary ?? "无"}\n`;
 }

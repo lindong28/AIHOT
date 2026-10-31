@@ -12,6 +12,7 @@ import { discardBackfillContent } from "../content/retention.ts";
 import { BudgetExceededError, ReceiptRetryError } from "../providers/receipts.ts";
 import { stableJson } from "../lib/ids.ts";
 import { loadPreparation, storePreparation } from "./history-input.ts";
+import { assertWechatFrozenIdentity } from "../content/wechat-link-registry.ts";
 
 export async function importBackfill(input: { label: string; startDay: string; endDay: string; entries: unknown[] }) {
   if (!input.label.trim()) throw new Error("A batch label is required");
@@ -25,6 +26,7 @@ export async function importBackfill(input: { label: string; startDay: string; e
     await tx`INSERT INTO backfill_runs(id,label,manifest_hash,start_day,end_day) VALUES (${id},${input.label},${hash},${input.startDay},${input.endDay})`;
     // The raw manifest is staged first; articles enter the native pipeline only when claimed.
     for (const e of entries) {
+      await assertWechatFrozenIdentity(tx,e.material.url,entryIdentity(e));
       const day = new Date(e.material.publishedAt).toISOString().slice(0, 10);
       const inRange = day >= input.startDay && day <= input.endDay;
       const eligible = inRange && e.quality.state === "complete";

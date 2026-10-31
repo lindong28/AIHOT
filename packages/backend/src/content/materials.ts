@@ -5,6 +5,8 @@ import { newArticleId, sha256 } from "../lib/ids.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
 import { collapseWhitespace } from "../lib/text.ts";
 import { wechatOrigin } from "./retention.ts";
+import { resolveWechatMaterialIdentity } from "./wechat-link-registry.ts";
+import type { WechatReadingProof } from "./wechat.ts";
 
 export interface MediaItem {
   kind: "image" | "video";
@@ -32,6 +34,8 @@ export interface MaterialInput {
   url: string;
   title: string;
   identityKey?: string;
+  /** Accepted only when minted from a fetched page or explicit operator attestation, never raw JSON. */
+  readingProof?: WechatReadingProof;
   author?: string | null;
   language?: string | null;
   publishedAt?: Date | null;
@@ -133,7 +137,7 @@ export async function upsertMaterial(m: MaterialInput, db: Db = sql): Promise<Ma
 }
 
 async function upsertIn(db: Db, m: MaterialInput): Promise<MaterialResult> {
-  const identityKey = identityKeyFor(m);
+  const identityKey = await resolveWechatMaterialIdentity(db,m.url,identityKeyFor(m),m.readingProof);
   const discoveredAt = m.discoveredAt ?? new Date();
   const title = collapseWhitespace(m.title).slice(0, 1000) || m.url;
 

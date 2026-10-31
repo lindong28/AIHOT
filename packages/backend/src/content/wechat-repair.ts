@@ -9,6 +9,8 @@ import { WECHAT_ARCHIVE_SOURCES, wechatBodyIssue } from "./wechat.ts";
 import { publishArticleTx, republishSource } from "../publication/publish.ts";
 import { queueProcessing } from "../jobs/content.ts";
 import { materialHash, manifestEntry } from "../backfill/manifest.ts";
+import { resolveWechatMaterialIdentity } from "./wechat-link-registry.ts";
+import type { WechatReadingProof } from "./wechat.ts";
 
 export const repairSchema = z.object({ articleId: z.string().min(1), expectedHash: z.string().length(64),
   bodyText: z.string(), bodyHtml: z.string().nullable(), evidence: z.string().min(1) }).strict();
@@ -48,13 +50,19 @@ export async function enableWechatFulltext() {
   return { sources: sources.length, changed, rebuilt };
 }
 
-export async function repairWechatBody(input: unknown) {
+export async function repairWechatBody(input: unknown, readingProof?: WechatReadingProof) {
   const r = repairSchema.parse(input);
   const bodyHtml = r.bodyHtml ? sanitizeBody(r.bodyHtml) : null;
   if (wechatBodyIssue(r.bodyText,bodyHtml)) throw new Error("Repair has no usable article body");
   const key = sha256(stableJson(r));
   return sql.begin(async tx => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${'wechat-repair:'+r.articleId}))`;
+    if (readingProof) {
+      const [target] = await tx`SELECT url,identity_key FROM articles WHERE id=${r.articleId}`;
+      if (!target || await resolveWechatMaterialIdentity(tx,target.url,target.identity_key,readingProof) !== target.identity_key) {
+        throw new Error("Reading-link owner changed; audit again");
+      }
+    }
     const [old] = await tx`SELECT after FROM audit_log WHERE action='wechat.body_repair' AND request_id=${key}`;
     if (old) return { ...old.after, reused: true };
     const [initial] = await tx`SELECT managed_backfill_id FROM articles WHERE id=${r.articleId}`;

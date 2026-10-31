@@ -218,3 +218,31 @@ node --env-file=.env deploy/wechat2rss/register-source.ts
 ## 原本机迁移的告警安排
 
 Compose 默认不继承旧实例的机器人投递地址；`WECHAT2RSS_BOT_WEBHOOK_URL` 明确配置后才启用原生投递。腾讯迁移保留既有外部 im-notify 通道，探针代码、状态与 cron 已迁移，故障分支使用隔离通知替身验证，不主动制造生产故障。此轮不宣称宿主机重启恢复或所有告警设计债务已验收。
+
+## 登记已经核实的微信阅读链接
+
+迁移 0055 后可把已取得的真实微信正文证据关联到现存文章或仅材料资料。该操作保留原 URL、identity、docId 和正文；只增加阅读链接，并为已入选文章追加同步记录。命令不联网，不启动回填或模型任务。完整 RSS 正文不会为了寻找短链额外发请求。
+
+证据文件由持数据库权限的操作者核对真实浏览器记录后准备，包含以下字段。`observedAt` 必须来自实际取证回执，不能用导入时间代填；`hasContent` 表示当时确有正文。`msgLink`、`ogUrl` 至少一个，有多个声明时必须一致；四参数必须对应指定资料。该文件是操作者确认材料，不是普通 RSS 或外部 JSON 自动认证入口。
+
+```json
+{
+  "observedAt": "2026-10-31T04:47:27.109Z",
+  "pageUrl": "https://mp.weixin.qq.com/s/1afnn-WeU4KvD03lqSIv2w",
+  "hasContent": true,
+  "identity": {"biz":"MzU0MDk3NTUxMA==","mid":"2247498204","idx":"1","sn":"0bae98ac72d316fbd89798223e65d548"},
+  "msgLink": "https://mp.weixin.qq.com/s/1afnn-WeU4KvD03lqSIv2w",
+  "ogUrl": "https://mp.weixin.qq.com/s/1afnn-WeU4KvD03lqSIv2w"
+}
+```
+
+从已固定版本的部署目录执行，使用现有环境配置；证据路径换成已经保全的文件。先预览，再添加 `--apply` 登记；同映射重放不覆盖首次证据。仅材料用 `--identity-key KEY` 替换 `--article ID`，二者互斥。
+
+```bash
+node --env-file=/path/app.env scripts/verify-wechat-reading-link.ts --article ARTICLE_ID --evidence /path/evidence.json --operator browser-session-reference --json
+node --env-file=/path/app.env scripts/verify-wechat-reading-link.ts --article ARTICLE_ID --evidence /path/evidence.json --operator browser-session-reference --apply --json
+```
+
+成功回执表示数据库已关联并回读，不表示刚刚访问微信或保证链接未来可达。命令中断或没有成功回执时，先用同一证据预览核对已有映射，再决定重试。不同 owner、不同已登记阅读链接或证据不一致会拒绝；先核原证据，不覆盖旧映射。
+
+应用后从 private v2 核对 `url` 原值、`readingUrl` 新值和稳定 docId，再核网站“阅读原文”、公开 API/RSS/Markdown、涉及的报告及 selected changes。旧 ledger 和报告原内容保留。撤回和全文许可继续生效。应用回滚可保留这张向后兼容的新表；不要把删除已登记身份当作应用回滚步骤。设计与边界见 [微信阅读链接](../references/20261031-wechat-reading-links.md)。

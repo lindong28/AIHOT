@@ -4,9 +4,9 @@
 
 ## 读取入口
 
-HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理员会话或 ingest 凭据。所有响应 `Cache-Control: no-store`；不设跨域授权，不跟随客户端重定向。协议的权威定义是 `packages/contracts/src/research.ts`，部署后通过鉴权的 `GET /api/private/v1/openapi.json` 读取。
+HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理员会话或 ingest 凭据。所有响应 `Cache-Control: no-store`；不设跨域授权，不跟随客户端重定向。协议的权威定义是 `packages/contracts/src/research.ts`，部署后通过鉴权的 `GET /api/private/v2/openapi.json` 读取。v1 继续提供原 JSON 形状；新客户端使用 v2，旧站显式选择 v1。
 
-| 路径（前缀 /api/private/v1） | 参数 | 用途 |
+| 路径（前缀 /api/private/v2；v1 同路径） | 参数 | 用途 |
 | --- | --- | --- |
 | GET /sources | q、kind、limit、cursor | 找来源／账号 ID、显式别名与已有采集观测 |
 | GET /groups | 无 | 发现研究分组及 sourceIds；初始为空 |
@@ -25,6 +25,9 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 `title` 为保存的原标题；`generatedTitle`、`summary` 为当前修订的生成结果；`body` 为已存原文，译文在 `translations` 单列。`bodyStatus` 是 available/missing/discarded/restricted，分别表示可返回、缺失、清除、正文受限。`completeness.state` 是 complete/incomplete/unverified，依据匹配版本的审核证据，而不是字数、非空或旧准备流程的 selected 标记；没有证据仍可读取，但报告 unverified。
 
 `source` 可重复，每个值为精确账号 ID、名称或显式别名；ID 优先，名称/别名忽略大小写，不模糊猜测。`group` 可重复，接受精确组 ID 或名称。来源和分组取并集，同一资料只返回一次；显式空组返回空结果。零匹配和歧义返回 400 与安全候选 ID/名称，不能静默退回全库。`query.sourceIds` 返回解析后的范围，null 表示全库、[] 表示空范围；其他 query 字段记录实际过滤，便于保存和比较。
+`url` 始终是采集地址。v2 的列表、详情及 resolve 增加 `readingUrl`：同篇微信正文证据核实过的阅读链接，未登记为 null；客户端用 `readingUrl ?? url` 打开原文。v2 Markdown 优先使用阅读链接，并在不同值时附采集地址；v1 JSON 和 Markdown 保持原形状。两个版本 resolve 都能在本地找到已登记的短/长链接，不触发外部抓取，也不改变 docId、片段优先和权限限制。404 仍可能表示关闭、受限或不存在，客户端不能据任意 404 自动切换协议版本。
+
+升级阅读链接能力先按既有发布流程运行增量迁移 `0055_wechat_reading_links.sql`（`node scripts/migrate.ts`）。迁移不回填正文；既有研究索引无需重建。采集必要正文请求会逐步积累链接，已有可信浏览器证据通过 [运维命令](operations/wechat2rss.md#登记已经核实的微信阅读链接) 单条登记。
 
 默认 `timeField=effective` 保留旧行为：按当前发表时间（缺失时发现时间）过滤，按初次索引时固定的 `sortAt` 及稳定 ID 排序。显式 `published`、`discovered`、`updated` 分别按发表、发现、投影更新时间过滤及倒序排序，ID 用于同时间排序；published 不将缺失日期回退为发现时间。`indexedAt` 是首次进入研究投影的时刻，`updatedAt` 是当前投影最近更新时刻，均独立返回；updated 查询便于取得旧文章的后续修订，但不是完整的权限/删除事件流，不能把查询无结果解释为无变化。跨期比较仍应保留查询范围与内容版本。
 

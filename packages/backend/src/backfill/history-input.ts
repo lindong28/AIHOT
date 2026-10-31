@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sql } from "../db.ts";
 import { sha256, stableJson } from "../lib/ids.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
+import { assertWechatFrozenIdentity } from "../content/wechat-link-registry.ts";
 import { manifestEntry, materialHash, type ManifestEntry } from "./manifest.ts";
 
 export interface HistoryVersion {
@@ -102,6 +103,7 @@ export async function importHistory(input: { file: string; label: string; startD
     const keys = new Set<string>(); let count = 0;
     for await (const { value } of jsonLines(input.file)) {
       const c = value as HistoryCandidate; validateCandidate(c, input.startDay, input.endDay);
+      for (const v of c.versions) if (v.material) await assertWechatFrozenIdentity(tx,v.material.url,c.identityKey);
       for (const v of c.versions) {
         if (keys.has(v.key)) throw new Error(`Version belongs to multiple candidates: ${v.key}`);
         keys.add(v.key);

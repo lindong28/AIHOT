@@ -7,6 +7,7 @@ import { cached, type Cached } from "../lib/cache.ts";
 import { proxiedImage, proxiedImageSet } from "../media/imgproxy.ts";
 import { dailyUrl, itemUrl, siteUrl } from "./links.ts";
 import { SITE, withSubject } from "@aihot/industry/site";
+import { VERIFIED_READING_URL } from "./reading-links.ts";
 
 export type { ReportKind };
 
@@ -21,6 +22,7 @@ interface ReportRow {
 }
 
 interface Availability {
+  readingUrl: string | null;
   available: boolean;
   firstParty: boolean;
   sourceId: string | null;
@@ -33,13 +35,14 @@ interface Availability {
 async function availability(ids: string[]): Promise<Map<string, Availability>> {
   const out = new Map<string, Availability>();
   if (ids.length === 0) return out;
-  const rows = await sql<{ id: string; visibility: string; eligible: boolean; first_party: boolean; source_id: string; source_name: string | null; icon_url: string | null; story_public_id: string | null; at: Date | null }[]>`
+  const rows = await sql<{ id: string; visibility: string; eligible: boolean; first_party: boolean; source_id: string; source_name: string | null; icon_url: string | null; story_public_id: string | null; at: Date | null; reading_url: string | null }[]>`
     SELECT p.article_id AS id, p.visibility, p.eligible, p.first_party, p.source_id, coalesce(p.source_label, s.name) AS source_name, ${SOURCE_ICON} AS icon_url, st.public_id::text AS story_public_id,
-      coalesce(p.published_at, p.discovered_at) AS at
+      coalesce(p.published_at, p.discovered_at) AS at, ${VERIFIED_READING_URL} AS reading_url
     FROM publications p LEFT JOIN sources s ON s.id = p.source_id LEFT JOIN stories st ON st.id = p.story_id
     WHERE p.article_id IN ${sql(ids)}`;
   for (const r of rows) {
     out.set(r.id, {
+      readingUrl: r.reading_url,
       available: r.visibility === "public" && r.eligible,
       firstParty: r.first_party,
       sourceId: r.source_id,
@@ -129,7 +132,7 @@ function citationFrom(raw: Record<string, any>, avail: Map<string, Availability>
     title: String(raw.title ?? ""),
     summary: raw.summary ?? null,
     sourceName: String(a?.sourceName ?? raw.sourceName ?? raw.source?.name ?? ""),
-    sourceUrl: String(raw.sourceUrl ?? raw.links?.original ?? ""),
+    sourceUrl: String(a?.readingUrl ?? raw.sourceUrl ?? raw.links?.original ?? ""),
     sourceId: raw.sourceId ?? a?.sourceId ?? null,
     sourceIconUrl: a?.sourceIcon ? proxiedImage(a.sourceIcon, "avatar") : null,
     ...(a?.sourceIcon && proxiedImageSet(a.sourceIcon, "avatar") ? { sourceIconSrcSet: proxiedImageSet(a.sourceIcon, "avatar")! } : {}),
@@ -328,7 +331,7 @@ export async function v1Daily(date: string | "latest") {
   const raw = [...(c.sections ?? []).flatMap((s: any) => s.items ?? []), ...(c.flashes ?? [])];
   const avail = await availability([...new Set(raw.map((i: any) => i.itemId).filter(Boolean))] as string[]);
   const ok = (i: any) => !i.itemId || (avail.get(i.itemId)?.available ?? true);
-  const links = (i: any) => ({ aihot: i.itemId ? itemUrl(i.itemId) : null, original: String(i.sourceUrl ?? "") });
+  const links = (i: any) => ({ aihot: i.itemId ? itemUrl(i.itemId) : null, original: String(avail.get(i.itemId)?.readingUrl ?? i.sourceUrl ?? "") });
   const url = dailyUrl(r.key);
   return {
     schemaVersion: 1 as const,

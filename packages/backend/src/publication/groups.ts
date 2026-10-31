@@ -34,7 +34,7 @@ export async function loadGroupReports(q: GroupReportsQuery, now = new Date()): 
     id: string; title: string; summary: string | null; timeline_at: Date; url: string; selected: boolean;
     source_id: string; source_name: string; source_kind: string; first_party: boolean; icon_url: string | null;
   }[]>`
-    SELECT p.article_id AS id, p.title, p.summary, p.timeline_at, p.url, p.selected,
+    SELECT p.article_id AS id, p.title, p.summary, p.timeline_at, ${PUBLIC_READING_URL} AS url, p.selected,
            s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind, p.first_party, ${SOURCE_ICON} AS icon_url
     FROM publications p JOIN sources s ON s.id = p.source_id
     WHERE p.article_id IN (SELECT article_id FROM fact_articles WHERE fact_id = ${fact.id}) AND p.visibility = 'public' AND p.eligible
@@ -153,3 +153,4 @@ export async function loadDevelopments(q: DevelopmentsQuery, now = new Date()): 
     body: { story: { publicId: story.public_id, title: story.title }, revision, developments, nextCursor: next },
   };
 }
+import { PUBLIC_READING_URL } from "./reading-links.ts";

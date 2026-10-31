@@ -15,6 +15,7 @@ import {
 } from "./rules.ts";
 
 interface ArticleRow {
+  identity_key: string;
   id: string;
   source_id: string;
   url: string;
@@ -153,9 +154,12 @@ export async function publishArticleTx(tx: Tx, articleId: string, options: Publi
   const now = options.now ?? new Date();
   const [article] = await tx<ArticleRow[]>`
     SELECT id, source_id, url, title, language, author, published_at, discovered_at, timeline_at, backfill, body_status,
-           body_text, body_html, x_post, grouped_at
+           body_text, body_html, x_post, grouped_at, identity_key
     FROM articles WHERE id = ${articleId} AND content_discarded_at IS NULL FOR UPDATE`;
   if (!article) return null;
+  // Take a new READ COMMITTED snapshot after acquiring the article lock: a link
+  // registration may have committed while this transaction waited for that lock.
+  const [readingLink] = await tx`SELECT reading_url FROM wechat_reading_links WHERE identity_key=${article.identity_key}`;
   const [source] = await tx<SourceFacts[]>`
     SELECT id, name, kind, tier, participation_mode, first_party, site_fulltext, syndicate_fulltext FROM sources WHERE id = ${article.source_id}`;
   if (!source) return null;
@@ -311,7 +315,7 @@ export async function publishArticleTx(tx: Tx, articleId: string, options: Publi
   let ledger: "upsert" | "remove" | null = null;
   if (inSet) {
     const payload = v1Payload({
-      articleId, title: next.title, originalTitle, summary, sourceName: label, url: article.url,
+      articleId, title: next.title, originalTitle, summary, sourceName: label, url: readingLink?.reading_url ?? article.url,
       publishedAt: article.published_at, discoveredAt: article.discovered_at, category, score: next.score, selected: true, reason,
     });
     const payloadHash = sha256(stableJson(payload));

@@ -61,7 +61,7 @@ export const SOURCE_ICON = sql`CASE WHEN p.channel = 'x' THEN (
 /** Columns every item listing selects. Internal judgement details never leave this layer. */
 export const ITEM_COLUMNS = sql`
   p.article_id AS id, p.revision, p.title, p.original_title, p.summary, p.reason, p.category, p.tags, p.score,
-  p.selected, p.eligible, p.channel, p.url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at, p.first_party, p.visibility,
+  p.selected, p.eligible, p.channel, ${PUBLIC_READING_URL} AS url, p.published_at, p.discovered_at, p.timeline_at, p.sort_at, p.first_party, p.visibility,
   p.body_mode, p.syndicate, p.indexable, p.visible_after, p.backfill, p.fact_id, p.story_id,
   s.id AS source_id, coalesce(p.source_label, s.name) AS source_name, s.kind AS source_kind, s.participation_mode AS source_mode, ${SOURCE_ICON} AS source_icon,
   ${SOURCE_PATH} AS source_path, a.x_post, a.author, a.language,
@@ -71,7 +71,7 @@ export const ITEM_COLUMNS = sql`
 /** Public API listings never render article bodies, X media or story metadata. */
 export type ApiItemRow = Pick<ItemRow, "id" | "title" | "original_title" | "summary" | "source_name" | "url" | "published_at" | "discovered_at" | "category" | "score" | "selected" | "reason">;
 export const API_ITEM_COLUMNS = sql`
-  p.article_id AS id, p.title, p.original_title, p.summary, coalesce(p.source_label, s.name) AS source_name, p.url,
+  p.article_id AS id, p.title, p.original_title, p.summary, coalesce(p.source_label, s.name) AS source_name, ${PUBLIC_READING_URL} AS url,
   p.published_at, p.discovered_at, p.category, p.score, p.selected, p.reason`;
 export const API_ITEM_FROM = sql`FROM publications p JOIN sources s ON s.id = p.source_id`;
 
@@ -209,3 +209,4 @@ export async function fetchItemsByIds(ids: string[], db: Db = sql): Promise<Map<
   const rows = await db<ItemRow[]>`SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE p.article_id IN ${db(ids)}`;
   return new Map(rows.map((r) => [r.id, r]));
 }
+import { PUBLIC_READING_URL } from "./reading-links.ts";

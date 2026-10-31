@@ -37,8 +37,9 @@ export async function repairSourceLabel(articleId: string): Promise<boolean> {
     await tx`UPDATE publications SET source_label=${label}, search_text=${search}, revision=revision+1, updated_at=now() WHERE article_id=${articleId}`;
     await tx`UPDATE pool_search SET direct=${search} WHERE article_id=${articleId}`;
     if (p.selected && p.visibility === "public") {
+      const [link] = await tx`SELECT reading_url FROM wechat_reading_links WHERE identity_key=${a.identity_key}`;
       const payload = v1Payload({ articleId, title: p.title, originalTitle: p.original_title, summary: p.summary, sourceName: label,
-        url: p.url, publishedAt: p.published_at, discoveredAt: p.discovered_at, category: p.category, score: p.score, selected: true, reason: p.reason });
+        url: link?.reading_url ?? p.url, publishedAt: p.published_at, discoveredAt: p.discovered_at, category: p.category, score: p.score, selected: true, reason: p.reason });
       const hash = sha256(stableJson(payload));
       const [state] = await tx`SELECT in_set,payload_hash FROM selected_state WHERE article_id=${articleId}`;
       if (!state?.in_set || state.payload_hash !== hash) {

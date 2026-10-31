@@ -52,3 +52,18 @@ export const researchOpenApi = {
     }},
   }},
 };
+
+// v1 is frozen. v2 reuses every route/auth/read rule and adds an independently verified reading URL.
+const readingUrl = { ...nullableString, description:"Verified WeChat reading URL, or null. url remains the original collected address. Use readingUrl ?? url to read." };
+export const researchOpenApiV2 = {
+  ...researchOpenApi,
+  info: { ...researchOpenApi.info, version:"2.0.0" }, servers:[{url:"/api/private/v2"}],
+  components:{...researchOpenApi.components,schemas:{...researchOpenApi.components.schemas,
+    Summary:{...researchOpenApi.components.schemas.Summary,
+      required:[...researchOpenApi.components.schemas.Summary.required,"readingUrl"],
+      properties:{...researchOpenApi.components.schemas.Summary.properties,readingUrl}},
+    Article:{...researchOpenApi.components.schemas.Article,
+      required:[...researchOpenApi.components.schemas.Article.required,"readingUrl"],
+      properties:{...researchOpenApi.components.schemas.Article.properties,readingUrl}},
+  }},
+};

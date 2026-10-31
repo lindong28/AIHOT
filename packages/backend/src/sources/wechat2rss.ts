@@ -9,6 +9,7 @@ import { queueProcessing } from "../jobs/content.ts";
 import { parseRss } from "./rss.ts";
 import type { SourceRow } from "./types.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
+import { resolveWechatMaterialIdentity } from "../content/wechat-link-registry.ts";
 
 // Full-text account feeds can exceed the public collector’s 8 MiB limit. Keep this loopback-only read bounded.
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
@@ -81,8 +82,17 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
     const batch = candidates.slice(0, source.cursor?.initializedAt ? 50 : 8);
     const missingKeys = batch.filter((item) => item.bodyStatus !== "ok")
       .map((item) => item.identityKey ?? identityKeyForUrl(item.url)).filter((key): key is string => !!key);
-    const stored = missingKeys.length ? await sql`SELECT identity_key,body_text,body_html FROM articles
-      WHERE source_id=${sourceId} AND identity_key IN ${sql(missingKeys)} AND body_status='ok' AND content_discarded_at IS NULL` : [];
+    const aliases = missingKeys.length ? await sql`SELECT identity_key,canonical_identity,reading_url FROM wechat_reading_links
+      WHERE identity_key IN ${sql(missingKeys)} OR canonical_identity IN ${sql(missingKeys)} OR ('url:'||reading_url) IN ${sql(missingKeys)}` : [];
+    const owners = new Map<string,string>();
+    for (const a of aliases) for (const key of [a.identity_key,a.canonical_identity,identityKeyForUrl(a.reading_url)!]) owners.set(key,a.identity_key);
+    const ownerKey = (item: {identityKey?: string;url:string}) => {
+      const key = item.identityKey ?? identityKeyForUrl(item.url)!;
+      return owners.get(key) ?? key;
+    };
+    const storedKeys = [...new Set(missingKeys.map(key => owners.get(key) ?? key))];
+    const stored = storedKeys.length ? await sql`SELECT identity_key,body_text,body_html FROM articles
+      WHERE source_id=${sourceId} AND identity_key IN ${sql(storedKeys)} AND body_status='ok' AND content_discarded_at IS NULL` : [];
     const bodies = new Map(stored.filter((a) => !wechatBodyIssue(a.body_text, a.body_html)).map((a) => [a.identity_key, a]));
     const failures = new Map<string, { stage: string; message: string; at: Date }>();
     let index = 0;
@@ -90,7 +100,7 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
       while (index < batch.length) {
         const item = batch[index++]!;
         if (item.bodyStatus !== "ok") {
-          const body = bodies.get(item.identityKey ?? identityKeyForUrl(item.url));
+          const body = bodies.get(ownerKey(item));
           // A feed's placeholder must not invalidate a body already recovered for this source.
           if (body) Object.assign(item, { bodyText: body.body_text, bodyHtml: body.body_html, bodyStatus: "ok" });
           else {
@@ -106,8 +116,9 @@ export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "ma
       const saved = await sql.begin(async tx => {
         // A repair may have finished while this request was in flight; retain it under the row lock.
         if (item.bodyStatus !== "ok") {
+          const identity = await resolveWechatMaterialIdentity(tx,item.url,item.identityKey ?? identityKeyForUrl(item.url)!);
           const [current] = await tx`SELECT body_text,body_html,body_status FROM articles
-            WHERE source_id=${sourceId} AND identity_key=${item.identityKey ?? identityKeyForUrl(item.url)}
+            WHERE source_id=${sourceId} AND identity_key=${identity}
               AND content_discarded_at IS NULL FOR UPDATE`;
           if (current?.body_status === "ok" && !wechatBodyIssue(current.body_text, current.body_html)) {
             Object.assign(item, { bodyText: current.body_text, bodyHtml: current.body_html, bodyStatus: "ok" });
@@ -156,7 +167,7 @@ export async function retryWechatBody(sourceId: string, articleId: string) {
   try {
     const body = await fetchWechatBody(a.url);
     stage = "save_repair";
-    await repairWechatBody({ articleId, expectedHash: repairHash(a), bodyText: body.bodyText, bodyHtml: body.bodyHtml, evidence: "管理员重试：从同一微信原文地址读取并验证正文" });
+    await repairWechatBody({ articleId, expectedHash: repairHash(a), bodyText: body.bodyText, bodyHtml: body.bodyHtml, evidence: "管理员重试：从同一微信原文地址读取并验证正文" },body.readingProof);
     return { articleId, status: "repaired" as const };
   } catch (error) {
     const message = bodyFailureMessage(error);
