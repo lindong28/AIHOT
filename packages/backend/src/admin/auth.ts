@@ -109,10 +109,10 @@ async function feishuUser(code: string): Promise<FeishuUser> {
 
 export class LoginRejected extends Error {}
 
-async function createSession(userId: number, userAgent: string | undefined): Promise<string> {
+export async function createSession(userId: number, userAgent: string | undefined, googleEmail?: string): Promise<string> {
   const token = randomBytes(32).toString("base64url");
-  await sql`INSERT INTO admin_sessions (id_hash, user_id, csrf_token, expires_at, user_agent)
-            VALUES (${sha256(token)}, ${userId}, ${randomBytes(18).toString("base64url")}, ${new Date(Date.now() + SESSION_DAYS * 86400_000)}, ${userAgent?.slice(0, 300) ?? null})`;
+  await sql`INSERT INTO admin_sessions (id_hash, user_id, csrf_token, expires_at, user_agent, auth_provider, google_email)
+            VALUES (${sha256(token)}, ${userId}, ${randomBytes(18).toString("base64url")}, ${new Date(Date.now() + SESSION_DAYS * 86400_000)}, ${userAgent?.slice(0, 300) ?? null}, ${googleEmail ? "google" : "legacy"}, ${googleEmail ?? null})`;
   return token;
 }
 
@@ -158,9 +158,10 @@ export async function passwordLogin(password: string, returnTo: string, userAgen
 export async function sessionPrincipal(cookieHeader: string | undefined): Promise<AdminPrincipal | null> {
   const token = parseCookies(cookieHeader)[SESSION_COOKIE];
   if (token) {
-    const [row] = await sql<{ user_id: number; csrf_token: string; name: string | null; email: string | null }[]>`
-      SELECT s.user_id, s.csrf_token, u.display_name AS name, u.email FROM admin_sessions s JOIN admin_users u ON u.id = s.user_id
+    const [row] = await sql<{ user_id: number; csrf_token: string; name: string | null; email: string | null; auth_provider: string; google_email: string | null }[]>`
+      SELECT s.user_id, s.csrf_token, u.display_name AS name, u.email, s.auth_provider, s.google_email FROM admin_sessions s JOIN admin_users u ON u.id = s.user_id
       WHERE s.id_hash = ${sha256(token)} AND s.expires_at > now()`;
+    if (row?.auth_provider === "google" && (!row.google_email || !config.googleAdminEmails.includes(row.google_email))) return null;
     if (row) return { userId: row.user_id, name: row.name ?? row.email ?? `admin:${row.user_id}`, csrf: row.csrf_token, dev: false };
   }
   if (config.devAdmin && config.environmentName !== "production") return { userId: null, name: config.devAdmin.displayName, csrf: "dev", dev: true };

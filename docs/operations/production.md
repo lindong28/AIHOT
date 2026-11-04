@@ -37,6 +37,8 @@ V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库�
 
 ## 部署更新与起停
 
+Google 后台登录的配置、验收与回滚见[部署说明](../deploy.md#google-管理员登录可选)。生产使用独立的 `AI Radar` Google Web 客户端，回调为 `https://news.aiplanet.live/api/auth/google/callback`，三个 `GOOGLE_*` 配置随 `shared/app.env` 加载。发布此功能时还须更新 Nginx 中该回调的日志保护；只发布 API/Web 代码不完成这一步。配置变更须重启 API。客户端原始副本位于运维机 `~/.local/state/aihot/credentials/google.env`，权限 0600；清单标明尚未登记独立备份，不能把运维机文件存在当成新机可恢复。
+
 统一入口为 `deploy/production/{install,start,stop,status,uninstall}.sh`；隧道对应入口为 `deploy/production/tunnel/` 下同名脚本。下文的动作分派命令仍可直接使用，两组入口复用同一实现。
 
 以下命令在**腾讯云**执行。将本仓已审核源码放入新 release 目录后，从该目录运行：

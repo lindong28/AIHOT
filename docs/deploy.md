@@ -13,7 +13,23 @@ docker compose up -d --build
 
 `init-env.ts` 会生成 `.env`，填好随机密钥和管理员密码，并把密码打印一次。机器上没有 Node 的话，把 `.env.example` 复制成 `.env`，自己填 `ADMIN_PASSWORD`（至少 12 位）、`SESSION_SECRET`、`IMG_PROXY_SIGN_SECRET`、`POSTGRES_PASSWORD`（各用 `openssl rand -hex 32` 生成）和 `LLM_API_KEY`。
 
-启动后打开 `http://服务器地址:3000`，后台在 `/admin`，用管理员密码登录。第一次启动会导入示范信源，一两分钟后开始出现内容；第一次导入的一百多条资料大约半小时处理完（每条都要预筛、评分，入选的还要写标题摘要）。
+启动后打开 `http://服务器地址:3000`，后台在 `/admin`，用管理员密码登录，也可按下节启用 Google。第一次启动会导入示范信源，一两分钟后开始出现内容；第一次导入的一百多条资料大约半小时处理完（每条都要预筛、评分，入选的还要写标题摘要）。
+
+### Google 管理员登录（可选）
+
+在 [Google Auth Platform](https://console.cloud.google.com/auth/clients) 创建 Web application 客户端，将授权回调精确登记为 `https://你的域名/api/auth/google/callback`，与 `SITE_URL` 一致。本机开发可登记对应的 localhost 回调。后端授权码模式不需要 JavaScript origins。只请求 `openid email profile`，不需要 Gmail、Drive 或离线访问权限。
+
+在后端 `.env` 设置 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_ADMIN_EMAILS`（逗号分隔完整邮箱）；按原迁移入口运行 `node scripts/migrate.ts`，再按原部署方式重建 Web、重启 API 和 Web。密码与飞书配置继续兼容。三个 Google 配置缺一时不显示 Google 按钮；没有任何登录方式时，生产 API 拒绝启动。采用分组凭据目录时，client ID/secret 放 `auth.env`，邮箱名单仍是进程环境配置。
+
+只有已验证且在名单内的 Gmail / Google Workspace 邮箱可以进入后台；普通 Google 账号认证成功不授予管理权限。身份以 Google `sub` 绑定，不能用相同邮箱覆盖另一个已绑定主体。会话复用现有 30 天期限和 CSRF 保护，Google token 不落库。更改名单须重启 API，配置生效后既有 Google 会话也会重新检查名单；密码和飞书会话不受影响。
+
+反向代理不要记录 `/api/auth/google/callback` 的查询串（含授权码和 state），也不要把它放进错误日志。生产 Nginx 模板为此回调关闭访问日志和会包含完整请求 URL 的错误日志，应用仍记录请求 ID、状态、耗时和脱敏失败阶段/代码；后端不记录 SDK 原始异常对象。回调响应不缓存且使用 `Referrer-Policy: no-referrer`。
+
+登录事务有效期 10 分钟，绑定发起浏览器，回调原子消费。过期行由下一次登录发起时清理；每个 API 进程沿现有限流窗口限制新建事务，不声称跨重启或多实例的全局配额。取消、超时或验证失败后重新点击登录即可，不自动重放授权码。凭据发现入口见根目录 `credentials.manifest.json`；该清单只覆盖 Google 登录，不是全项目凭据盘点。
+
+验收从 `/admin/login` 点击 Google，完成回调后进入原后台页面，确认刷新仍有会话、注销后不能访问；同时核对非名单账号拒绝。离线 `tests/google-auth.test.ts` 覆盖签名、issuer/audience/nonce、过期、重放、名单、CSRF 和旧密码登录，不能代替真实 Google 登录验收。
+
+回滚到不认识 Google 会话的旧代码前，先在同一生产数据库执行 `DELETE FROM admin_sessions WHERE auth_provider = 'google';`，再切回旧 release；否则旧代码会继续接受未过期的 Google 会话且不检查 Google 名单。新增表和列保持兼容，不删除业务数据，也不回退数据库 schema。关闭 Google 登录并撤销现有会话时，清空名单后重启 API。
 
 `docker compose` 会起五个容器：`db`（PostgreSQL 17）、`setup`（每次启动先跑数据库迁移和种子数据，然后退出）、`api`、`worker`（抓取、模型处理、定时任务）、`web`（网页）。
 

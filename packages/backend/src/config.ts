@@ -62,6 +62,7 @@ export const config = {
   adminPassword: env.ADMIN_PASSWORD || null,
   adminUnionIds: (env.ADMIN_FEISHU_UNION_IDS || "").split(",").map((v) => v.trim()).filter(Boolean),
   adminEmails: (env.ADMIN_EMAILS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
+  googleAdminEmails: (env.GOOGLE_ADMIN_EMAILS || "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean),
 };
 
 export type CredentialGroup = "models" | "collectors" | "integrations" | "auth";

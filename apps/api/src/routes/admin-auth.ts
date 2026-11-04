@@ -18,6 +18,7 @@ import {
   type AdminPrincipal,
 } from "@aihot/backend/admin/auth";
 import { sendProblem } from "../http/respond.ts";
+import { completeGoogleLogin, googleLoginConfigured, googleLoginRedirect, GoogleLoginFailure, GOOGLE_CALLBACK_PATH, GOOGLE_STATE_COOKIE } from "@aihot/backend/admin/google-auth";
 
 /** Cookies are Secure whenever the site is served over HTTPS. */
 const secure = () => config.siteUrl.startsWith("https://");
@@ -33,11 +34,11 @@ function over(key: string, limit: number, now: number): boolean {
   attempts.set(key, recent);
   return recent.length > limit;
 }
-function tooManyAttempts(ip: string): boolean {
+function tooManyAttempts(ip: string, method = "password"): boolean {
   const now = Date.now();
   if (attempts.size > 5000) attempts.clear();
-  const perClient = over(`ip:${ip}`, 10, now);
-  return over("all", 50, now) || perClient;
+  const perClient = over(`${method}:ip:${ip}`, 10, now);
+  return over(`${method}:all`, 50, now) || perClient;
 }
 
 const loginPage = (returnTo: string, error?: string) => `/admin/login?${new URLSearchParams({ return: safeReturn(returnTo), ...(error ? { error } : {}) })}`;
@@ -78,7 +79,39 @@ export function registerAdminAuth(app: FastifyInstance) {
     return reply.header("Cache-Control", "no-store").redirect(loginPage(returnTo), 302);
   });
 
-  app.get("/api/auth/options", async (_req, reply) => reply.header("Cache-Control", "no-store").send({ password: !!config.adminPassword, feishu: feishuLoginConfigured() }));
+  app.get("/api/auth/options", async (_req, reply) => reply.header("Cache-Control", "no-store").send({ password: !!config.adminPassword, feishu: feishuLoginConfigured(), google: googleLoginConfigured() }));
+
+  app.get("/api/auth/google", async (req, reply) => {
+    const returnTo = String((req.query as Record<string, string>).return ?? "/admin");
+    reply.header("Cache-Control", "no-store").header("Referrer-Policy", "no-referrer");
+    if (!googleLoginConfigured()) return reply.redirect(loginPage(returnTo, "google-unavailable"), 302);
+    if (tooManyAttempts(String(req.ip), "google")) return reply.redirect(loginPage(returnTo, "too-many"), 303);
+    try {
+      const { url, stateCookie } = await googleLoginRedirect(returnTo);
+      reply.header("Set-Cookie", cookie(GOOGLE_STATE_COOKIE, stateCookie, 600, secure()));
+      return reply.redirect(url, 302);
+    } catch {
+      req.log.error({ stage: "google_start" }, "admin Google login failed");
+      return reply.redirect(loginPage(returnTo, "google-failed"), 303);
+    }
+  });
+
+  app.get(GOOGLE_CALLBACK_PATH, async (req, reply) => {
+    reply.header("Cache-Control", "no-store").header("Referrer-Policy", "no-referrer")
+      .header("Set-Cookie", cookie(GOOGLE_STATE_COOKIE, "", 0, secure()));
+    try {
+      const query = new URL(req.raw.url!, config.siteUrl).searchParams;
+      const { token, returnTo } = await completeGoogleLogin(query, parseCookies(req.headers.cookie)[GOOGLE_STATE_COOKIE], req.headers["user-agent"]);
+      reply.header("Set-Cookie", [cookie(SESSION_COOKIE, token, SESSION_DAYS * 86400, secure()), cookie(GOOGLE_STATE_COOKIE, "", 0, secure())]);
+      return reply.redirect(returnTo, 303);
+    } catch (error) {
+      if (!(error instanceof LoginRejected)) req.log.error({
+        stage: error instanceof GoogleLoginFailure ? error.stage : "google_session",
+        code: error instanceof GoogleLoginFailure ? error.errorCode : "local_error",
+      }, "admin Google login failed");
+      return reply.redirect(loginPage("/admin", error instanceof LoginRejected ? error.message : "google-failed"), 303);
+    }
+  });
 
   app.post("/api/auth/password", async (req, reply) => {
     const b = (req.body ?? {}) as Record<string, string>;
