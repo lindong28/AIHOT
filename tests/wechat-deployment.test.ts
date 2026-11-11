@@ -68,22 +68,24 @@ test("external probe preserves incident keys and closes recovery without sending
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("production start and stop include configured Wechat2RSS in dependency order", async () => {
+test("explicit Wechat2RSS lifecycle remains independent of the online application release", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "aihot-wechat-lifecycle-"));
   const log = path.join(dir, "calls"), settings = path.join(dir, "compose.env");
-  const script = 'systemctl() { if [[ "$1" == show ]]; then echo loaded; fi; }; sudo() { printf "%s\\n" "$*" >> "$CALL_LOG"; }; export -f systemctl sudo; bash "$1" "$2"';
+  const script = 'sudo() { printf "%s\\n" "$*" >> "$CALL_LOG"; }; export -f sudo; bash "$1" "$2"';
   const env = { ...process.env, CALL_LOG: log, WECHAT2RSS_COMPOSE_ENV: settings };
-  const lifecycle = (action: string) => run("bash", ["-c", script, "test", path.join(root, "deploy/production/service.sh"), action], { env });
+  const lifecycle = (action: string) => run("bash", ["-c", script, "test", path.join(root, "deploy/wechat2rss/service.sh"), action], { env });
   try {
     await writeFile(settings, "# fixture\n");
     await lifecycle("start");
     let calls = await readFile(log, "utf8");
-    assert.ok(calls.indexOf("up -d --wait") < calls.indexOf("systemctl start aihot-api"));
+    assert.match(calls, /up -d --wait --wait-timeout 60/);
     assert.match(calls, /--project-name aihot-wechat2rss/);
+    assert.ok(!calls.includes("systemctl"));
     await writeFile(log, "");
     await lifecycle("stop");
     calls = await readFile(log, "utf8");
-    assert.ok(calls.indexOf("systemctl stop aihot-api") < calls.indexOf("compose --project-name"));
+    assert.match(calls, /compose --project-name aihot-wechat2rss .* stop\n/);
+    assert.ok(!calls.includes("systemctl"));
     await writeFile(log, "");
     await rm(settings);
     const result = await lifecycle("start");

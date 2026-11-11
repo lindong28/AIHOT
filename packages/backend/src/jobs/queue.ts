@@ -64,6 +64,30 @@ export const shutdownSignal = new AbortController();
 /** The longest single paid call (a translation batch, 180 s) plus margin; systemd waits longer. */
 export const STOP_TIMEOUT_MS = 195_000;
 
+/** Stop taking work before starting pg-boss's bounded final cleanup. Existing callbacks settle
+ * under their own request/job budgets; a deployment must not turn them into unknown receipts. */
+export async function drainBoss(): Promise<void> {
+  shutdownSignal.abort();
+  if (!boss) return;
+  const queues = [...new Set(boss.getWipData().map(worker => worker.name))];
+  await Promise.all(queues.map(name => boss!.offWork(name, { wait: true })));
+}
+
+/** Register candidate callbacks without taking existing business work until its old owner drains. */
+export function stageWorkerRegistrations(active: PgBoss, previewQueue: string) {
+  const registrations: Array<() => Promise<unknown>> = [];
+  const staged = new Proxy(active, { get(target, key) {
+    if (key === "work") return (...args: Parameters<typeof active.work>) => {
+      if (args[0] === previewQueue) return Reflect.apply(active.work, active, args);
+      registrations.push(() => Reflect.apply(active.work, active, args));
+      return Promise.resolve("deployment-standby");
+    };
+    const value = Reflect.get(target, key);
+    return typeof value === "function" ? value.bind(target) : value;
+  } });
+  return { boss: staged, async activate() { for (const register of registrations.splice(0)) await register(); } };
+}
+
 export async function stopBoss(): Promise<void> {
   shutdownSignal.abort();
   if (boss) await boss.stop({ graceful: true, timeout: STOP_TIMEOUT_MS });

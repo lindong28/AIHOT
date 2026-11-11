@@ -1,6 +1,6 @@
 # 腾讯云生产运维
 
-面向部署维护者，说明新 AI Radar 的发布、起停、检查与公网回滚。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
+面向部署维护者，说明 AI Radar 的发布、检查与公网回滚。**腾讯云实例在升级期间必须持续在线（用户于2026-11-11明确）**：候选先准备并验证，稳定入口切到候选后排空旧请求与任务，再退出旧实例；一般部署许可不包含停服例外。下列带日期的部署结果是历史快照，不能替代当前状态查询。公网已于 `2026-10-02T02:25:07Z` 切到新站；腾讯云 API、Web、worker 均 active，worker 已 enabled，生产 `app.env` 的 `COLLECT_ENABLED`、`MODEL_CALLS_ENABLED` 均为 `true`。条款与隐私正文已由用户确认并应用，用户已明确要求继续使用 Qwen Token Plan 生产调用；该决定不改变供应商条款。切站与授权记录见[生产切换记录](../references/20261001-production-cutover.md)。
 
 实时与历史两条模型链均经个人 Gateway，历史启动批已导入并开始处理。实时模型配置见 [app.env.example](../../deploy/production/app.env.example)：预筛与结构抽取使用 `default`，由 `LLM_MODEL` 指向逻辑名 `qwen3.8-flash`，并以 `LLM_EXTRA_JSON={"enable_thinking":false}` 关闭 thinking。个人 Gateway 优先使用公司集群上已就绪的自托管 Qwen，再回退百炼订阅与按量 API，并负责等值转换自托管参数拼法；其余具名模型沿用各自配置。模板中的采集与模型安全阀仍为 `false`，不要把模板默认值当作生产运行值。回填另见[历史回填](backfill.md)：Qwen 允许 self-hosted 与明确批准的个人百炼订阅备用，排除 DashScope 按量；评分、理解与摘要统一使用 DeepSeek V4.1 Flash，唯一候选为 `company_tencent_vod`。请求按允许路由集合与 registry revision 限定。
 
@@ -27,47 +27,66 @@ V4.1 的仓库配置与校验代码不自动迁移生产 `app.env`、数据库�
 | 位置 | 用途 |
 | --- | --- |
 | 腾讯云 `/home/ubuntu/aihot/releases/` | 各次发布源码；2026-10-02 回执修复与回填状态修复合并运行于 `backfill-content-filter-20261002-r2`，当前版本以 `readlink /home/ubuntu/aihot/current` 为准；2026-10-17 已清理全部非 current 的旧 release，仅保留现役版本 |
-| 腾讯云 `/home/ubuntu/aihot/current` | 指向运行版本的符号链接，systemd 从这里启动 |
+| 腾讯云 `/home/ubuntu/aihot/current` | 完成发布的导航链接；在线槽的systemd固定到release绝对路径，具体运行身份仍查PID/cwd |
 | 腾讯云 `/home/ubuntu/aihot/shared/app.env`、`web.env` | 后端与 Web 运行配置；后端凭据文件权限为 0600，不入 Git、不打印内容 |
 | 腾讯云 `/home/ubuntu/aihot/shared/data` | 应用持久文件；PostgreSQL 数据由系统数据库服务独立管理 |
-| 腾讯云 `127.0.0.1:3001`、`:3000` | 新 API、Web；公网 Nginx 已代理到 Web |
+| 腾讯云 `127.0.0.1:3001`、`:3000` | legacy API/Web；在线迁移后blue使用3101/3100，green使用3201/3200 |
 | 腾讯云 `127.0.0.1:39031`、`:39032` | 专用隧道提供的个人 Gateway 与 HTTP 代理 |
 
 腾讯云已安装 Node.js 24.21.0、PostgreSQL 16.15，完成依赖、Web 构建、数据库迁移及来源 seed。代码包不包含 `.env`、`.data/` 或共享目录；更新源码不覆盖这些持久状态。Web 配置模板见 [web.env.example](../../deploy/production/web.env.example)。
 
 ## 部署更新与起停
 
-Google 后台登录的配置、验收与回滚见[部署说明](../deploy.md#google-管理员登录可选)。生产使用独立的 `AI Radar` Google Web 客户端，回调为 `https://news.aiplanet.live/api/auth/google/callback`，三个 `GOOGLE_*` 配置随 `shared/app.env` 加载。发布此功能时还须更新 Nginx 中该回调的日志保护；只发布 API/Web 代码不完成这一步。配置变更须重启 API。客户端原始副本位于运维机 `~/.local/state/aihot/credentials/google.env`，权限 0600；清单标明尚未登记独立备份，不能把运维机文件存在当成新机可恢复。
+正式入口为 `deploy/production/service.sh`，`install.sh`、`start.sh`、`restart.sh`、`status.sh`、`stop.sh`、`uninstall.sh` 都转到同一实现。`install/start/restart` 采用同一在线替换流程，要求固定完整 Git revision；`stop/uninstall` 默认拒绝，不保留旧的三服务同时 restart 路径。需停服维护或退役时应另行取得该实例、动作和窗口的明确许可并形成对应操作，不能绕开入口直接 stop 来完成普通升级。
 
-统一入口为 `deploy/production/{install,start,stop,status,uninstall}.sh`；隧道对应入口为 `deploy/production/tunnel/` 下同名脚本。下文的动作分派命令仍可直接使用，两组入口复用同一实现。
+单机 API/Web 采用 blue（API 3101 / Web 3100）、green（API 3201 / Web 3200）两槽。生成的 `aihot-{api,web,worker}-{blue,green}.service` 固定到 release 绝对目录；`current` 只在收尾指向最终版本，不再作为这些进程的工作目录。首次迁移识别 legacy `aihot-{api,web,worker}.service` 的实际 PID、启动身份与 cwd，旧 worker 即使运行另一 release 也保留其身份。新旧普通 worker 不同时取业务任务：归组只保证进程内串行。候选只先消费新增 `research.semantic-query`，其余队列在旧 worker 全部回调排空后才启用。
 
-以下命令在**腾讯云**执行。将本仓已审核源码放入新 release 目录后，从该目录运行：
+### 发布接口
+
+采用 `service-release/v1` **mapped** 契约，目标固定为 `aihot/tencent-news`；以下命令均在腾讯云执行，入口位于本次获准的固定 release。源码包从已审完整 commit 构建并保留 `REVISION` 文件（仅该完整 SHA）；有 Git 元数据时入口核 HEAD 和 dirty 状态。上传身份与源码对应仍由发布者核实，不能仅写一个 SHA 就宣称未校验的文件包来自该 commit。配置沿 `shared/app.env`、`shared/web.env`，不放入源码包。
+
+| 操作 | 命令后缀 | 结果与恢复 |
+| --- | --- | --- |
+| 构建准备 | `prepare --expect FULL_SHA`，或 `prepare-release.sh --expect FULL_SHA` | 只安装锁定依赖、构建；不迁移、不 seed、不切流。拒绝改写正在被进程使用的 release；已准备且身份匹配的运行物可只读复用 |
+| 候选验收 | `stage --expect FULL_SHA [--override-env PATH] [--json]` | 新建 release ID，候选 API/Web 和语义队列 ready 后返回；旧业务与公网仍在原实例。exit 0 仅表示候选可验收，发布状态仍是 blocked / cleanup pending |
+| 一次在线发布 | `install --expect FULL_SHA [--override-env PATH] [--json]` | 完成准备、候选检查、业务队列交接、切流与排空；start/restart 同义，不是 stop/start |
+| 查询 | `status [--id ID] [--json]` | 只读发布记录并附对应 unit 的当前 PID/cwd；历史 installed 不等于当前消费者健康。显式不存在 ID 返回非零 |
+| 续跑 | `resume --id ID --expect FULL_SHA [--json]` | 仅原 ID / revision / 配置身份；保留已完成阶段。超时不换 ID，不重新付费编码已有查询 |
+| 放弃候选 | `abandon --id ID --expect FULL_SHA --reason TEXT [--json]` | 仅在旧业务交接开始前；候选 worker 先完成在途，保留记录、源码和回执。清理未完可原样重试；进入 worker-drain 后须 resume，不把已交接的版本改为 abandoned |
+
+发布记录在 `shared/online-releases/<ID>/release.json`，锁覆盖目标身份校验和改变，状态与清理分开记录；`active` 指向完成版本，`latest` 指向最近发布。尚有未完成清理时拒绝新建发布。错误、排空超时、身份变化或无法核实时返回非零并保留进度；先 `status` 查原记录，再 resume/abandon，不凭命令超时假定没有发生切流。服务状态与发布状态不互相冒充。
+
+本次无 SQL 迁移：入口比较候选与现役 API release 的 migration 文件集合及摘要，差异会阻止交接。后续有迁移的发布需先形成并执行独立审核的兼容迁移方案，不能恢复旧 prepare 的自动 migrate/seed 行为。
+
+候选语义配置可独立放到 `shared/` 下的0600文件，以 `--override-env` 加载。仅允许 `RESEARCH_SEMANTIC_TOKEN_SHA256`、`MODEL`、`DIMS`、`PROFILE`、`PROVIDER`、`ROUTE`、`ACTUAL_MODEL`、`REGISTRY_REVISION`（后七项同带 `RESEARCH_SEMANTIC_` 前缀）；每行一个赋值，不含其他凭据或多行值。API/worker 在基础 app.env 后加载该文件，旧进程配置不变；文件路径和配置摘要随发布固定，resume 时改变配置会被拒绝。基础凭据不复制到发布记录、Git 或终端。
 
 ```bash
-bash deploy/production/prepare-release.sh
+# 从已审固定 release 执行；把 FULL_SHA 替换为真实完整提交 ID。
+bash deploy/production/service.sh stage --expect FULL_SHA --override-env /home/ubuntu/aihot/shared/release-config/semantic.env --json
+# 通过返回的候选 API/Web 回环端口完成真实 provider + 独立 CLI 验收后：
+bash deploy/production/service.sh resume --id RELEASE_ID --expect FULL_SHA --json
+bash deploy/production/service.sh status --id RELEASE_ID
 ```
 
-它安装锁定依赖、构建 Web、应用增量迁移并 seed；不会更新 `current`、启动服务或切换公网。seed 不覆盖已有来源配置。数据库迁移不是随代码回滚而自动撤销的操作。
+stage 提供的端口可经既有 SSH 隧道供正式 CLI 使用，不新增公网私有 API 暴露。候选验收失败且尚未进入业务交接时用 abandon 回收；不能覆盖原配置后把它当作同一验收版本继续。Wechat2RSS、PostgreSQL、Gateway 隧道、backfill timer 在普通更新中保持运行，分别由原入口管理；此入口不再隐式重启这些依赖。
 
-发布准备完成后，部署更新使用：
+### 在途交接与排空
 
-```bash
-bash deploy/production/service.sh install
-bash deploy/production/service.sh status
-```
+旧 worker 的195秒 pg-boss stop期限不构成全部回调上界：JSON generation 重试和归组链可能超过它。交接先为原 unit 写入归属本 release ID 的临时 `Restart=no` drop-in，daemon-reload 后核 PID/启动身份未变及策略已生效，再通过临时、仅loopback的 Node inspector 获取**已有** pg-boss 实例（12.34.0），对全部用户队列（含 cron handler）同时 `offWork(wait:true)`。回调完成且worker集合为空后，正常停止原 unit，核 MainPID=0、inactive/failed、dead/failed 且无待执行 Job，才激活候选的业务队列。原PID消失不能代替unit终态；已换PID不得使用旧排空回执。完成发布时只删除本ID的重启抑制文件并重载，避免影响未来槽的正常重启。不新建 boss、不以一次 active-count=0 代替停取、不修改 receipt 身份、不强杀。新 worker 自身也先 drain 再进入 bounded stop。排空超过前台等待上限时进程继续完成工作，原 release ID 仍可续跑。
 
-`install` 会再次准备发布、更新 `current`、安装 systemd 定义，并 enable/restart API、Web、worker **全部三个服务**；`start` 和 `restart` 也作用于全部三个。它们不是“只更新前台”的命令。生产 worker 当前 enabled 且运行，主机重启时可被拉起；仅安装或启动成功不代表处理链路健康，还须检查新任务、回执和公开内容更新。开发、离线测试或尚未获准启用的新环境继续保持采集与模型安全阀关闭。
+候选健康检查同时核 API 的 DB/release、经 Web 转发的同一 release、首页响应和 worker ready 标记与实际 PID。每次切流前保存当前 Nginx worker 的 PID/启动身份；生成候选端口配置，`nginx -t` 后 reload，稳定 origin `/api/health` 确认目标 revision。切流或核验失败时保留两边HTTP进程，恢复原配置、重新校验及reload，并在稳定origin核对原API版本；恢复前与写入前核当前配置仍属于原配置或本次候选；发现外部修改即拒绝覆盖。恢复未核实则保留pending，下一次先恢复再继续。再次切流重新捕获Nginx worker集合，不复用首次切流前的快照。active槽索引成功写入后才记录cleanup完成；写入失败保留finish阶段供同ID恢复。
 
-日常操作入口：
+MCP 订阅可能无限保持，不能只等旧 Nginx worker 自行结束。切流后，临时 inspector 在已核旧 API 源码精确位置使用始终返回 false 的条件断点捕获已有 MCP handler，立即移除断点，再从已有闭包取得 SDK2.1.0 的 `listenRouter`，只执行订阅 `closeAll`。**不调用整个 handler.close**，因为那还会关闭普通 MCP 工具请求。旧 API/Web 继续处理已有短请求和 SSR；旧订阅正常结束，客户端在新入口重连。等旧 Nginx worker 退出后先关闭旧 Web，再关闭旧 API，保住旧 SSR 对 API 的依赖。
 
-```bash
-bash /home/ubuntu/aihot/current/deploy/production/service.sh start
-bash /home/ubuntu/aihot/current/deploy/production/service.sh stop
-bash /home/ubuntu/aihot/current/deploy/production/service.sh restart
-bash /home/ubuntu/aihot/current/deploy/production/service.sh status
-```
+inspector 不作为常驻服务：绑定127.0.0.1，PID/启动时刻/cwd/release ID校验，排空 promise 留在原进程供断连接续；退出时移除已登记断点并核调试端口关闭。端口已被未归属会话使用、实例不唯一、版本或作用域不符即拒绝，不扩大扫描、不创建替代对象。首次旧实例默认端口9229，新槽仅预设 API9231 / worker9232（指定端口本身不启动调试监听）。生产操作仍由发布 owner 执行，隔离演练不授权绕过身份检查。
 
-按需运行其中一条。`stop` 保留安装及开机启用状态；`uninstall` 停止并注销三个 systemd 服务，保留发布目录、凭据和 PostgreSQL 数据。修改 `app.env` 或 `web.env` 后，相应进程需重启才读取新值；源码更新走新 release 的 `install`，不能只拉代码而不构建和重启。
+### 验收、容量与材料
+
+源码控制测试覆盖正常切换、候选失败、配置/版本冲突、并发锁、worker与HTTP排空超时、Nginx失败还原和同ID续跑；真实隔离PG验证preview/全队列门控与在途结算。Node24.21.0下已演练原生inspector恢复及MCP订阅关闭；本机真实Nginx1.31.2演练覆盖延迟SSR和短MCP调用保留、订阅新槽重连。**这不代表生产Nginx1.24或本次公网切换已验收**；发布 owner 需连续采样实际公网/私有消费者、记录错误与等待、核目标版本以及真实任务/回执。
+
+发布前记录当前进程RSS、MemAvailable、已有release大小和可用磁盘，确保至少有另一个当前规模实例/release的测量余量；这是前检估算，不是峰值资源或零故障SLA。两槽、新旧hashed assets及构建会产生瞬时额外占用；旧hashed assets只补到尚未启动的候选，避免旧缓存HTML引用的文件消失。保留前次运行release、在途使用目录及发布记录，沿下方既有清理入口确认消费者后回收；不按年龄自动删除，不把 current 一条链接当全体消费者。
+
+发布记录每次一份，保存固定身份、阶段、配置摘要、Nginx原配置和临时drain证据，不保存凭据值/文章/向量。已完成记录、回滚目录与旧hash资产的清理由AIHOT维护者按实际恢复用途处理，未完成记录及其锁不删除。常驻故障告警沿既有worker heartbeat（role保持worker）；槽unit/前台故障的外部push覆盖仍是本仓维护者的既有待办，发布前台失败即时可见不替代该覆盖，见[服务运维](services.md)。
 
 ## 状态与故障定位
 
@@ -178,21 +197,9 @@ ruby deploy/production/image-egress.rb apply
 
 公网已切到新站。当前配置是 `/etc/nginx/sites-available/news.conf`，由 `/etc/nginx/sites-enabled/news.conf` 链接；HTTP 配置 `news-http.conf` 和现有证书保持。切换时 `nginx -t` 成功后执行 reload，并从公网健康接口、首页、详情和 smoke 核对了新站。
 
-旧 Nginx 配置备份已建立。以下保留应用本仓 Nginx 配置的操作入口；在**腾讯云**从新发布目录运行，已有备份不覆盖：
+普通更新只使用上文在线发布器生成槽端口配置并reload；不要手动安装模板 `news.conf`（模板中的3000/3001是legacy初始端口），否则会绕过候选检查和排空。HTTP配置、TLS/ACME仍沿原生Nginx运维，改动另行验证。
 
-```bash
-set -e
-if [ ! -e /home/ubuntu/aihot/shared/news.conf.before-aihot ]; then
-  sudo cp -a /etc/nginx/sites-available/news.conf /home/ubuntu/aihot/shared/news.conf.before-aihot
-fi
-sudo install -m 0644 deploy/production/news.conf /etc/nginx/sites-available/news.conf
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-只有 `nginx -t` 成功才 reload。检查 `https://news.aiplanet.live/` 的实际新站内容、详情及公开出口；仅有 200 不能区分新旧站。记录切换时间和结果。2026-10-17 用户取消旧站回滚，旧数据库已删除，旧 8000/8001 Web 已停止并禁用；不要再用 `news.conf.before-aihot` 把公网恢复到旧站。配置变更失败时应使用指向当前 AIHOT 的已知有效配置恢复。
-
-2026-10-17 第二阶段清理已移除无消费者的旧 upstream 引用，通过配置测试并 reload 后删除旧部署目录。现役 `news.conf`、`news-http.conf`、TLS 和 ACME 保留。若需回退当前 AIHOT 代码，应先确认目标 release 与现有增量 schema 兼容，再从该 release 使用 `service.sh install`，不恢复旧数据库覆盖新产生的数据。删除范围、容量变化和核验见[退役记录](../references/20261017-old-radar-retirement.md)。
+代码回退同样是一次固定revision的在线发布，先核schema兼容，再通过stage验收后resume；不把旧数据库恢复覆盖新数据。切流后出现错误但旧HTTP尚未排空时，保留两边和原记录，按实际阶段恢复，不把退出非零当作未切流。2026-10-17用户已取消旧RADAR回滚，旧数据库与8000/8001服务已退役；`news.conf.before-aihot`仅是历史材料，不能重新用于切回旧站。历史退役边界见[退役记录](../references/20261017-old-radar-retirement.md)。
 
 ## 旧链路保留与恢复边界
 
