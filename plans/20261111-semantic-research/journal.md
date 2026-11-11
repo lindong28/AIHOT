@@ -25,3 +25,21 @@ S3正式API归档回放（旧查询向量，未新编码）共8题：1真实+5�
 补登记研究CLI/API既有凭据入口时，project-credentials发现现有~/.config/aihot/research.env虽为0600，却经~/.config软链接落在system-config/config/aihot/research.env，既未tracked也未ignored，因而安全恢复检查报告unignored_target_refused。未读取/打印值、未复制或更换凭据。本轮既有CLI仍可按授权读取；这不等于新机可恢复。该独立基线问题及未登记备份来源保留在本记录，归system-config凭据维护，不为当前检索功能擅自扩大到另一仓的凭据迁移或发布。
 
 发布恢复三项经定向复核关闭；复核新增MEDIUM：switch拒绝外部配置后，统一rollback会覆盖。parent复现RED，再在switch异常恢复、rollback及健康读取后写前核原配置/候选配置归属；25项控制测试通过，独立复核四场景确认关闭且无新增finding。准备固定候选检查点，stage是正式线上增量发布的候选验收阶段，只启用新增语义队列；不触发旧业务交接或公网切流。
+
+## 15:14 UTC 真实验收与发布准备
+
+5e505候选已stage，766源码文件与git归档内容/执行位一致；归档664与提取644的初次mode断言不适用，内容未变且可执行位一致，已保留差异及修正说明。真实8题保留全部请求/回执，228tokens、金额unknown，语义3/8、关键词93/106；同45来源1917/1554/363，不能与旧1896快照混称同数据。首次关键词30.08秒超时，直接旧/新一页4.635/5.469秒、正式完整重试2.252秒；未核根因，不用成功重试消除失败证据。runner允许keyword的exit3且traversalComplete=true保留live变化；semantic非零仍停止，独立40组合核对关闭。
+
+独立消费者无答案ID完成1sources/6search/3semantic+1同身份resume/7read；严格月窗口未确认完整三项，扩展窗口找到两强候选，正文只有月费、token总额度和API等值，不能冒充token单价。三编码89tokens、费用unknown。原月窗全来源23190/13344可用/1097缺/143stale/8606policyExcluded；扩展窗126902/3955/46476/8/76463，范围与覆盖不同，不能把45来源样本说成全库。图文候选和7篇正文完整性unverified已记录，parent核两篇承重文字。
+
+持续性观察器3项MEDIUM（首页判据、SSE真实ACK、连接/ACK超时及取消记账）已修并经原reviewer关闭，仍未真实切流。PR1已建、分支5e505已push；自动PR run未出现，沿现有workflow_dispatch启动43045553067，固定SHA检查及Docker两jobs。原默认push observer因入口不同取消，终态已核，不等待不存在的push run。
+
+具体新增语义候选排序仍只有一真实任务的分布质量证据，按用户AGENTS核心算法条款保留分支，准备完整版本与局限后请求最终合并批准。公开生产仍旧版本，候选仅新增semantic队列，不改原业务队列。
+
+## 15:37 UTC 批准与生产续跑
+
+用户经MCP approve_aihot_semantic_main明确批准PR1固定5e505合入main及配套CLI、持续在线发布，原回执在acceptance/main-approval.json。5e505已快进main并普通push，实际远端及tracking相等；feature CI43045553067和main CI43048857254的check/docker均success。客户端在新基线491e6bc无冲突rebase为a3a67c30，三份CLI/文档/测试blob与91ab一致，SKILL保留别人的Lark上下文；已整合本地main待push。
+
+首次resume保留两HTTP实例并停在switch：严格源站TLS报告证书11月7日过期。现有webroot本机HTTP200，公网EdgeOne强制HTTPS后404；certbot timer多次续期失败。临时在HTTPS news配置增加相同ACME webroot，保存原文件并持发布锁；公网HTTP跟随重定向及HTTPS验证文件逐字匹配，随后既有certbot renew单域成功。恢复发布保存的原配置后续跑原ID；没有关闭TLS、换出口或新建付费查询身份。永久修复将随第二固定release发布，不改获批语义策略。
+
+首次连续观察见新release30秒后退出早于完整收尾；保留原窗口，并采用900秒上限、由caller在发布终态后收回的恢复窗口。原reviewer定向核HTTPS路径与仪器两处差量均无finding；公网挑战及续期由parent核实。TLS修复决定L0：既定公开webroot行为、明确404→200证据及原配置回退点；生产必要恢复优先完成，随后持久化修复。

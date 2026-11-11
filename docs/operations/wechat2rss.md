@@ -51,7 +51,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-sou
 
 | 权威位置 | 必须保存的内容 | 运行时副本 / 重建方式 |
 | --- | --- | --- |
-| AIHOT `deploy/wechat2rss/compose.yaml` | 固定镜像摘要、端口及采集保留配置 | `service.sh install` 安装 Ubuntu Docker/Compose，再按摘要下载启动 |
+| AIHOT `deploy/wechat2rss/compose.yaml` | 固定镜像摘要、端口及采集保留配置 | `deploy/wechat2rss/service.sh install` 安装 Ubuntu Docker/Compose，再按摘要下载启动 |
 | AIHOT `industry/sources.json` | 公众号 bizId、feedId、名称、启用状态 | `restore-subscriptions.ts` 恢复上游缺失订阅；AIHOT seed 登记来源 |
 | ai-agent-config `env`，经 `~/.claude/.env` 读取 | `WECHAT2RSS_LIC_EMAIL`、`WECHAT2RSS_LIC_CODE`、`WECHAT2RSS_RSS_TOKEN`、`WECHAT2RSS_RSS_SECRET`、`WECHAT2RSS_RSS_PROXY_SECRET` | `configure.ts` 生成 mode 0600 的 `service.env`、`compose.env` 和 AIHOT 配置片段 |
 | 同一中央 env | `WECHAT2RSS_PROBE_SSH_TARGET`、`WECHAT2RSS_PROBE_SSH_PRIVATE_KEY_B64`、`WECHAT2RSS_PROBE_SSH_KNOWN_HOSTS_B64` | `probe-install.ts` 生成专用 SSH 身份、主机信任、执行脚本和 cron |
@@ -65,7 +65,7 @@ node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-sou
 node deploy/wechat2rss/configure.ts \
   --root /home/ubuntu/aihot/shared/wechat2rss \
   --app-env /home/ubuntu/aihot/shared/app.env
-bash deploy/production/service.sh install
+bash deploy/wechat2rss/service.sh install
 bash deploy/wechat2rss/service.sh status
 ```
 
@@ -117,23 +117,23 @@ node deploy/wechat2rss/probe-install.ts --install
 
 安装器仅替换本探针的带标记 cron 或文档中的旧健康检查行，保留其他 cron。同目录重装保留 `healthcheck.state`；改变 `--root` 时需同时迁移已有状态文件，安装器不自动寻找旧路径。故障分支测试必须使用实体通知替身，不能只 mock Bash 函数；安装器不发送测试消息。动态健康状态与 im-notify 去重账本可重新建立，不作为固定配置入仓。决定和验证边界见[双仓恢复记录](../references/20261004-wechat-portable.md)。
 
-## 腾讯同机部署与统一入口
+## 腾讯同机部署与独立管理入口
 
 X ingest 由腾讯云 `aihot-worker` 调用 SocialData；Wechat2RSS 作为它的本地上游容器，同机部署于腾讯，AIHOT worker 仍负责公众号入库和处理。自有适配代码在 `packages/backend/src/sources/wechat2rss.ts`，部署资产在 `deploy/wechat2rss/`；上游服务本体由固定摘要的 Docker 镜像提供。2026-10-04 已切换中央配置生成的服务环境及外部专用探针。
 
 腾讯私有运行目录为 `/home/ubuntu/aihot/shared/wechat2rss/`：`service.env` 保存许可证与 RSS token，`data/res.db` 保存订阅、历史和登录，`compose.env` 只写 `WECHAT2RSS_ENV_FILE`、`WECHAT2RSS_DATA_DIR` 的绝对路径及可选机器人配置。目录 0700、私有文件 0600。首次迁移时必须先停旧实例并取得最终快照，再把 `compose.env` 放到此正式路径；准备阶段只安装引擎、下载镜像，不启动持有同一许可证的副本。
 
-入口与 X 采集相同，从腾讯运行：
+Wechat2RSS 使用自己的 Compose 管理入口；AIHOT 的在线发布不会启停或重建它。从腾讯运行：
 
 ```bash
-bash /home/ubuntu/aihot/current/deploy/production/service.sh install
-bash /home/ubuntu/aihot/current/deploy/production/service.sh start
-bash /home/ubuntu/aihot/current/deploy/production/service.sh restart
-bash /home/ubuntu/aihot/current/deploy/production/service.sh status
-bash /home/ubuntu/aihot/current/deploy/production/service.sh stop
+bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh install
+bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh start
+bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh restart
+bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh status
+bash /home/ubuntu/aihot/current/deploy/wechat2rss/service.sh stop
 ```
 
-`install` 在 Ubuntu 缺少引擎时安装 `docker.io` 与 `docker-compose-v2`；`install/start/restart` 在启动 worker 前通过 Compose 拉起公众号容器，`restart` 重建容器以加载私有环境变更。`stop` 先停 AIHOT 再停公众号容器，`uninstall` 删除本项目容器但保留绑定数据及配置。没有 `compose.env` 时明确报告未配置本机实例，不启动容器；可用 `WECHAT2RSS_COMPOSE_ENV` 显式指定另一配置文件。这里只做原生 Compose 分派，不维护另一个容器状态机。Docker `unless-stopped` 提供宿主机重启后的容器恢复，手动 stop 后须再 start。
+`install` 在 Ubuntu 缺少引擎时安装 `docker.io` 与 `docker-compose-v2`；`install/start/restart` 通过 Compose 拉起公众号容器，`restart` 重建容器以加载私有环境变更。`stop` 仅停止公众号容器，`uninstall` 删除本项目容器但保留绑定数据及配置。没有 `compose.env` 时明确报告未配置本机实例，不启动容器；可用 `WECHAT2RSS_COMPOSE_ENV` 显式指定另一配置文件。这里只做原生 Compose 分派，不维护另一个容器状态机。Docker `unless-stopped` 提供宿主机重启后的容器恢复，手动 stop 后须再 start。
 
 容器仅监听 `127.0.0.1:18480`，AIHOT `app.env` 中 `WECHAT2RSS_BASE_URL=http://127.0.0.1:18480`，`WECHAT2RSS_RSS_TOKEN` 与私有服务配置一致。`status` 分开报告容器和微信登录，不能代替来源 `fetch_runs`、模型回执和公开结果。许可证来自中央 env；初次部署必要时仍由账号所有者扫码或处理激活，已有登录缓存不保证跨机器有效。
 

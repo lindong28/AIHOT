@@ -32,7 +32,7 @@ async function listening() {
 }
 let ws, serial = 0, verified = false;
 const pending = new Map();
-function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++serial; const timer = setTimeout(() => { pending.delete(id); reject(Error('Inspector command timed out')); }, 5000); pending.set(id, { resolve: x => { clearTimeout(timer); resolve(x); }, reject: e => { clearTimeout(timer); reject(e); } }); ws.send(JSON.stringify({ id, method, params })); }); }
+function rpc(method, params = {}) { return new Promise((resolve, reject) => { const id = ++serial; const timer = setTimeout(() => { pending.delete(id); reject(Error(`Inspector ${method} command timed out`)); }, 5000); pending.set(id, { resolve: x => { clearTimeout(timer); resolve(x); }, reject: e => { clearTimeout(timer); reject(e); } }); ws.send(JSON.stringify({ id, method, params })); }); }
 async function evaluate(expression, byValue = true) {
   const r = await rpc('Runtime.evaluate', { expression, returnByValue: byValue, awaitPromise: true });
   if (r.exceptionDetails) throw Error('Runtime maintenance expression failed; original process retained');
@@ -113,7 +113,7 @@ try {
     if (state === 'failed') throw Error('Existing worker drain failed; original instance retained');
     return state === 'drained';
   }, 'in-flight callbacks');
-  record.status = 'drained'; await save();
+  record.status = 'drained'; delete record.reason; await save();
 } catch (error) {
   record.status = 'pending'; record.reason = String(error.message); await save();
   process.exitCode = 4;

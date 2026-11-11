@@ -6,7 +6,7 @@
 
 2026-10-03 已部署 Gateway `ed36698` 和 AIHOT `da3cf98`（release `bailian-fallback-da3cf98`）。当前历史 run `693bfde2-aa5a-499f-b17e-fd674ed7ea4c` 已在 paused 与批次锁下启用百炼备用，主绑定与历史回执身份保留，随后恢复 timer。两次真实小请求均完成：百炼回执 `45956` / Gateway UUID `64e3d7ff-83ea-46c3-a033-e79b5ca9264f`；正常双候选仍选 self-hosted，回执 `45957` / UUID `20569b0e-69f8-4887-93ef-c1df98938078`。二者均与 Gateway 的单次 success attempt 对应，usage 已返回，账本 cost_state 仍为 unknown，不表示免费。本次未人为制造生产故障；502 后冷却与同请求 fallback 的证据来自本地 HTTP fixture。生产 smoke 与公网健康检查正常，旧 unknown 未批量释放或重放。
 
-2026-10-04 首次公众号接入后，release `wechat-colocate-20261004` 已将 Wechat2RSS 迁到腾讯，与调用 SocialData 的 worker 同机。后端私有 `WECHAT2RSS_BASE_URL` 改为 `http://127.0.0.1:18480`，token 保持，22 个来源继续由 worker 的 mp 队列采集。`deploy/production/service.sh` 统一管理 API/Web/worker 和已配置的 Wechat2RSS 容器；Mac mini 旧容器与隧道已停，仅保留外部健康探针。私有目录、起停、验证与迁移边界见[公众号运维](wechat2rss.md)及[同机部署记录](../references/20261004-wechat-colocate.md)。
+2026-10-04 首次公众号接入后，release `wechat-colocate-20261004` 已将 Wechat2RSS 迁到腾讯，与调用 SocialData 的 worker 同机。后端私有 `WECHAT2RSS_BASE_URL` 改为 `http://127.0.0.1:18480`，token 保持。当前 `deploy/production/service.sh` 在线替换 API/Web/worker，Wechat2RSS 由 `deploy/wechat2rss/service.sh` 独立管理，普通更新不重启它；Mac mini 旧容器与隧道已停，仅保留外部健康探针。私有目录、起停、验证与迁移边界见[公众号运维](wechat2rss.md)及[同机部署记录](../references/20261004-wechat-colocate.md)。
 
 2026-10-07 主题大事记已发布，`current` 指向 `topic-chronicle-20261007-56e1bbb`，API/Web 运行功能提交 `56e1bbb`。本次只重启 API/Web，worker 与在途回填未重启；无新增迁移、seed 或模型配置变更。公网视频、OpenAI、模型发布三个主题 API 已返回大事记，页面交互与站点 smoke 已检查。当时旧 release `source-gaps-20261006` 保留供代码回切（该保留已于 2026-10-17 清理时取消），部署身份、验证范围和选材局限见[发布记录](../references/20261007-topic-chronicle.md#生产发布记录2026-10-07)。
 
@@ -89,6 +89,14 @@ inspector 不作为常驻服务：绑定127.0.0.1，PID/启动时刻/cwd/release
 发布记录每次一份，保存固定身份、阶段、配置摘要、Nginx原配置和临时drain证据，不保存凭据值/文章/向量。已完成记录、回滚目录与旧hash资产的清理由AIHOT维护者按实际恢复用途处理，未完成记录及其锁不删除。常驻故障告警沿既有worker heartbeat（role保持worker）；槽unit/前台故障的外部push覆盖仍是本仓维护者的既有待办，发布前台失败即时可见不替代该覆盖，见[服务运维](services.md)。
 
 ## 状态与故障定位
+
+### 源站证书续期
+
+腾讯 EdgeOne 会将 HTTP ACME 验证转到 HTTPS；`news.conf` 的 HTTPS server 因此也须保留 `/.well-known/acme-challenge/` → `/var/www/certbot`。只有端口80提供 webroot 会在边缘重定向后返回404，导致自动续期失败。证书由现有 certbot timer 及 `news.aiplanet.live` renewal 配置维护，不改用关闭 TLS 校验的健康检查。
+
+2026-11-11 在线切换暴露源站证书已在11月7日过期；公网边缘仍可响应不证明源站证书有效。现场补齐 HTTPS webroot 后，HTTP重定向及HTTPS读取同一验证文件均成功，再通过 `sudo certbot renew --cert-name news.aiplanet.live --non-interactive --no-random-sleep-on-renew --deploy-hook 'nginx -t && systemctl reload nginx'` 完成续期。该操作不停止服务；续期后需核源站严格TLS及实际证书日期。流程依据 [Certbot 官方续期说明](https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates)。
+
+发布途中修复现役 Nginx 配置时，先保存并核对归属；恢复到该发布记录保存的原配置后才续跑原 ID，不能修改发布记录绕过归属检查。长期 HTTPS challenge 修复随新的固定 release 发布，避免下一次切流覆盖它。
 
 ### Gateway 未知回执核对
 
