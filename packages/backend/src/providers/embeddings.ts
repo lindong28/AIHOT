@@ -7,12 +7,24 @@ import { sql } from "../db.ts";
 import { sha256 } from "../lib/ids.ts";
 import { completeReceipt, paidRequest, ProviderRejectedError, ReceiptUnknownError, rejectReceivedResponse } from "./receipts.ts";
 import { gatewayConfigured, prepareGatewayRequest } from "./gateway.ts";
+import { bindingIdentityRoutes, type BackfillBinding } from "../backfill/context.ts";
 
 const own = !gatewayConfigured() && !!credential("models", "EMBEDDING_API_KEY");
 export const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || (own || gatewayConfigured() ? "text-embedding-3-small" : "text-embedding-v4");
 /** Requested dimensions, when the provider takes the parameter (0 leaves it to the model). */
 export const EMBEDDING_DIMS = Number(process.env.EMBEDDING_DIMS ?? (own || gatewayConfigured() ? 0 : 1024));
 const SERVICE = own || gatewayConfigured() ? "embedding" : "dashscope";
+export const embeddingService = SERVICE;
+export function validSemanticVector(value:unknown,dimensions:number):value is number[] {
+  if (!Array.isArray(value) || value.length!==dimensions || value.some(n=>typeof n!=="number" || !Number.isFinite(n))) return false;
+  const norm=Math.hypot(...value);
+  return Number.isFinite(norm) && norm>0;
+}
+/** Configuration identity only; historical vector provenance still requires operator verification. */
+export function embeddingRuntimeIdentity(): string {
+  const base = gatewayConfigured() ? process.env.LLM_GATEWAY_URL : own ? credential("models","EMBEDDING_BASE_URL") ?? "https://api.openai.com/v1" : credential("models","DASHSCOPE_BASE_URL") ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  return sha256(JSON.stringify([base?.replace(/\/+$/, ""),gatewayConfigured()?process.env.LLM_GATEWAY_PROJECT:null,gatewayConfigured()?process.env.LLM_GATEWAY_MODE??"stream":null,SERVICE,EMBEDDING_MODEL,EMBEDDING_DIMS]));
+}
 
 // Recall reads fresh fact/story titles on every call, so the full text hash also invalidates this
 // cache when either title changes. Keep enough entries for the 4,000-fact recall window, not the
@@ -33,14 +45,14 @@ export function embeddingsAvailable(): boolean {
   return config.modelCallsEnabled && available && process.env.EMBEDDINGS_ENABLED !== "false";
 }
 
-async function embedBatch(texts: string[], subject: string): Promise<{ vectors: number[][]; receiptId: number }> {
+async function embedBatch(texts: string[], subject: string, queryIdentity?: unknown, pin?: BackfillBinding): Promise<{ vectors: number[][]; receiptId: number }> {
   if (!config.modelCallsEnabled) throw new Error("Model calls are disabled (MODEL_CALLS_ENABLED=false)");
-  const gateway = prepareGatewayRequest(EMBEDDING_MODEL, 60_000);
+  const gateway = prepareGatewayRequest(EMBEDDING_MODEL, 60_000, pin);
   const base = gateway ? null : own ? credential("models", "EMBEDDING_BASE_URL") ?? "https://api.openai.com/v1" : credential("models", "DASHSCOPE_BASE_URL") ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
   const key = gateway ? null : own ? credential("models", "EMBEDDING_API_KEY") : credential("models", "DASHSCOPE_API_KEY");
   if (!gateway && !key) throw new Error("EMBEDDING_API_KEY (or DASHSCOPE_API_KEY) missing");
   const receipt = await paidRequest(
-    { service: SERVICE, model: EMBEDDING_MODEL, purpose: "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)), ...(gateway ? { gateway: gateway.identity } : {}) }, requestSummary: { count: texts.length, ...(gateway ? { gateway: gateway.summary } : {}) }, gatewayRequestId: gateway?.requestId, gatewayRecovery: gateway?.recoveryEnabled },
+    { service: SERVICE, model: EMBEDDING_MODEL, purpose: queryIdentity ? "research_query_embedding" : "embedding", subject, identity: { model: EMBEDDING_MODEL, dims: EMBEDDING_DIMS, texts: texts.map((t) => sha256(t)), ...(queryIdentity ? { queryIdentity } : {}), ...(gateway ? { gateway: gateway.identity } : {}) }, requestSummary: { count: texts.length, ...(gateway ? { gateway: gateway.summary } : {}) }, gatewayRequestId: gateway?.requestId, gatewayRecovery: queryIdentity ? false : gateway?.recoveryEnabled },
     async (requestId) => {
       const body = { model: EMBEDDING_MODEL, input: texts, ...(EMBEDDING_DIMS > 0 ? { dimensions: EMBEDDING_DIMS } : {}), encoding_format: "float" };
       if (gateway) {
@@ -59,12 +71,30 @@ async function embedBatch(texts: string[], subject: string): Promise<{ vectors: 
       return { response: json, usage: json.usage ?? null, cost: null };
     },
   );
-  const data = (receipt.response as { data: Array<{ embedding: number[]; index: number }> }).data;
-  if (gateway && (!Array.isArray(data) || data.length !== texts.length || data.some((d) => !d || !Number.isInteger(d.index) || d.index < 0 || d.index >= texts.length || !Array.isArray(d.embedding) || !d.embedding.length || d.embedding.some((n) => !Number.isFinite(n)) || (EMBEDDING_DIMS > 0 && d.embedding.length !== EMBEDDING_DIMS)) || new Set(data.map((d) => d.index)).size !== texts.length)) {
+  // paidRequest may return a persisted response without calling gateway.send.
+  // Validate it before exposing a vector, including already-completed receipts.
+  if (pin) {
+    const companion=(receipt.response as {llm_gateway?:Record<string,unknown>} | null)?.llm_gateway;
+    if (!companion || companion.projection_version!==1 || !bindingIdentityRoutes(pin).some(r=>
+      companion.provider_id===r.provider && companion.selected_route_id===r.route && companion.actual_model===r.actualModel)) {
+      await rejectReceivedResponse(receipt.receiptId,"Semantic embedding response does not match the verified Gateway route",true);
+      throw new ReceiptUnknownError(receipt.receiptId,`Semantic embedding identity requires reconciliation for receipt ${receipt.receiptId}`);
+    }
+  }
+  const data = (receipt.response as { data?: Array<{ embedding: number[]; index: number }> } | null)?.data;
+  if ((gateway || queryIdentity) && (!Array.isArray(data) || data.length !== texts.length || data.some((d) => !d || !Number.isInteger(d.index) || d.index < 0 || d.index >= texts.length || !Array.isArray(d.embedding) || !d.embedding.length || d.embedding.some((n) => !Number.isFinite(n)) || (queryIdentity && !validSemanticVector(d.embedding,EMBEDDING_DIMS)) || (EMBEDDING_DIMS > 0 && d.embedding.length !== EMBEDDING_DIMS)) || new Set(data.map((d) => d.index)).size !== texts.length)) {
     await rejectReceivedResponse(receipt.receiptId, "Unusable Gateway embedding response", true);
     throw new ReceiptUnknownError(receipt.receiptId, `Gateway embedding output requires reconciliation for receipt ${receipt.receiptId}`);
   }
-  return { vectors: [...data].sort((a, b) => a.index - b.index).map((d) => d.embedding), receiptId: receipt.receiptId };
+  return { vectors: [...data!].sort((a, b) => a.index - b.index).map((d) => d.embedding), receiptId: receipt.receiptId };
+}
+
+/** Worker-only query encoding: never writes article embeddings or changes grouping identities. */
+export async function embedResearchQuery(text: string, subject: string, identity: unknown, pin?: BackfillBinding) {
+  if (gatewayConfigured() && (!pin?.routes || pin.routes.length!==1 || pin.fallbackRoutes?.length || pin.model!==EMBEDDING_MODEL || !pin.registryRevision))
+    throw new Error("Semantic queries require one verified Gateway route");
+  const { vectors, receiptId } = await embedBatch([text], subject, identity, pin);
+  return { vector: vectors[0]!, receiptId };
 }
 
 /** Returns stored embeddings, computing and storing the missing ones. */

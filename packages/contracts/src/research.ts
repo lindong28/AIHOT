@@ -67,3 +67,28 @@ export const researchOpenApiV2 = {
       properties:{...researchOpenApi.components.schemas.Article.properties,readingUrl}},
   }},
 };
+
+// v3 preserves v2 reads and adds explicit paid, worker-only semantic query submission.
+const semanticQuerySchema = {type:"object",additionalProperties:false,required:["q"],properties:{
+  q:{type:"string",minLength:1,maxLength:2000},source:{type:"array",items:{type:"string"},minItems:1,maxItems:100},group:{type:"array",items:{type:"string"},minItems:1,maxItems:100},
+  timeField:{enum:["effective","published","discovered","updated"],default:"effective"},from:{type:"string",format:"date-time"},to:{type:"string",format:"date-time"},selected:{type:"boolean"},limit:{type:"integer",minimum:1,maximum:100,default:40},
+}};
+const embeddingIdentity = {type:"object",required:["model","dimensions","profile","provider"],properties:{model:string,dimensions:{type:"integer"},profile:{const:"title-summary-v1"},provider:string,gateway:{type:"object",required:["route","actualModel"],properties:{route:string,actualModel:string}}}};
+const semanticTask = {type:"object",required:["id","requestId","createdAt","expiresAt","status","embedding","receipt"],properties:{
+  id:{type:"string",format:"uuid"},requestId:{type:"string",format:"uuid"},createdAt:{type:"string",format:"date-time"},expiresAt:{type:"string",format:"date-time"},
+  status:{enum:["queued","running","ready","failed","expired"]},reason:string,embedding:embeddingIdentity,
+  receipt:{type:"object",required:["id","status","usage","cost"],properties:{id:{type:["integer","null"]},status:nullableString,usage:{type:["object","null"]},cost:{type:["object","null"],properties:{amount:{type:"number"},currency:string,basis:string}}}},
+  result:{type:"object",required:["items","query","coverage","consistency","asOf","timingMs"],properties:{
+    items:{type:"array",items:{allOf:[{$ref:"#/components/schemas/Summary"},{type:"object",required:["score"],properties:{score:{type:"number",description:"Cosine similarity, not a relevance probability."}}}]}},
+    query:{type:"object"},coverage:{type:"object",required:["total","eligible","missing","stale","incompatible","policyExcluded"],properties:Object.fromEntries(["total","eligible","missing","stale","incompatible","policyExcluded"].map(k=>[k,{type:"integer",minimum:0}]))},
+    consistency:{const:"live"},asOf:{type:"string",format:"date-time"},timingMs:{type:"number"},
+  }},
+}};
+const semanticResponse = {description:"Short-lived owner-bound task. POST acknowledges identity; GET returns a live result. Unknown cost is null.",content:{"application/json":{schema:{$ref:"#/components/schemas/SemanticTask"}}}};
+export const researchOpenApiV3 = {
+  ...researchOpenApiV2,info:{...researchOpenApiV2.info,version:"3.0.0",description:"Private retained-material reads and explicit asynchronous semantic queries. Only semantic POST permits worker embedding calls; read routes never call models."},servers:[{url:"/api/private/v3"}],
+  paths:{...researchOpenApiV2.paths,
+    "/semantic-queries":{post:{summary:"Submit or resume one query embedding",description:"Requires read and explicit semantic capability. Preserve the entire request envelope. Same owner/requestId with different payload conflicts within retention. createdAt expires after 24 hours, even after task deletion. Future skew at most 60 seconds. Stored-vector profile must be operator verified; no article backfill.",requestBody:{required:true,content:{"application/json":{schema:{type:"object",additionalProperties:false,required:["requestId","createdAt","query"],properties:{requestId:{type:"string",format:"uuid"},createdAt:{type:"string",format:"date-time"},query:semanticQuerySchema}}}}},responses:{"200":semanticResponse,"202":semanticResponse,"400":{description:"Invalid envelope"},"401":{description:"Read identity revoked"},"403":{description:"Semantic capability unavailable/revoked"},"409":{description:"Request identity conflict or profile changed"},"410":{description:"Request expired"},"503":{description:"Profile unverified or capacity unavailable"}}}},
+    "/semantic-queries/{id}":{get:{summary:"Poll and rank against current retained materials",description:"Requires the original owner token and current read/semantic capability. Applies current article revisions and restrictions. No vector, owner digest, provider error or secret is returned.",parameters:[{name:"id",in:"path",required:true,schema:{type:"string",format:"uuid"}}],responses:{"200":semanticResponse,"401":{description:"Read identity revoked"},"403":{description:"Semantic capability revoked"},"404":{description:"Unknown or other owner task"},"409":{description:"Profile changed"},"410":semanticResponse,"503":{description:"Index, profile or read capacity unavailable"}}}},
+  },components:{...researchOpenApiV2.components,schemas:{...researchOpenApiV2.components.schemas,SemanticTask:semanticTask}},
+};

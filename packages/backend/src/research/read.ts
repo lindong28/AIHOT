@@ -8,6 +8,10 @@ import { materialHash } from "../backfill/manifest.ts";
 import { loadPreparation } from "../backfill/history-input.ts";
 import { resolveSources, ResearchInputError } from "./catalog.ts";
 import { readingLinkOwner } from "../content/wechat-link-registry.ts";
+import { reportText } from "../events/relate.ts";
+import { validSemanticVector } from "../providers/embeddings.ts";
+import { SearchBusyError } from "../publication/pool.ts";
+import { collapseWhitespace } from "../lib/text.ts";
 
 export { ResearchInputError } from "./catalog.ts";
 export const documentId = (identity: string) => `doc_${createHash("sha256").update(identity).digest("hex")}`;
@@ -34,7 +38,9 @@ const iso = (value: Date | string | null): string | null => value == null ? null
 // A restriction on any current article linked to this identity wins over older material copies.
 const FROM = sql`FROM research_documents d
   LEFT JOIN wechat_reading_links reading ON reading.identity_key=d.identity_key
-  LEFT JOIN publications p ON p.article_id=d.article_id AND p.revision=d.revision
+  LEFT JOIN publications p ON p.article_id=d.article_id AND (p.analysis_id IS NULL OR EXISTS (
+    SELECT 1 FROM analyses published_analysis WHERE published_analysis.id=p.analysis_id
+      AND published_analysis.article_id=d.article_id AND published_analysis.input_revision=d.revision))
   LEFT JOIN LATERAL (
     SELECT bool_or(o.visibility='withdrawn') AS denied, bool_or(o.visibility='summary-only') AS restricted
     FROM editorial_overrides o WHERE o.article_id=d.article_id OR o.article_id IN
@@ -84,16 +90,24 @@ function summary(r: Row, terms: string[] = []) {
     bodyStatus: r.restricted ? "restricted" : r.discarded ? "discarded" : r.has_body ? "available" : "missing", matches };
 }
 export type ResearchQuery = { source?: string[]; group?: string[]; timeField?: "effective"|"published"|"discovered"|"updated"; q?: string; from?: string; to?: string; selected?: boolean; limit: number; cursor?: string };
-export async function listArticles(db: Db, input: ResearchQuery, key: string) {
-  const terms = (input.q ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length > 6) throw new ResearchInputError("too_many_terms");
+async function researchScope(db: Db, input: ResearchQuery) {
   const sourceIds = await resolveSources(db,input.source,input.group);
   const timeField = input.timeField ?? "effective";
   const queryInfo = {sourceIds,timeField,from:input.from??null,to:input.to??null,q:input.q??null,selected:input.selected??null};
-  const query = createHash("sha256").update(JSON.stringify([sourceIds,terms,queryInfo.from,queryInfo.to,queryInfo.selected,timeField])).digest("hex");
   const time = timeField==="published" ? sql`d.published_at` : timeField==="discovered" ? sql`d.discovered_at` : timeField==="updated" ? sql`d.updated_at` : sql`coalesce(d.published_at,d.discovered_at)`;
-  // Keep the historical effective ordering fixed across material promotion and revisions.
   const order = timeField==="effective" ? sql`d.sort_at` : time;
+  const filters = sql`AND ${order} IS NOT NULL
+    ${sourceIds !== null ? sql`AND coalesce(account.id,d.source_id)=ANY(${sql.array(sourceIds)}::text[])` : sql``}
+    ${input.from ? sql`AND ${time}>=${input.from}::text::timestamptz` : sql``}
+    ${input.to ? sql`AND ${time}<${input.to}::text::timestamptz` : sql``}
+    ${input.selected !== undefined ? sql`AND coalesce(p.selected,false)=${input.selected}` : sql``}`;
+  return { sourceIds, timeField, queryInfo, order, filters };
+}
+export async function listArticles(db: Db, input: ResearchQuery, key: string) {
+  const terms = (input.q ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length > 6) throw new ResearchInputError("too_many_terms");
+  const {sourceIds,timeField,queryInfo,order,filters} = await researchScope(db,input);
+  const query = createHash("sha256").update(JSON.stringify([sourceIds,terms,queryInfo.from,queryInfo.to,queryInfo.selected,timeField])).digest("hex");
   const cursor = decode(input.cursor, query, key);
   const currentStamp = await stamp(db);
   const until = cursor?.until ?? await cutoff(db);
@@ -104,11 +118,7 @@ export async function listArticles(db: Db, input: ResearchQuery, key: string) {
   // Explicit text casts preserve PostgreSQL microseconds: the driver's timestamp serializer uses
   // JS Date (milliseconds), which can omit an identity created just before the first page.
   const rows = await db`SELECT ${COLUMNS},${order}::text AS sort_cursor ${FROM} WHERE ${VISIBLE} AND d.first_indexed_at<=${until}::text::timestamptz
-    AND ${order} IS NOT NULL
-    ${sourceIds !== null ? sql`AND coalesce(account.id,d.source_id)=ANY(${sql.array(sourceIds)}::text[])` : sql``}
-    ${input.from ? sql`AND ${time}>=${input.from}::text::timestamptz` : sql``}
-    ${input.to ? sql`AND ${time}<${input.to}::text::timestamptz` : sql``}
-    ${input.selected !== undefined ? sql`AND coalesce(p.selected,false)=${input.selected}` : sql``}
+    ${filters}
     ${condition} ${cursor ? sql`AND (${order},d.id)<(${cursor.after}::text::timestamptz,${cursor.id})` : sql``}
     ORDER BY ${order} DESC,d.id DESC LIMIT ${input.limit + 1}`;
   const page = rows.slice(0,input.limit), last = page.at(-1);
@@ -120,6 +130,64 @@ export async function listArticles(db: Db, input: ResearchQuery, key: string) {
     changedSinceStart: !!cursor && cursor.stamp !== currentStamp,
     nextCursor: rows.length > input.limit && last ? encode({ query, until, stamp: cursor?.stamp ?? currentStamp, after: last.sort_cursor, id: last.id },key) : null };
 }
+/** Live, bounded, metadata-only scan. No article body is fetched until the top-k is known. */
+export async function rankSemanticArticles(db: Db, input: ResearchQuery, vector: number[], model: string) {
+  const started = performance.now();
+  await db`SET LOCAL statement_timeout = '30s'`;
+  const { queryInfo, filters } = await researchScope(db,input);
+  const asOf = await cutoff(db);
+  const coverage = {total:0,eligible:0,missing:0,stale:0,incompatible:0,policyExcluded:0};
+  const top: Array<{id:string;score:number}> = [];
+  const queryNorm=Math.hypot(...vector);
+  let after = "";
+  // Chunks cap vector memory independently of corpus size; query has the shared search guard.
+  for (;;) {
+    if (performance.now()-started>30_000) throw new SearchBusyError(5);
+    const rows = await db`SELECT d.id,d.article_id,${READABLE} AS readable,
+      CASE WHEN ${READABLE} THEN d.title END AS raw_title,
+      CASE WHEN ${READABLE} THEN manual.fields END AS manual_fields,p.analysis_id,p.article_id AS publication_id,
+      CASE WHEN ${READABLE} THEN coalesce(p.title,an.title_zh,d.title) END AS embedding_title,
+      CASE WHEN ${READABLE} THEN left(coalesce(p.summary,an.summary_zh,''),300) END AS embedding_summary,
+      CASE WHEN ${READABLE} THEN e.text_hash END AS text_hash,
+      CASE WHEN ${READABLE} THEN CASE WHEN cardinality(e.vector)=${vector.length} THEN e.vector WHEN e.vector IS NOT NULL THEN '{}'::real[] END END AS vector,
+      EXISTS(SELECT 1 FROM embeddings other WHERE other.kind='article' AND other.ref_id=d.article_id) AS has_embedding
+      ${FROM}
+      LEFT JOIN editorial_overrides manual ON manual.article_id=d.article_id AND ${READABLE}
+      LEFT JOIN LATERAL (SELECT title_zh,summary_zh FROM analyses x WHERE x.article_id=d.article_id AND x.input_revision=d.revision ORDER BY id DESC LIMIT 1) an ON ${READABLE}
+      LEFT JOIN embeddings e ON e.kind='article' AND e.ref_id=d.article_id AND e.model=${model} AND ${READABLE}
+      WHERE ${VISIBLE} ${filters} AND d.id>${after} ORDER BY d.id LIMIT 128`;
+    for (const row of rows) {
+      coverage.total++;
+      if (!row.readable) {coverage.policyExcluded++;continue;}
+      if (!row.vector) {coverage[row.has_embedding ? "incompatible" : "missing"]++;continue;}
+      // A publication without an analysis is a raw/manual projection. Check its text against
+      // current source/override fields instead of trusting its independent publication counter.
+      let title=row.embedding_title,summaryText=row.embedding_summary;
+      if (row.publication_id && row.analysis_id===null) {
+        const fields=row.manual_fields??{};
+        const manualTitle=typeof fields.title==="string" && fields.title.trim() ? fields.title.trim() : null;
+        const manualSummary=typeof fields.summary==="string" ? fields.summary.trim() : "";
+        title=manualTitle??collapseWhitespace(row.raw_title);summaryText=manualSummary;
+      }
+      if (row.text_hash !== createHash("sha256").update(reportText(title,summaryText)).digest("hex")) {coverage.stale++;continue;}
+      const candidate = row.vector as number[];
+      if (!validSemanticVector(candidate,vector.length)) {coverage.incompatible++;continue;}
+      coverage.eligible++;
+      const norm=Math.hypot(...candidate);
+      const score=candidate.reduce((dot,n,i)=>dot+(n/norm)*(vector[i]!/queryNorm),0);
+      top.push({id:row.id,score:Math.max(-1,Math.min(1,score))});
+      top.sort((a,b)=>b.score-a.score || a.id.localeCompare(b.id));
+      if (top.length>input.limit) top.pop();
+    }
+    if (rows.length<128) break;
+    after=rows.at(-1)!.id;
+  }
+  const rows = top.length ? await db`SELECT ${COLUMNS} ${FROM} WHERE ${VISIBLE} AND ${READABLE} AND d.id=ANY(${top.map(r=>r.id)}::text[])` : [];
+  const byId = new Map(rows.map(r=>[r.id,summary(r)]));
+  const items = top.flatMap(r=>byId.has(r.id) ? [{...byId.get(r.id)!,score:r.score}] : []);
+  return {items,query:queryInfo,coverage,consistency:"live",asOf,timingMs:Math.round((performance.now()-started)*100)/100};
+}
+
 export async function listSources(db: Db, input: { q?: string; kind?: string; limit: number; cursor?: string }, key: string) {
   const query = JSON.stringify(["sources",input.q ?? null,input.kind ?? null]);
   const cursor = decode(input.cursor,query,key), currentStamp = await stamp(db);

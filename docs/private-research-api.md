@@ -37,6 +37,28 @@ HTTPS 请求携带 `Authorization: Bearer <专用令牌>`。令牌不是管理�
 
 400 表示参数／游标错误或 unknown_source/ambiguous_source/unknown_group/ambiguous_group；后四类返回 selector 与 candidates。401 表示无效或已撤销令牌；404 不区分未配置、受限与不存在；503 表示索引未就绪、容量忙或服务不可用，busy 携带 Retry-After。搜索共用既有容量保护（默认同时 4、排队 8），不会额外无限占用数据库连接。
 
+## 可选语义查询（v3）
+
+关键词仍使用原 v2 入口，不调用模型。v3 复用 v2 的读取协议，另外提供 `POST /api/private/v3/semantic-queries` 和 `GET /api/private/v3/semantic-queries/{id}`。POST 仅入队，由既有 worker 编码查询；GET 按当前来源、分组、日期、selected 和权限重新排名。它不补文章向量、不改公开站排序，也不抓取原网站。
+
+POST 请求为 `{requestId, createdAt, query}`：前两项为 UUID 与含时区 ISO 时间，query 接受 q（1–2000 字符）、source/group 数组、timeField、from/to、selected、limit（1–100）。来源和日期语义与读取入口相同；q 用于语义表示，不再作为词面 AND 条件。查询结果按标题与摘要表示的 cosine 排名，score 不是相关概率，空结果也不证明文章不存在；无阈值保证排除无关候选，必须回读正文核实。
+
+返回状态为 queued/running/ready/failed/expired，附 id、requestId、createdAt、expiresAt、embedding 身份和 receipt。POST 的 ready 也只是确认，客户端仍须 GET 当前结果。ready 的 result 返回 items、query、coverage、consistency=live、asOf、timingMs；每条候选保留 v2 的元数据与 readingUrl，matches 为空，不伪造正文命中片段。coverage.total 是当前可见且满足过滤的资料数，等于 eligible、missing、stale、incompatible、policyExcluded 之和；分别表示可排名、无向量、表示 hash 过时、模型/维度/数值不兼容，以及正文限制或已清除。人工撤回不进入分母。没有向量的资料仍可通过关键词和正文读取查到。
+
+客户端必须在提交前保存完整请求身份；丢失响应、超时或重启沿同一 envelope 恢复，不自动生成新付费请求。24 小时内同一 owner/requestId 与不同 payload 冲突，同一 envelope 返回原任务；过期 createdAt 即使任务已清理也不能重建。同 UUID 配新 createdAt 在清理后属于新请求，不承诺永久去重。查询文本、向量和状态存于现有 pg-boss，结果有效期 24 小时，终态清理配置另为 24 小时，物理留存可能接近 48 小时。receipt 按原回执保留规则保存。客户端请求文件含私有查询，0600 保存，不含 bearer。
+
+GET 仍核读取和编码资格及任务归属，撤回正文权限实时生效；不把已保存候选当权限快照。401 表示读取身份无效，403 表示无编码资格，404 不泄露其他人的任务，409 表示请求冲突或表示身份已变化，410 表示过期；模型不可用、预算不足、回执 unknown 等以 failed.reason 区分，不能包装成零匹配。unknown 须沿[回执恢复](operations/receipt-recovery.md)核账，不能换 UUID 重付。usage/cost 缺失保持 null，未知费用不代表免费。
+
+### 启用和回退
+
+API 与 worker 在现有受控环境配置中设置 `RESEARCH_SEMANTIC_TOKEN_SHA256`（允许编码的既有读取 token 摘要）、`RESEARCH_SEMANTIC_MODEL`、`RESEARCH_SEMANTIC_DIMS`、`RESEARCH_SEMANTIC_PROFILE=title-summary-v1` 和非空 `RESEARCH_SEMANTIC_PROVIDER`。MODEL/DIMS 必须等于当前 EMBEDDING_MODEL/EMBEDDING_DIMS。启用前核部署 provider、逻辑模型、维度、文本规则与实际向量；存量未记录完整 provider/权重版本，模型同名同维不能独自证明兼容，证据不足时保持关闭。新任务同时绑定实际 endpoint/project/mode 的内部摘要，配置改变后不继续消费旧身份。
+
+通过 Gateway 时，PROVIDER 必须为实际 provider_id，并设置已核实的 `RESEARCH_SEMANTIC_ROUTE`、`RESEARCH_SEMANTIC_ACTUAL_MODEL` 和 `RESEARCH_SEMANTIC_REGISTRY_REVISION`（当前加载的 64 位十六进制 registry revision）。任务 embedding.gateway 冻结 route/actualModel；编码只允许这一条路由，不自动 fallback。首次响应和复用的 received/completed 回执都核实际 provider/route/model，不符或缺失则保留回执、失败待核账，不输出向量也不重新付费。registry revision 约束实际派发，不进入付费语义身份；仅无关 registry 更新不会绕过旧回执。此检查不证明供应商在同一身份下未更换内部权重。直连模式的 PROVIDER 是维护者核过的映射标识，不能提供 Gateway 响应身份保障。
+
+表示文本沿 `reportText`：标题、中文句号、摘要前 300 个 UTF-16 code units。publication.revision 是独立投影计数；当前分析身份按关联 analysis 的 article_id/input_revision 核实，合法 raw/manual 投影单独保留。排名前重算表示 hash，不依据两个不同 revision 数字碰巧相等判当前。
+
+开启前核实际 embedding 服务 budgets 的分钟/小时/日限额均为正，评估与已有文章编码共享的使用量；提交上限（64 在途、1000 留存）不能替代费用预算。模型开关与现有 receipt 恢复继续生效。无需新业务表或向量回填；按[生产运维](operations/production.md)准备固定版本并让 API/worker 加载配置，再以正式 CLI 提交、恢复、回读并核 receipt。关闭时清空编码摘要并重载对应进程；v1/v2 读取继续可用，不删除文章、向量或回执。
+
 ## 分组与别名管理
 
 分组和成员由用户指定，安装及迁移 0054 不预置分类。权威配置位于现有 PostgreSQL 的 research_groups、research_group_sources、research_source_aliases；不复用编辑 tags，不更改来源采集或文章身份。配置随数据库备份保留，删除组只删除该组和成员关系；来源删除时其成员关系/别名随外键删除。别名按来源逐条设置/删除；允许显式同名记录，查询时报告歧义。
