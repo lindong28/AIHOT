@@ -6,7 +6,7 @@ xAI 后续已由用户选择官网 News 的第三方 RSS 发现入口，仓库�
 
 ## 2026-11-11 在线升级入口
 
-当前实现将 API/Web/worker 的固定版本在线交接与 Wechat2RSS 生命周期分开，避免升级 AIHOT 时重启公众号上游。操作见[生产运维](operations/production.md)和[公众号独立管理入口](operations/wechat2rss.md#腾讯同机部署与独立管理入口)。下方10月4日统一启停是历史部署记录，不作为新版命令入口。5e505已获用户批准并完成首个在线release；现场发现的源站证书续期缺口已恢复，永久修复和最终验收沿本轮[计划状态](../plans/20261111-semantic-research/state.md)接续。
+当前实现将 API/Web/worker 的固定版本在线交接与 Wechat2RSS 生命周期分开，避免升级 AIHOT 时重启公众号上游。操作见[生产运维](operations/production.md)和[公众号独立管理入口](operations/wechat2rss.md#腾讯同机部署与独立管理入口)。下方10月4日统一启停是历史部署记录，不作为新版命令入口。5e505已获用户批准并完成首个在线release，18ee663将现场证书续期修复正式部署；共享CLI、公网消费及连续观察结果和异常边界见本轮[计划状态](../plans/20261111-semantic-research/state.md)。
 
 ## 2026-10-17 腾讯云旧数据退役
 
