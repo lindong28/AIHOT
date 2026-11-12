@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { ConfigError, readSecrets } from "./configure.ts";
 
 type Account = { id: string; enabled: boolean; kind: string; config: { provider?: string; bizId?: string; feedId?: string } };
-type Subscription = { id: number; link: string; paused?: boolean };
-export async function restore(accounts: Account[], base: string, token: string, apply: boolean) {
+export type Subscription = { id: number; name?: string; link: string; paused?: boolean };
+export function upstreamApi(base: string, token: string) {
   const origin = new URL(base);
   if (origin.protocol !== "http:" || origin.hostname !== "127.0.0.1" || origin.pathname !== "/" || origin.username || origin.password || origin.search || origin.hash || !token) throw new ConfigError("需要回环 HTTP origin 和 RSS_TOKEN。");
   async function api(endpoint: string) {
@@ -19,6 +19,10 @@ export async function restore(accounts: Account[], base: string, token: string, 
       return body;
     } catch { throw new ConfigError("Wechat2RSS API 未完成请求；检查服务、登录与 token。未输出认证 URL 或上游正文。"); }
   }
+  return api;
+}
+
+export async function listSubscriptions(api: ReturnType<typeof upstreamApi>) {
   const existing = new Map<string, Subscription>();
   let total: number | undefined;
   for (let page = 1; ; page++) {
@@ -33,6 +37,12 @@ export async function restore(accounts: Account[], base: string, token: string, 
     if (existing.size === total) break;
     if (existing.size > total! || !body.data.length) throw new ConfigError("订阅分页不完整，未开始恢复。");
   }
+  return existing;
+}
+
+export async function restore(accounts: Account[], base: string, token: string, apply: boolean) {
+  const api = upstreamApi(base, token);
+  const existing = await listSubscriptions(api);
   const expected = accounts.filter((s) => s.kind === "mp_account" && s.config.provider === "wechat2rss" && s.enabled);
   if (!expected.length) throw new ConfigError("清单没有启用的 Wechat2RSS 账号；未验证任何订阅。");
   function check(account: Account, link: string) {

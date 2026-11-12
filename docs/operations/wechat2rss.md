@@ -32,14 +32,7 @@
 
 2026-10-12 随后新增[手工川](https://mp.weixin.qq.com/s/_PimzH5_vrPkbcimGIJFeQ)（`bizId=3869894872`），公众号总数增至 44。上游订阅、生产来源登记及首次 worker 采集均完成：RSS 发现 22 条，按既有首次采集窗口新增入库 1 篇；公开信源目录已显示该账号。沿用现行公众号本站全文开启、RSS 全文关闭的设置，采集入库不等于已筛选发布。
 
-新增时先从文章页核对公众号名称与 `bizId`，通过上游 `/list` 完整分页确认是否已有订阅；仅缺项调用 `/add/:bizId`，从返回订阅地址的 `/feed/<feedId>.xml` 取得 `feedId`。认证使用机器上的私有 RSS token，不把带 token 的 URL 输出或提交。接口契约见[上游 API 文档](https://github.com/ttttmr/wechat2rss/blob/master/deploy/api.md)。把账号按既有 `mp_account` / `provider=wechat2rss` 结构加入清单后，将该文件部署至 `/home/ubuntu/aihot/current/industry/sources.json`，再在生产 release 根目录执行：
-
-```bash
-node deploy/wechat2rss/restore-subscriptions.ts
-node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/register-source.ts
-```
-
-若是已知 `feedId` 的订阅恢复，第一条发现缺项时按下节用 `--apply` 补齐。第二条只插入缺失来源，不覆盖已有配置、暂停状态与游标；因此这套入口适合新增，不是已有来源的全量配置同步器。来源新增无需重启 worker，现有 `sources.mp` 调度会读取数据库并采集；验收查看各账号的 RSS 内容、`fetch_runs` 与文章入库情况，不能只看订阅数量或空 RSS 的 HTTP 200。
+新增单个公众号使用下文[单公众号接入](#单公众号接入)：文章元数据核身 → `prepare` → `config` → 按项目流程发布部署 → `apply` → `status`。目标级命令只处理指定账号，其他账号缺项不会触发全量恢复或登记。`restore-subscriptions.ts` 与无 selector 的 `register-source.ts` 保留给整机恢复、明确授权的批量登记，不作为单账号新增入口。
 
 首次接入沿用现有最近 7 天、最多 8 篇的初始采集范围。账号已订阅不等于全部历史文章已导入；RSS 为空或文章早于窗口时可能暂时没有文章入库。需要旧文章时另走历史回填，不通过更改采集游标扩大范围。
 
@@ -248,3 +241,55 @@ node --env-file=/path/app.env scripts/verify-wechat-reading-link.ts --article AR
 成功回执表示数据库已关联并回读，不表示刚刚访问微信或保证链接未来可达。命令中断或没有成功回执时，先用同一证据预览核对已有映射，再决定重试。不同 owner、不同已登记阅读链接或证据不一致会拒绝；先核原证据，不覆盖旧映射。
 
 应用后从 private v2 核对 `url` 原值、`readingUrl` 新值和稳定 docId，再核网站“阅读原文”、公开 API/RSS/Markdown、涉及的报告及 selected changes。旧 ledger 和报告原内容保留。撤回和全文许可继续生效。应用回滚可保留这张向后兼容的新表；不要把删除已登记身份当作应用回滚步骤。设计与边界见 [微信阅读链接](../references/20261031-wechat-reading-links.md)。
+
+## 单公众号接入
+
+从一篇文章开始时，先用共享 `weixin-reader` 的 `--metadata-only` 核实 `account_name` 与十进制 `biz_id`（不是链接里的 Base64 `__biz`）；`ghid` 可作为辅助身份，但不能代替 bizId。元数据缺失或名称冲突时先补身份，不猜账号。随后使用本仓 `deploy/wechat2rss/onboard-source.ts`；各命令都必须显式给同一个 `--name`、`--biz-id`。`--help` 列出阶段，`--json` 给 agent 机器结果，默认输出面向人。
+
+1. 在现役 Wechat2RSS 所在主机准备订阅。`prepare` 完整读取 `/list` 分页，只检查这个账号；默认缺项时报错，仅加 `--add-missing` 才向 `/add/:bizId` 发送一次添加请求。添加会触发上游异步抓取，需要既有接入授权。新旧订阅都回读名称、bizId 与 feedId，不刷新已有账号，不改变上游暂停状态。
+
+   ```bash
+   node deploy/wechat2rss/onboard-source.ts prepare \
+     --name '已核实名称' --biz-id 1234567890 \
+     --receipt /absolute/task-artifacts/account-1234567890.json --add-missing
+   ```
+
+   复用管理员自己的任务目录并先建立父目录。默认只访问 `http://127.0.0.1:18480`，读取 `/home/ubuntu/aihot/shared/wechat2rss/service.env` 的 `RSS_TOKEN`；可用 `--base` 指定另一回环 HTTP origin、`--service-env` 指定已有私有配置。不要把 token 放在命令行。每个账号接入期间复用同一个回执路径、由一个操作方负责，不能用另一回执并发接入同一账号。回执只保留账号身份、阶段、feedId 和暂停读数，不含认证 URL 或 token。
+
+2. 把回执带回本地自有开发 worktree，写入 Git 跟踪的配置。
+
+   ```bash
+   node deploy/wechat2rss/onboard-source.ts config \
+     --name '已核实名称' --biz-id 1234567890 \
+     --receipt /absolute/task-artifacts/account-1234567890.json
+   ```
+
+   `config` 只追加目标来源到 `industry/sources.json`，可用 `--sources` 指定隔离清单。现有来源保持原样，名称、bizId、feedId 或来源 id 冲突时拒绝覆盖。新增项沿用本站 15 分钟、T1_5、editorial、本站全文开启、RSS 全文关闭；采集器本身维持首次最近 7 天、最多 8 篇。对没有全文授权的其他站点，发布前由维护者按自身授权调整清单。本命令不推送 Git、不部署，也不自动登记数据库。
+
+3. 按[生产运维](production.md)完成源码审查、发布及部署。在已部署的 release 根目录，只登记这个目标。
+
+   ```bash
+   node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/onboard-source.ts apply \
+     --name '已核实名称' --biz-id 1234567890
+   node --env-file=/home/ubuntu/aihot/shared/app.env deploy/wechat2rss/onboard-source.ts status \
+     --name '已核实名称' --biz-id 1234567890
+   ```
+
+   `apply` 要求已部署清单内有目标、目标上游订阅身份一致、应用采集器 origin/token 与查询入口一致。它复用现有登记 INSERT，事务内去重；不注册其他缺项，不改已有来源配置、启停、next_fetch_at 或 cursor。来源登记后正常 worker 会读取数据库，无需因新增来源重启 worker。工具不触发手动采集，不扩大历史窗口，也不运行模型。
+
+`status` 分别展示配置、上游订阅、数据库登记、最近一次 `fetch_runs`、已入库文章与公开精选数量。等待首次采集、暂停、采集成功零新增、有新增、失败及未核实分别输出；空 RSS 或零新增本身不是失败，入库也不等于精选。上游查询失败仍尝试读取数据库；未取得读数不计为零。退出码 0 表示本次观察取得各阶段记录，不保证已采集或精选；缺项、冲突或无法核实返回 2，命令执行错误返回 1。机器调用读取 `--json` 的分阶段 `result`，不要只判断退出码。
+
+恢复时保留成功阶段：添加前先写 `add_pending` 回执，响应丢失后先完整 `/list` 回读；若已存在则继续，仍缺失就保留未知、不再 `/add`。重新执行同一 `prepare` 会先查列表，不能删除或换回执来盲重试。管理员核实上游确未执行后才能重新安排添加；工具不自行撤销不确定记录。文件 `.lock` 仅防同一路径重入，异常退出遗留时先确认原进程与同账号操作已结束再清理锁；保留回执本体。配置或 DB 失败分别重跑 `config`、`apply`；它们从实际配置和 DB 回读判重，不靠历史“成功”字样跳过核验。
+
+新脚本依赖现有 backend workspace、既有 sources/fetch_runs/articles/publications schema，无新增依赖或 migration。安装按项目发布流程取得对应提交；不能只复制入口文件，配套 `source-registration.ts`、`register-source.ts`、`restore-subscriptions.ts` 同属该版本。原 `restore-subscriptions.ts` 与 `register-source.ts` 全量恢复入口保留供整机迁移，单公众号任务不调用它们的全量主程序。
+
+仅更新运维工具并做只读验收时，可由发布者将已发布完整 SHA 的源码包及 `REVISION` 放入独立 operator 目录，安装该目录的锁定 npm workspace 依赖；本 CLI 不需要 Web build、迁移、seed 或常驻进程。复用正式执行主机、私有 env 和回环出口，用 `--sources /home/ubuntu/aihot/current/industry/sources.json` 明确读取现役清单，避免把 operator checkout 内未部署的配置当作线上配置。这一方式不切换 `current`，不重启 API/Web/worker，也不执行在线发布器的 `stage`、`resume` 或 `install`。项目目前没有专门 operator 安装器；现有 `service.sh prepare --expect FULL_SHA` 不切流，但会额外构建 Web，纯工具使用不要求调用它。源码与依赖身份由发布者核验，生产可用性仍须在该主机执行 status 后确认。
+
+```bash
+node --env-file=/home/ubuntu/aihot/shared/app.env \
+  /absolute/operator-release/deploy/wechat2rss/onboard-source.ts status \
+  --name '已核实名称' --biz-id 1234567890 \
+  --sources /home/ubuntu/aihot/current/industry/sources.json
+```
+
+新增账号的 `config` 仍在自有开发树完成，并通过源码发布流程部署清单；operator 模式不授权绕过配置发布或在生产源码目录直接修改清单。
