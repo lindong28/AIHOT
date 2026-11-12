@@ -8,12 +8,14 @@ const secret = "transport-test-secret";
 const mib = 1024 * 1024;
 let size = 9 * mib;
 let status = 200;
-const prefix = '<rss><channel><item><title>Large official-account feed</title><link>https://mp.weixin.qq.com/s/example</link><pubDate>Mon, 19 Oct 2026 00:00:00 GMT</pubDate></item><!--';
+let articleUrl = "https://mp.weixin.qq.com/s/example";
+const prefixFor = () => `<rss><channel><item><title>Large official-account feed</title><link>${articleUrl}</link><pubDate>Mon, 19 Oct 2026 00:00:00 GMT</pubDate></item><!--`;
 const suffix = '--></channel></rss>';
 const server = http.createServer((_req, res) => {
   res.writeHead(status, { "content-type": "application/xml" });
   if (status !== 200) { res.end(secret); return; }
   // A chunked feed exercises the streaming limit without trusting Content-Length.
+  const prefix = prefixFor();
   res.write(prefix);
   res.write("x".repeat(size - Buffer.byteLength(prefix + suffix)));
   res.end(suffix);
@@ -37,7 +39,17 @@ test("Wechat2RSS accepts a feed larger than 8 MiB and the 16 MiB boundary", asyn
     assert.equal(items.length, 1);
     assert.equal(items[0]!.title, "Large official-account feed");
     assert.equal(items[0]!.url, "https://mp.weixin.qq.com/s/example");
+    assert.equal(items[0]!.raw.wechat2rss.bizId, null);
   }
+});
+
+test("Wechat2RSS rejects explicit empty and invalid account identities", async () => {
+  size = 1024;
+  for (const biz of ["", "!!!", Buffer.from("foreign").toString("base64")]) {
+    articleUrl = `https://mp.weixin.qq.com/s?__biz=${biz}`;
+    await assert.rejects(readWechat2Rss(source), /account does not match source/);
+  }
+  articleUrl = "https://mp.weixin.qq.com/s/example";
 });
 
 test("Wechat2RSS rejects oversized streams with a safe size diagnosis", async () => {

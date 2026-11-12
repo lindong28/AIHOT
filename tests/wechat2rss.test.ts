@@ -28,6 +28,8 @@ const server = http.createServer((req, res) => {
   const entries = Array.from({ length: 10 }, (_, i) => item(biz, String(i), (i + 1) * 3600_000));
   entries.push(item(biz, "old", 9 * 86400_000));
   if (late) entries.push(item(biz, "late", 12 * 3600_000));
+  if (mode === "migrated" || mode === "migrated-foreign") entries.push(item("333", "migrated", 1800_000));
+  if (mode === "migrated-foreign") entries.push(item("999", "foreign", 900_000));
   const content = entries.join("");
   res.end(`<rss xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>${mode === "shell" ? content.replace(/完整短文 0。/, "跳转微信打开") : content}</channel></rss>`);
 });
@@ -156,4 +158,44 @@ test("registration requires both deployment settings before writing sources", as
     assert.ok(!result.stderr.includes("fixture-secret"));
   }
   assert.deepEqual(await sql`SELECT id,config,enabled,cursor FROM sources ORDER BY id`, before);
+});
+
+test("verified account migration keeps history, records article identities and rejects other accounts", async () => {
+  const sourceId = ids[0]!;
+  const [before] = await sql`SELECT cursor FROM sources WHERE id=${sourceId}`;
+  const original = await sql`SELECT id,identity_key,revision FROM articles WHERE source_id=${sourceId} ORDER BY id`;
+  await sql`UPDATE sources SET config=${sql.json({ ...configFor(0), bizId: "333", previousBizIds: ["111"] })} WHERE id=${sourceId}`;
+  mode = "migrated";
+  try {
+    const result = await checkMpAccount(sourceId, "schedule");
+    assert.equal(result.status, "ok");
+    assert.equal("created" in result && result.created, 1);
+    const rows = await sql`SELECT id,identity_key,revision,raw FROM articles WHERE source_id=${sourceId} ORDER BY id`;
+    assert.deepEqual(rows.filter(r => original.some(o => o.id === r.id)).map(({ id, identity_key, revision }) => ({ id, identity_key, revision })), [...original]);
+    assert.equal(rows.find(r => !original.some(o => o.id === r.id))!.raw.wechat2rss.bizId, "333");
+    const [source] = await sql<SourceRow[]>`SELECT * FROM sources WHERE id=${sourceId}`;
+    assert.deepEqual(new Set((await readWechat2Rss(source!)).map(i => i.raw.wechat2rss.bizId)), new Set(["111", "333"]));
+    assert.equal(source!.cursor!.initializedAt, before!.cursor.initializedAt);
+    assert.equal((await checkMpAccount(sourceId, "schedule") as { created: number }).created, 0);
+    const [checkpoint] = await sql`SELECT cursor,last_ok_at FROM sources WHERE id=${sourceId}`;
+    mode = "migrated-foreign";
+    const failure = await checkMpAccount(sourceId, "schedule");
+    assert.equal(failure.status, "failed");
+    assert.match("error" in failure ? failure.error : "", /account does not match source.*999/);
+    assert.deepEqual([...(await sql`SELECT cursor,last_ok_at FROM sources WHERE id=${sourceId}`)], [checkpoint]);
+    assert.deepEqual(await sql`SELECT id,identity_key,revision,raw FROM articles WHERE source_id=${sourceId} ORDER BY id`, rows);
+  } finally { mode = "ok"; }
+});
+
+test("migration identities are explicit decimal strings and invalid config never fetches", async () => {
+  const source = { id: ids[0]!, config: configFor(0), name: "公众号", kind: "mp_account", participation_mode: "editorial",
+    tier: "T1_5", first_party: false, interval_minutes: 15, enabled: true, cursor: null, fail_count: 0 } as SourceRow;
+  for (const previousBizIds of [[], ["222", "333"]]) assertSupportedConfig("mp_account", { ...source.config, previousBizIds });
+  const previous = requests;
+  for (const previousBizIds of [null, "222", [222], [""], ["*"], ["222", "bad"], {}]) {
+    const config = { ...source.config, previousBizIds };
+    assert.throws(() => assertSupportedConfig("mp_account", config), /previousBizIds/);
+    await assert.rejects(readWechat2Rss({ ...source, config }), /previousBizIds/);
+  }
+  assert.equal(requests, previous);
 });

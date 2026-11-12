@@ -19,7 +19,7 @@ const KEYS: Record<SourceRow["kind"], string[]> = {
   ],
   // X accounts are mostly read in shards, which apply only these.
   x_search: ["_aihot", "ingestNoiseFilter", "itemUrlPrefixRewrite", "query", "searchType"],
-  mp_account: ["wxid", "ghid", "nickname", "provider", "bizId", "feedId"],
+  mp_account: ["wxid", "ghid", "nickname", "provider", "bizId", "previousBizIds", "feedId"],
   external: [],
 };
 
@@ -49,6 +49,9 @@ export function unsupportedConfig(kind: SourceRow["kind"], config: Record<string
   const out: string[] = [];
   for (const [key, value] of Object.entries(config ?? {})) {
     if (!allowed.has(key)) out.push(key);
+    else if (key === "previousBizIds" && (!Array.isArray(value) || value.some(id => typeof id !== "string" || !/^\d+$/.test(id)))) {
+      out.push("previousBizIds must be an array of decimal account ID strings");
+    }
     else if (key === "requireValue" && (!value || typeof value !== "object" || Array.isArray(value) ||
       typeof (value as any).path !== "string" || !(value as any).path.trim() ||
       !Object.hasOwn(value, "equals") || !((value as any).equals === null || ["string", "number", "boolean"].includes(typeof (value as any).equals)))) {

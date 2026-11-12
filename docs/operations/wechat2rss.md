@@ -22,6 +22,14 @@
 
 ## 新增公众号与配置生效
 
+### 公众号迁移
+
+公众号迁移后，上游可以沿用原 feedId，同时在 RSS 中保留迁移前后的文章身份。`config.bizId` 表示当前账号，可选 `config.previousBizIds` 是已核实的历史账号十进制字符串数组；未配置时仍只接受当前账号。只有取得微信迁移提示或同等身份依据后才添加历史 ID，不依据同名自动关联。文章 URL 携带 `__biz` 时必须属于该集合，否则整次读取失败且不推进成功游标；没有 `__biz` 的短链接维持原有兼容行为，其 `raw.wechat2rss.bizId` 为 `null`，不表示账号已核实。有 `__biz` 的文章记录实际解析到的 ID。
+
+2026-11-12 已核实「可灵AI」由 `3595904568` 迁至 `3693476648`：旧[文章短链接](https://mp.weixin.qq.com/s/u1BEqDcjgYE5DFbieK4neQ)显示账号已迁移，目标文章使用新 ID；同一上游订阅保留 feedId `a6fd19b3b6524e225e785c7f392f7439a1a45483`。清单保留来源 `radar-mp-3595904568`，当前 bizId 更新为新值，并将旧值列入 previousBizIds。[上游 v1.4.1 变更说明](https://wechat2rss.xlab.app/deploy/changelog)也说明迁移会沿用 feed 且可能产生部分历史文章重复。
+
+应用此类修复时先按在线发布流程部署支持该字段的采集器，确认 worker 已切换，再备份并按原配置做比较更新，仅修改对应数据库来源的 config；不要重建来源、清空 cursor 或覆盖运行健康状态。正常 worker 成功后核对 fetch_runs、历史文章和研究查询入口。回滚配置只能恢复原配置，不代表采集故障已经恢复。迁移可能同时改变文章 mid/sn，继续沿用原 URL 身份规则；没有逐文章映射依据时不按标题合并或删除，新增入库数也不能解释为新发表篇数。
+
 2026-11-12 按用户提供的[《Neocloud讨论纪要》](https://mp.weixin.qq.com/s/G8R5dfWNW2OK7rkhgqYgZw)添加 Startup Research（`bizId=3879875658`，`gh_5d5debb8ffeb`）。文章页公众号名称与上游订阅回读一致；上游订阅数由 46 增至 47。来源清单沿用 15 分钟检查、首次最近 7 天且最多 8 篇、本站全文开启及 RSS 全文关闭的现有设置。来源登记和正常 worker 采集仍按本节入口核验，不运行历史回填。
 
 公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。

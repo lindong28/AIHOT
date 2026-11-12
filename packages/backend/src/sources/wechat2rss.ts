@@ -10,6 +10,7 @@ import { parseRss } from "./rss.ts";
 import type { SourceRow } from "./types.ts";
 import { identityKeyForUrl } from "../lib/url.ts";
 import { resolveWechatMaterialIdentity } from "../content/wechat-link-registry.ts";
+import { assertSupportedConfig } from "./config-keys.ts";
 
 // Full-text account feeds can exceed the public collector’s 8 MiB limit. Keep this loopback-only read bounded.
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
@@ -29,6 +30,9 @@ export async function readWechat2Rss(source: SourceRow) {
   if (typeof feedId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(feedId) || !/^\d+$/.test(String(bizId ?? ""))) {
     throw new Error("Wechat2RSS: feedId and numeric bizId required");
   }
+  const previousBizIds = source.config.previousBizIds === undefined ? [] : source.config.previousBizIds;
+  assertSupportedConfig("mp_account", { previousBizIds });
+  const accountIds = new Set([String(bizId), ...(previousBizIds as string[])]);
   const url = new URL(`/feed/${feedId}.xml`, origin);
   url.searchParams.set("k", token);
   let xml: string;
@@ -52,17 +56,21 @@ export async function readWechat2Rss(source: SourceRow) {
     throw new Error("Wechat2RSS feed unavailable; check the tunnel, token and service");
   }
   const items = parseRss(xml, source, origin.origin);
-  for (const item of items) {
+  return items.map((item) => {
     const article = new URL(item.url);
     if (article.protocol !== "https:" || article.hostname !== "mp.weixin.qq.com") throw new Error("Wechat2RSS: unexpected article origin");
     const biz = article.searchParams.get("__biz");
-    if (biz && Buffer.from(biz, "base64").toString() !== String(bizId)) throw new Error("Wechat2RSS: article account does not match source");
-  }
-  return items.map((item) => ({
-    ...item, language: "zh", author: item.author || source.name,
-    bodyStatus: item.bodyStatus,
-    raw: { wechat2rss: { bizId: String(bizId), feedId } },
-  }));
+    const articleBizId = biz === null ? null : Buffer.from(biz, "base64").toString();
+    if (articleBizId !== null && !accountIds.has(articleBizId)) {
+      const observed = /^\d+$/.test(articleBizId) ? articleBizId : "invalid";
+      throw new Error(`Wechat2RSS: article account does not match source (observed ${observed}; expected ${[...accountIds].join(", ")})`);
+    }
+    return {
+      ...item, language: "zh", author: item.author || source.name,
+      bodyStatus: item.bodyStatus,
+      raw: { wechat2rss: { bizId: articleBizId, feedId } },
+    };
+  });
 }
 
 export async function checkWechat2Rss(sourceId: string, reason: "schedule" | "manual") {
