@@ -22,6 +22,8 @@
 
 ## 新增公众号与配置生效
 
+2026-11-12 按用户提供的[《Neocloud讨论纪要》](https://mp.weixin.qq.com/s/G8R5dfWNW2OK7rkhgqYgZw)添加 Startup Research（`bizId=3879875658`，`gh_5d5debb8ffeb`）。文章页公众号名称与上游订阅回读一致；上游订阅数由 46 增至 47。来源清单沿用 15 分钟检查、首次最近 7 天且最多 8 篇、本站全文开启及 RSS 全文关闭的现有设置。来源登记和正常 worker 采集仍按本节入口核验，不运行历史回填。
+
 公众号的统一清单是 Git 跟踪的 `industry/sources.json`，线上 worker 实际读取 PostgreSQL 的 `sources` 表。只编辑文件不会自动更新数据库或创建上游订阅。2026-10-04 清单由 22 个扩至 31 个，新增 DeepTech深科技、爱诗科技 AIsphere、The Prospect、Z Finance、游戏葡萄、Z Potentials、胡渊鸣 Ethan、MiniMax 稀宇科技、晚点LatePost；下文带日期的 22 账号记录保留其历史口径。
 
 2026-10-06 已增至 41 个公众号：新增火山引擎、生数科技、卡尔的AI沃茨、千问APP、百度智能云、通义实验室、昆仑万维集团、可灵AI、美团技术团队、龙猫LongCat。10 个账号均已创建上游订阅、登记生产来源并完成 worker 首轮 RSS 读取；部分账号最近文章早于初始 7 天窗口，未导入这些旧文。具体读数见[视频来源生产接入](../references/20261006-video-sources.md#生产接入2026-10-06)。未运行历史 backfill。
